@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900 antialiased;
+}
+
+/* Print: hanya area label yang dicetak */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-area,
+  #print-area * {
+    visibility: visible;
+  }
+  #print-area {
+    position: absolute;
+    inset: 0;
+    display: block;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+
+.label-card {
+  page-break-inside: avoid;
+}
