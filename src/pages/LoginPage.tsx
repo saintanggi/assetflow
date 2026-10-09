@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ClipboardList, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -53,43 +53,77 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] bg-slate-50">
-      {/* Panel kiri — branding navy */}
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-navy-950 p-10 text-white lg:flex">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(52,103,163,0.4),transparent_65%)]"
-        />
-        <div className="relative flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/20">
-            <ClipboardList className="h-5 w-5 text-white" />
+    <div className="relative flex min-h-[calc(100vh-4rem)] overflow-hidden bg-ink-950">
+      {/* Glow latar */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_-10%,rgba(45,212,191,0.12),transparent_70%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_40%_40%_at_90%_110%,rgba(251,191,36,0.06),transparent_70%)]"
+      />
+
+      {/* Panel kiri — branding */}
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r border-white/5 p-10 lg:flex">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
+            <span className="font-display text-sm font-extrabold text-ink-950">IW</span>
           </div>
-          <span className="text-xl font-bold">AssetFlow</span>
+          <div>
+            <p className="font-display text-lg font-bold leading-tight text-white">
+              Inventory Warehouse
+            </p>
+            <p className="text-[11px] uppercase tracking-widest text-brand-400/80">
+              Command Center
+            </p>
+          </div>
         </div>
-        <div className="relative">
-          <h2 className="text-3xl font-bold leading-snug">
-            Kelola aset &amp; gudang dengan percaya diri.
+        <div>
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand-400/30 bg-brand-400/10 px-3 py-1 text-xs font-medium text-brand-300">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Sistem terpadu aset & gudang
+          </div>
+          <h2 className="font-display text-4xl font-bold leading-tight tracking-tight text-white">
+            Operasional gudang,
+            <br />
+            dalam satu kendali.
           </h2>
-          <p className="mt-4 max-w-md text-slate-300">
-            Pencatatan aset tetap, persediaan, dan transaksi dalam satu sistem yang
-            akurat, transparan, dan siap diaudit.
+          <p className="mt-4 max-w-md text-slate-400">
+            Pencatatan aset tetap, persediaan, dan transaksi dalam satu command
+            center yang akurat, transparan, dan siap diaudit.
           </p>
+          <div className="mt-8 grid max-w-md grid-cols-3 gap-3">
+            {[
+              ["Real-time", "Stok & transaksi"],
+              ["Audit-ready", "Jejak tercatat"],
+              ["Aman", "Kontrol akses peran"],
+            ].map(([t, d]) => (
+              <div
+                key={t}
+                className="rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur"
+              >
+                <p className="font-display text-sm font-bold text-brand-300">{t}</p>
+                <p className="mt-1 text-xs text-slate-500">{d}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <p className="relative text-xs text-slate-500">
-          © {new Date().getFullYear()} AssetFlow — Sistem Informasi Manajemen Aset &amp; Gudang
+        <p className="text-xs text-slate-400">
+          © {new Date().getFullYear()} Inventory Warehouse — Sistem Informasi Manajemen Aset &amp; Gudang
         </p>
       </div>
 
       {/* Panel kanan — form */}
-      <div className="flex w-full items-center justify-center px-4 py-12 lg:w-1/2">
-        <Card className="w-full max-w-md shadow-lg">
+      <div className="relative flex w-full items-center justify-center px-4 py-12 lg:w-1/2">
+        <Card className="w-full max-w-md shadow-card">
           <CardHeader className="space-y-1">
-            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-navy-900 lg:hidden">
-              <ClipboardList className="h-5 w-5 text-white" />
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow lg:hidden">
+              <span className="font-display text-base font-extrabold text-ink-950">IW</span>
             </div>
-            <CardTitle className="text-2xl">Masuk ke AssetFlow</CardTitle>
+            <CardTitle className="font-display text-2xl text-white">Selamat datang kembali</CardTitle>
             <CardDescription>
-              Gunakan akun staf Anda untuk mengakses dashboard operasional.
+              Masuk untuk mengakses command center operasional.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -104,7 +138,7 @@ export function LoginPage() {
                   {...register("email")}
                 />
                 {errors.email && (
-                  <p className="text-xs text-red-600">{errors.email.message}</p>
+                  <p className="text-xs text-rose-400">{errors.email.message}</p>
                 )}
               </div>
               <div className="space-y-2">
@@ -112,7 +146,7 @@ export function LoginPage() {
                   <Label htmlFor="password">Kata sandi</Label>
                   <Link
                     to="/lupa-password"
-                    className="text-xs font-medium text-brand-600 hover:underline"
+                    className="text-xs font-medium text-brand-300 hover:text-brand-200"
                   >
                     Lupa kata sandi?
                   </Link>
@@ -129,24 +163,24 @@ export function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
                     aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 {errors.password && (
-                  <p className="text-xs text-red-600">{errors.password.message}</p>
+                  <p className="text-xs text-rose-400">{errors.password.message}</p>
                 )}
               </div>
               {formError && (
-                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                <p className="rounded-lg border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm text-rose-300">
                   {formError}
                 </p>
               )}
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                Masuk
+                Masuk ke Command Center
               </Button>
             </form>
             <p className="mt-6 text-center text-sm text-slate-500">

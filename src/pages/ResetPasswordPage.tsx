@@ -6,8 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ArrowLeft,
   CheckCircle2,
-  ClipboardList,
   KeyRound,
+  Link2Off,
   Loader2,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -101,32 +101,36 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50 px-4 py-12">
-      <Card className="w-full max-w-md shadow-lg">
+    <div className="flex relative min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-ink-950 px-4 py-12">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_50%_30%,rgba(45,212,191,0.10),transparent_70%)]"
+      />
+      <Card className="relative w-full max-w-md shadow-card">
         <CardHeader className="space-y-1">
-          <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-navy-900">
-            <KeyRound className="h-5 w-5 text-white" />
+          <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
+            <KeyRound className="h-5 w-5 text-ink-950" />
           </div>
-          <CardTitle className="text-2xl">Atur kata sandi baru</CardTitle>
+          <CardTitle className="font-display text-2xl text-white">Atur kata sandi baru</CardTitle>
           <CardDescription>
             Masukkan kata sandi baru untuk akun Anda.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {checking ? (
-            <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
               <Loader2 className="h-4 w-4 animate-spin" />
               Memverifikasi tautan reset…
             </div>
           ) : done ? (
             <div className="flex flex-col items-center py-4 text-center">
-              <div className="rounded-full bg-green-100 p-4">
-                <CheckCircle2 className="h-8 w-8 text-green-700" />
+              <div className="rounded-full bg-brand-400/10 p-4 ring-1 ring-brand-400/20">
+                <CheckCircle2 className="h-8 w-8 text-brand-300" />
               </div>
-              <h3 className="mt-4 text-base font-semibold text-slate-800">
+              <h3 className="mt-4 text-base font-semibold text-white">
                 Kata sandi berhasil diperbarui
               </h3>
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-2 text-sm text-slate-400">
                 Silakan masuk kembali dengan kata sandi baru Anda.
               </p>
               <Button
@@ -138,19 +142,19 @@ export function ResetPasswordPage() {
             </div>
           ) : !hasSession ? (
             <div className="flex flex-col items-center py-4 text-center">
-              <div className="rounded-full bg-amber-100 p-4">
-                <ClipboardList className="h-8 w-8 text-amber-700" />
+              <div className="rounded-full bg-amber-400/10 p-4 ring-1 ring-amber-400/20">
+                <Link2Off className="h-8 w-8 text-amber-300" />
               </div>
-              <h3 className="mt-4 text-base font-semibold text-slate-800">
+              <h3 className="mt-4 text-base font-semibold text-white">
                 Tautan tidak valid atau kedaluwarsa
               </h3>
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-2 text-sm text-slate-400">
                 Buka kembali tautan terbaru dari email Anda, atau minta tautan
                 baru di halaman lupa kata sandi.
               </p>
               <Link
                 to="/lupa-password"
-                className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700"
+                className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-400 to-brand-500 px-4 py-2 text-sm font-semibold text-ink-950 shadow-glow transition-all hover:brightness-110"
               >
                 Minta tautan baru
               </Link>
@@ -167,7 +171,7 @@ export function ResetPasswordPage() {
                   {...register("password")}
                 />
                 {errors.password && (
-                  <p className="text-xs text-red-600">{errors.password.message}</p>
+                  <p className="text-xs text-rose-400">{errors.password.message}</p>
                 )}
               </div>
               <div className="space-y-2">
@@ -180,11 +184,11 @@ export function ResetPasswordPage() {
                   {...register("confirm")}
                 />
                 {errors.confirm && (
-                  <p className="text-xs text-red-600">{errors.confirm.message}</p>
+                  <p className="text-xs text-rose-400">{errors.confirm.message}</p>
                 )}
               </div>
               {error && (
-                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                <p className="rounded-lg border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm text-rose-300">
                   {error}
                 </p>
               )}
@@ -197,7 +201,7 @@ export function ResetPasswordPage() {
           {!done && (
             <Link
               to="/login"
-              className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
+              className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-300 hover:text-brand-200"
             >
               <ArrowLeft className="h-4 w-4" />
               Kembali ke halaman masuk

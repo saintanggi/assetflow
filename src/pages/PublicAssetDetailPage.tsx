@@ -46,7 +46,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</p>
-      <div className="mt-1 text-sm text-slate-800">{children}</div>
+      <div className="mt-1 text-sm text-slate-200">{children}</div>
     </div>
   );
 }
@@ -94,7 +94,7 @@ export function PublicAssetDetailPage() {
     <div className="mx-auto max-w-4xl px-4 py-8">
       <Link
         to="/publik"
-        className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
+        className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-300 hover:underline"
       >
         <ArrowLeft className="h-4 w-4" />
         Kembali ke katalog
@@ -123,7 +123,7 @@ export function PublicAssetDetailPage() {
               action={
                 <Link
                   to="/publik"
-                  className="inline-flex h-10 items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700"
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-gradient-to-r from-brand-400 to-brand-500 px-4 py-2 text-sm font-semibold text-ink-950 shadow-glow transition-all hover:brightness-110"
                 >
                   Lihat katalog publik
                 </Link>
@@ -138,7 +138,7 @@ export function PublicAssetDetailPage() {
               title={asset.name}
               description={`Kode publik: ${asset.public_code}`}
             />
-            <div className="mb-6 overflow-hidden rounded-xl bg-slate-100">
+            <div className="mb-6 overflow-hidden rounded-xl bg-white/5">
               {asset.photo_url ? (
                 <img
                   src={asset.photo_url}

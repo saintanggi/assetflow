@@ -164,7 +164,7 @@ export function PublicDashboardPage() {
               className="cursor-pointer overflow-hidden transition-shadow hover:shadow-lg"
               onClick={() => navigate(`/publik/aset/${encodeURIComponent(asset.public_code)}`)}
             >
-              <div className="aspect-[4/3] w-full bg-slate-100">
+              <div className="aspect-[4/3] w-full bg-white/5">
                 {asset.photo_url ? (
                   <img
                     src={asset.photo_url}
@@ -179,7 +179,7 @@ export function PublicDashboardPage() {
                 )}
               </div>
               <CardContent className="space-y-2 p-4">
-                <h3 className="line-clamp-1 font-semibold text-navy-900">{asset.name}</h3>
+                <h3 className="line-clamp-1 font-semibold text-white">{asset.name}</h3>
                 <p className="line-clamp-1 text-sm text-slate-500">
                   {asset.category_name ?? "Tanpa kategori"}
                   {[asset.brand, asset.model].filter(Boolean).length > 0 &&

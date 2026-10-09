@@ -162,7 +162,7 @@ export function LabelPrintPage() {
               <div>
                 <Label htmlFor="label-search-asset">Kode / nama aset</Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <Input
                     id="label-search-asset"
                     className="pl-9"
@@ -216,7 +216,7 @@ export function LabelPrintPage() {
               <div>
                 <Label htmlFor="label-search-item">SKU / nama barang</Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <Input
                     id="label-search-item"
                     className="pl-9"
@@ -279,7 +279,7 @@ export function LabelPrintPage() {
                       className="flex items-center justify-between gap-2 rounded-lg border p-2 text-sm"
                     >
                       <span>
-                        <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs uppercase text-slate-600">
+                        <span className="mr-2 rounded bg-white/5 px-1.5 py-0.5 text-xs uppercase text-slate-500">
                           {l.kind === "asset" ? "Aset" : "Barang"}
                         </span>
                         <strong>{l.code}</strong>{" "}
@@ -307,7 +307,7 @@ export function LabelPrintPage() {
             {labels.map((l) => (
               <div
                 key={`${l.kind}-${l.id}`}
-                className="flex flex-col items-center justify-between border border-slate-300 bg-white p-2 text-center"
+                className="flex flex-col items-center justify-between border border-slate-300 bg-white p-2 text-center text-slate-900"
                 style={{ width: "90mm", height: "60mm" }}
               >
                 <div
