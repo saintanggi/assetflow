@@ -23,7 +23,7 @@ import { Label } from "../components/ui/label";
 import { cn } from "../lib/utils";
 
 const SELECT_CLASS =
-  "flex h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50";
+  "flex h-10 w-full rounded-lg border border-white/15 bg-ink-850 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50";
 
 interface PermRow {
   id: string;
@@ -287,7 +287,7 @@ export function UsersPage() {
           <DialogDescription>
             Buat akun admin baru. Pengguna harus mengonfirmasi email sebelum bisa masuk — atau
             nonaktifkan konfirmasi email di dashboard Supabase (Authentication → Providers → Email).
-            <span className="mt-1 block font-medium text-amber-700">
+            <span className="mt-1 block font-medium text-amber-300">
               Catatan: jika konfirmasi email dimatikan, akun baru akan langsung masuk dan sesi Anda
               bisa terganggu.
             </span>
@@ -305,7 +305,7 @@ export function UsersPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="adm-email">
-              Email <span className="text-red-500">*</span>
+              Email <span className="text-rose-400">*</span>
             </Label>
             <Input
               id="adm-email"
@@ -317,7 +317,7 @@ export function UsersPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="adm-pass">
-              Password <span className="text-red-500">*</span>
+              Password <span className="text-rose-400">*</span>
             </Label>
             <Input
               id="adm-pass"
@@ -357,7 +357,7 @@ export function UsersPage() {
               return (
                 <label
                   key={p.code}
-                  className={`flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50 ${
+                  className={`flex cursor-pointer items-start gap-3 rounded-lg border border-white/10 p-3 hover:bg-white/[0.03] ${
                     locked ? "opacity-70" : ""
                   }`}
                 >
@@ -370,12 +370,12 @@ export function UsersPage() {
                     }
                   />
                   <span>
-                    <span className="block font-mono text-xs font-semibold text-navy-900">
+                    <span className="block font-mono text-xs font-semibold text-white">
                       {p.code}
                     </span>
                     <span className="block text-xs text-slate-500">{p.description}</span>
                     {locked && (
-                      <span className="mt-1 block text-xs font-medium text-amber-700">
+                      <span className="mt-1 block text-xs font-medium text-amber-300">
                         Hanya Super Admin — ditegakkan juga di database.
                       </span>
                     )}

@@ -177,7 +177,7 @@ function LocationsManager() {
                 onClick={() => void toggleActive(r)}
               >
                 <Power
-                  className={`h-4 w-4 ${r.is_active ? "text-amber-600" : "text-emerald-600"}`}
+                  className={`h-4 w-4 ${r.is_active ? "text-amber-300" : "text-emerald-600"}`}
                 />
                 {r.is_active ? "Nonaktif" : "Aktif"}
               </Button>
@@ -187,7 +187,7 @@ function LocationsManager() {
                 title="Hapus"
                 onClick={() => setDeleteTarget(r)}
               >
-                <Trash2 className="h-4 w-4 text-red-600" />
+                <Trash2 className="h-4 w-4 text-rose-400" />
               </Button>
             </div>
           );
@@ -225,7 +225,7 @@ function LocationsManager() {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="loc-warehouse">
-              Gudang <span className="text-red-500">*</span>
+              Gudang <span className="text-rose-400">*</span>
             </Label>
             <Select
               id="loc-warehouse"
@@ -237,7 +237,7 @@ function LocationsManager() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="loc-code">
-              Kode <span className="text-red-500">*</span>
+              Kode <span className="text-rose-400">*</span>
             </Label>
             <Input
               id="loc-code"
@@ -248,7 +248,7 @@ function LocationsManager() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="loc-name">
-              Nama <span className="text-red-500">*</span>
+              Nama <span className="text-rose-400">*</span>
             </Label>
             <Input
               id="loc-name"

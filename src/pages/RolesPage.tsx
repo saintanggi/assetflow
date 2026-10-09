@@ -98,11 +98,11 @@ export function RolesPage() {
         description="Atur izin bawaan untuk setiap peran."
       />
 
-      <div className="mb-6 flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+      <div className="mb-6 flex items-start gap-3 rounded-xl border border-sky-400/20 bg-sky-400/5 p-4 text-sm text-sky-200">
+        <Info className="mt-0.5 h-5 w-5 shrink-0 text-sky-300" />
         <div>
           <p className="font-semibold">Cara kerja matriks izin</p>
-          <p className="mt-1 text-blue-800">
+          <p className="mt-1 text-sky-300">
             Setiap peran memiliki izin bawaan. Izin khusus per pengguna (di halaman Pengguna) akan
             menimpa izin peran: centang berarti diberikan, tidak dicentang berarti dicabut untuk
             pengguna tersebut. Izin <span className="font-mono font-semibold">assets.publish</span>{" "}
@@ -117,7 +117,7 @@ export function RolesPage() {
           <Skeleton className="h-64 w-full" />
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <div className="overflow-x-auto rounded-xl border border-white/10">
           <Table>
             <TableHeader>
               <TableRow>
@@ -138,7 +138,7 @@ export function RolesPage() {
                 <TableRow key={p.code}>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs font-semibold text-navy-900">
+                      <span className="font-mono text-xs font-semibold text-white">
                         {p.code}
                       </span>
                       {p.code === PUBLISH_PERMISSION && (
@@ -148,7 +148,7 @@ export function RolesPage() {
                       )}
                       <span className="w-full text-xs text-slate-500">{p.description}</span>
                       {p.code === PUBLISH_PERMISSION && (
-                        <span className="w-full text-xs text-amber-700">
+                        <span className="w-full text-xs text-amber-300">
                           Hanya Super Admin yang dapat memberi izin ini — ditegakkan di database
                           (RPC).
                         </span>

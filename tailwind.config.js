@@ -4,6 +4,27 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Command-center dark surfaces
+        ink: {
+          950: "#0a0e14", // page background
+          900: "#0f1520", // raised surface
+          850: "#131a28", // cards
+          800: "#1a2233", // hover / strong borders
+          700: "#26314a", // borders
+        },
+        // Brand accent: teal (primary actions, highlights)
+        brand: {
+          50: "#f0fdfa",
+          100: "#ccfbf1",
+          200: "#99f6e4",
+          300: "#5eead4",
+          400: "#2dd4bf",
+          500: "#14b8a6",
+          600: "#0d9488",
+          700: "#0f766e",
+          800: "#115e59",
+          900: "#134e4a",
+        },
         navy: {
           50: "#eef3fa",
           100: "#d9e4f2",
@@ -17,21 +38,15 @@ export default {
           900: "#0f2440",
           950: "#0a192e",
         },
-        brand: {
-          50: "#eff6ff",
-          100: "#dbeafe",
-          200: "#bfdbfe",
-          300: "#93c5fd",
-          400: "#60a5fa",
-          500: "#2f7de1",
-          600: "#1f63c4",
-          700: "#1a4fa0",
-          800: "#1a4384",
-          900: "#1a3a6e",
-        },
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["Plus Jakarta Sans", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+      },
+      boxShadow: {
+        glow: "0 0 24px rgba(45, 212, 191, 0.15)",
+        card: "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25)",
       },
     },
   },

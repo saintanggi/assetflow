@@ -224,11 +224,11 @@ export function SuperAdminDashboardPage() {
             {audit.length === 0 ? (
               <EmptyState title="Belum ada aktivitas" description="Audit log masih kosong." />
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-white/5">
                 {audit.map((row) => (
                   <li key={row.id} className="flex items-start justify-between gap-3 py-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-800">
+                      <p className="truncate text-sm font-medium text-slate-200">
                         {row.action}
                         <span className="ml-2 font-normal text-slate-500">
                           {row.entity_type}
@@ -258,15 +258,15 @@ export function SuperAdminDashboardPage() {
             {lowStock.length === 0 ? (
               <EmptyState title="Stok aman" description="Tidak ada SKU di bawah stok minimum." />
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-white/5">
                 {lowStock.map((item) => (
                   <li key={item.id} className="flex items-center justify-between gap-3 py-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className="rounded-lg bg-yellow-100 p-2">
-                        <TriangleAlert className="h-4 w-4 text-yellow-700" />
+                      <div className="rounded-lg bg-amber-400/10 p-2">
+                        <TriangleAlert className="h-4 w-4 text-amber-300" />
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-800">
+                        <p className="truncate text-sm font-medium text-slate-200">
                           {item.name}
                           <span className="ml-2 font-mono text-xs text-slate-400">{item.sku}</span>
                         </p>
@@ -296,13 +296,13 @@ export function SuperAdminDashboardPage() {
               <Link
                 key={to}
                 to={to}
-                className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 transition-colors hover:border-brand-300 hover:bg-brand-50"
+                className="flex items-center gap-3 rounded-xl border border-white/10 p-4 transition-colors hover:border-brand-400/30 hover:bg-brand-400/10"
               >
-                <div className="rounded-lg bg-navy-100 p-2.5 text-navy-700">
+                <div className="rounded-lg bg-white/5 p-2.5 text-slate-300">
                   <Icon className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-navy-900">{title}</p>
+                  <p className="text-sm font-semibold text-white">{title}</p>
                   <p className="text-xs text-slate-500">{description}</p>
                 </div>
               </Link>

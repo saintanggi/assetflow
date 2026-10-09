@@ -226,7 +226,7 @@ export function ScannerPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {cameraError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div className="rounded-lg border border-rose-400/20 bg-rose-400/5 p-3 text-sm text-rose-300">
                 {cameraError} Pastikan izin kamera diberikan dan halaman diakses via HTTPS.
               </div>
             )}
@@ -317,7 +317,7 @@ export function ScannerPage() {
                     <>
                       <p className="text-sm">
                         Terdeteksi <strong>tautan publik aset</strong> dengan kode{" "}
-                        <code className="rounded bg-slate-100 px-1">{result.publicCode}</code>.
+                        <code className="rounded bg-white/5 px-1">{result.publicCode}</code>.
                       </p>
                       <Button
                         onClick={() => window.open(result.url, "_blank", "noreferrer")}
@@ -350,10 +350,10 @@ export function ScannerPage() {
                   )}
                   {result.kind === "raw" && (
                     <>
-                      <p className="text-sm text-slate-600">
+                      <p className="text-sm text-slate-400">
                         Tidak ditemukan di database. Teks mentah hasil pindaian:
                       </p>
-                      <code className="block break-all rounded bg-slate-100 p-3 text-sm">
+                      <code className="block break-all rounded bg-white/5 p-3 text-sm">
                         {result.text}
                       </code>
                       <Button variant="outline" onClick={() => void copyRaw(result.text)}>

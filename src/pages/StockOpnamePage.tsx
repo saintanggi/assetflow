@@ -358,9 +358,9 @@ export function StockOpnamePage() {
                       <TableCell
                         className={`text-right font-medium ${
                           diff > 0
-                            ? "text-green-700"
+                            ? "text-brand-300"
                             : diff < 0
-                              ? "text-red-700"
+                              ? "text-rose-300"
                               : "text-slate-500"
                         }`}
                       >

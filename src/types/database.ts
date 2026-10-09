@@ -1,5 +1,5 @@
 /**
- * Tipe baris database AssetFlow.
+ * Tipe baris database Inventory Warehouse.
  * HARUS cocok dengan kontrak di docs/IMPLEMENTATION_PLAN.md.
  * Jangan menambah kolom fiktif — hanya yang ada di migrasi.
  */
