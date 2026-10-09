@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Info, Pencil, Plus } from "lucide-react";
+import { Info, KeyRound, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { formatDateTime } from "../lib/format";
 import { DataTable } from "../components/DataTable";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
 import {
   Dialog,
   DialogDescription,
@@ -27,6 +34,30 @@ export function SettingsPage() {
   const [key, setKey] = useState("");
   const [valueText, setValueText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+
+  const handlePasswordChange = async () => {
+    if (pw1.length < 6) {
+      toast.error("Password minimal 6 karakter.");
+      return;
+    }
+    if (pw1 !== pw2) {
+      toast.error("Konfirmasi password tidak sama.");
+      return;
+    }
+    setPwSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: pw1 });
+    setPwSaving(false);
+    if (error) {
+      toast.error("Gagal mengubah kata sandi. Coba lagi.");
+      return;
+    }
+    toast.success("Kata sandi berhasil diubah.");
+    setPw1("");
+    setPw2("");
+  };
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -136,6 +167,49 @@ export function SettingsPage() {
           yang dapat mengubah pengaturan ini. Nilai harus berupa JSON yang valid.
         </p>
       </div>
+
+      <Card className="mb-6">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-brand-600" />
+            <CardTitle className="text-lg">Keamanan Akun</CardTitle>
+          </div>
+          <CardDescription>
+            Ubah kata sandi akun Anda yang sedang masuk.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid max-w-md gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="pw-baru">Kata sandi baru</Label>
+              <Input
+                id="pw-baru"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Minimal 6 karakter"
+                value={pw1}
+                onChange={(e) => setPw1(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pw-konfirmasi">Konfirmasi kata sandi baru</Label>
+              <Input
+                id="pw-konfirmasi"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Ketik ulang kata sandi baru"
+                value={pw2}
+                onChange={(e) => setPw2(e.target.value)}
+              />
+            </div>
+            <div>
+              <Button onClick={() => void handlePasswordChange()} disabled={pwSaving}>
+                {pwSaving ? "Menyimpan…" : "Simpan kata sandi baru"}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <DataTable
         columns={columns}
