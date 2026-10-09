@@ -27,7 +27,7 @@ import { TRANSACTION_TYPE_LABELS } from "../types/database";
 import { toast } from "sonner";
 
 const ITEM_SELECT =
-  "*, asset_categories(code,name), units(code,name), locations(code,name), suppliers(code,name)";
+  "*, asset_categories(code,name), units(code,name), locations!inventory_items_location_id_fkey(code,name), suppliers(code,name)";
 
 interface BalanceRow {
   item_id: string;
