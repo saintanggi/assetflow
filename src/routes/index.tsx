@@ -6,6 +6,7 @@ import { RequireAuth, RequirePermission, RequireSuperAdmin } from "./guards";
 import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
 import { ForgotPasswordPage } from "../pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "../pages/ResetPasswordPage";
 import { PublicDashboardPage } from "../pages/PublicDashboardPage";
 import { PublicAssetDetailPage } from "../pages/PublicAssetDetailPage";
 import { DashboardPage } from "../pages/DashboardPage";
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
       { path: "/", element: <LandingPage /> },
       { path: "/login", element: <LoginPage /> },
       { path: "/lupa-password", element: <ForgotPasswordPage /> },
+      { path: "/reset-password", element: <ResetPasswordPage /> },
       { path: "/publik", element: <PublicDashboardPage /> },
       { path: "/publik/aset/:publicCode", element: <PublicAssetDetailPage /> },
       { path: "/403", element: <ForbiddenPage /> },
