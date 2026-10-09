@@ -64,7 +64,7 @@ export function DataTable<TData>({
   return (
     <div className="space-y-4">
       <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
         <Input
           placeholder={searchPlaceholder}
           value={globalFilter}
@@ -108,7 +108,7 @@ export function DataTable<TData>({
         </TableBody>
       </Table>
 
-      <div className="flex items-center justify-between text-sm text-slate-600">
+      <div className="flex items-center justify-between text-sm text-slate-500">
         <span>
           Halaman {table.getState().pagination.pageIndex + 1} dari {table.getPageCount() || 1} —{" "}
           {table.getFilteredRowModel().rows.length} baris

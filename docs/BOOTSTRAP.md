@@ -1,4 +1,4 @@
-# AssetFlow — Bootstrap Super Admin (dari nol)
+# Inventory Warehouse — Bootstrap Super Admin (dari nol)
 
 Panduan membuat akun **Super Admin pertama** dengan aman. Tidak ada kredensial
 default di sistem ini — semua akses super admin lahir dari prosedur di bawah.

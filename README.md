@@ -1,4 +1,4 @@
-# AssetFlow — Sistem Informasi Manajemen Aset & Gudang
+# Inventory Warehouse — Sistem Informasi Manajemen Aset & Gudang
 
 Aplikasi web enterprise untuk manajemen **aset tetap** (laptop, printer, kendaraan, …)
 dan **persediaan gudang** (ATK, suku cadang, bahan habis pakai, …) dengan transaksi
@@ -37,7 +37,7 @@ npm run dev
 | `VITE_SUPABASE_URL` | Ya | URL proyek Supabase, mis. `https://xyzcompany.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Ya | **Anon public key** saja. Jangan pernah taruh service-role key di frontend |
 | `VITE_APP_URL` | Ya | URL publik aplikasi, mis. `https://assetflow.vercel.app` — dipakai untuk QR code aset publik |
-| `VITE_APP_NAME` | Tidak | Nama aplikasi (default: AssetFlow) |
+| `VITE_APP_NAME` | Tidak | Nama aplikasi (default: Inventory Warehouse) |
 
 > Tidak ada kredensial default dan tidak ada endpoint publik untuk menjadikan
 > pengguna sebagai Super Admin.

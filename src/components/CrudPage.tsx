@@ -206,7 +206,7 @@ export function CrudPage({
                 title={aktif ? "Nonaktifkan" : "Aktifkan"}
                 onClick={() => void toggleActive(r)}
               >
-                <Power className={`h-4 w-4 ${aktif ? "text-amber-600" : "text-emerald-600"}`} />
+                <Power className={`h-4 w-4 ${aktif ? "text-amber-300" : "text-emerald-600"}`} />
                 {aktif ? "Nonaktif" : "Aktif"}
               </Button>
             )}
@@ -216,7 +216,7 @@ export function CrudPage({
               title="Hapus"
               onClick={() => setDeleteTarget(r)}
             >
-              <Trash2 className="h-4 w-4 text-red-600" />
+              <Trash2 className="h-4 w-4 text-rose-400" />
             </Button>
           </div>
         );
@@ -257,7 +257,7 @@ export function CrudPage({
             const label = (
               <Label htmlFor={id}>
                 {f.label}
-                {f.required && <span className="text-red-500"> *</span>}
+                {f.required && <span className="text-rose-400"> *</span>}
               </Label>
             );
             return (

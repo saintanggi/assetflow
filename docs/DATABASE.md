@@ -1,4 +1,4 @@
-# AssetFlow — Dokumentasi Database
+# Inventory Warehouse — Dokumentasi Database
 
 > Bahasa: Indonesia. Berlaku untuk migrasi `supabase/migrations/20261009000001`–`000004`.
 > Kontrak resmi: `docs/IMPLEMENTATION_PLAN.md` (nama tabel/kolom/fungsi di sana wajib dipatuhi).

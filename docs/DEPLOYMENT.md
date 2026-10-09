@@ -1,11 +1,11 @@
-# Panduan Deployment AssetFlow
+# Panduan Deployment Inventory Warehouse
 
 ## 1. GitHub
 
 ```bash
 cd assetflow
 git add -A
-git commit -m "AssetFlow: rilis awal"
+git commit -m "Inventory Warehouse: rilis awal"
 git branch -M main
 git remote add origin https://github.com/<username>/assetflow.git
 git push -u origin main
@@ -43,7 +43,7 @@ Super Admin sudah ada. Ulangi prosedur yang sama di proyek production.
    - `VITE_SUPABASE_URL` → URL proyek **production**
    - `VITE_SUPABASE_ANON_KEY` → anon key proyek **production**
    - `VITE_APP_URL` → URL Vercel production (mis. `https://assetflow.vercel.app`)
-   - `VITE_APP_NAME` → `AssetFlow`
+   - `VITE_APP_NAME` → `Inventory Warehouse`
 4. Deploy. Untuk environment **Preview/Development** di Vercel, gunakan kredensial proyek `assetflow-dev`.
 
 `vercel.json` (SPA fallback) sudah disertakan di repo:

@@ -1,4 +1,4 @@
-# AssetFlow — Rencana Implementasi
+# Inventory Warehouse — Rencana Implementasi
 
 Sistem informasi manajemen aset tetap & persediaan gudang.
 Stack: React + TS + Vite, Tailwind + shadcn/ui, Supabase (Postgres + Auth + Storage), Vercel.
