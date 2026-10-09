@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  Bar,
-  BarChart,
+  Area,
+  AreaChart,
   CartesianGrid,
   Cell,
-  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -12,15 +11,22 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, ArrowLeftRight, Boxes, Package } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Boxes,
+  Package,
+  Warehouse,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
-import { StatCard } from "../components/StatCard";
-import { PageHeader } from "../components/PageHeader";
 import { Skeleton } from "../components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import type { AssetStatus } from "../types/database";
-import { ASSET_STATUS_LABELS } from "../types/database";
+import type { AssetStatus, TransactionType } from "../types/database";
+import { ASSET_STATUS_LABELS, TRANSACTION_TYPE_LABELS } from "../types/database";
+import { cn } from "../lib/utils";
 
 interface TxDay {
   date: string;
@@ -33,27 +39,99 @@ interface StatusSlice {
   count: number;
 }
 
+interface RecentTx {
+  id: string;
+  transaction_number: string;
+  type: TransactionType;
+  created_at: string;
+}
+
+interface LocationStock {
+  code: string;
+  name: string;
+  qty: number;
+}
+
 interface DashboardState {
-  totalAssets: number;
+  totalStock: number;
   totalSku: number;
   lowStockCount: number;
-  tx30: number;
+  inboundToday: number;
+  outboundToday: number;
   tx14: TxDay[];
   byStatus: StatusSlice[];
+  recent: RecentTx[];
+  locStock: LocationStock[];
 }
 
 const STATUS_COLORS: Record<AssetStatus, string> = {
-  tersedia: "#16a34a",
-  digunakan: "#2f7de1",
-  dipinjamkan: "#d97706",
-  perbaikan: "#eab308",
-  rusak: "#dc2626",
+  tersedia: "#2dd4bf",
+  digunakan: "#60a5fa",
+  dipinjamkan: "#fbbf24",
+  perbaikan: "#fb923c",
+  rusak: "#fb7185",
   dipensiunkan: "#64748b",
+};
+
+const TX_ICON: Record<TransactionType, typeof ArrowDownToLine> = {
+  in: ArrowDownToLine,
+  out: ArrowUpFromLine,
+  transfer: Activity,
+  adjust: Activity,
+  opname: Activity,
+  return: ArrowDownToLine,
+};
+
+const TX_COLOR: Record<TransactionType, string> = {
+  in: "text-brand-300 bg-brand-400/10 border-brand-400/20",
+  out: "text-amber-300 bg-amber-400/10 border-amber-400/20",
+  transfer: "text-sky-300 bg-sky-400/10 border-sky-400/20",
+  adjust: "text-violet-300 bg-violet-400/10 border-violet-400/20",
+  opname: "text-violet-300 bg-violet-400/10 border-violet-400/20",
+  return: "text-brand-300 bg-brand-400/10 border-brand-400/20",
 };
 
 function shortDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+}
+
+function StatTile({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  icon: typeof Boxes;
+  label: string;
+  value: string;
+  sub: string;
+  tone: "teal" | "amber" | "blue" | "violet";
+}) {
+  const toneClass = {
+    teal: "text-brand-300",
+    amber: "text-amber-300",
+    blue: "text-sky-300",
+    violet: "text-violet-300",
+  }[tone];
+  return (
+    <Card className="relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-400/40 to-transparent" />
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-widest text-slate-500">{label}</p>
+            <p className="tnum mt-2 text-4xl font-bold tracking-tight text-white">{value}</p>
+            <p className="mt-1.5 text-xs text-slate-500">{sub}</p>
+          </div>
+          <div className={cn("rounded-xl bg-white/5 p-2.5 ring-1 ring-white/10", toneClass)}>
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function DashboardPage() {
@@ -65,62 +143,72 @@ export function DashboardPage() {
     async function load() {
       setLoading(true);
       try {
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000)
-          .toISOString()
-          .slice(0, 10);
+        const today = new Date().toISOString().slice(0, 10);
         const [
-          assetsCountRes,
           statusesRes,
           itemsRes,
           balancesRes,
-          txCountRes,
+          txTodayRes,
           txRecentRes,
+          recentListRes,
+          locRes,
         ] = await Promise.all([
-          supabase
-            .from("assets")
-            .select("id", { count: "exact", head: true })
-            .eq("archived", false),
           supabase.from("assets").select("status").eq("archived", false),
           supabase.from("inventory_items").select("id, min_stock").eq("is_active", true),
-          supabase.from("inventory_balances").select("item_id, qty"),
+          supabase.from("inventory_balances").select("item_id, qty, location_id"),
           supabase
             .from("inventory_transactions")
-            .select("id", { count: "exact", head: true })
-            .gte("transaction_date", thirtyDaysAgo),
+            .select("type")
+            .eq("transaction_date", today),
           supabase
             .from("inventory_transactions")
             .select("transaction_date")
             .order("transaction_date", { ascending: false })
             .limit(200),
+          supabase
+            .from("inventory_transactions")
+            .select("id, transaction_number, type, created_at")
+            .order("created_at", { ascending: false })
+            .limit(8),
+          supabase.from("locations").select("id, code, name"),
         ]);
         const failures = [
-          assetsCountRes,
           statusesRes,
           itemsRes,
           balancesRes,
-          txCountRes,
+          txTodayRes,
           txRecentRes,
+          recentListRes,
+          locRes,
         ].filter((r) => r.error);
         if (failures.length > 0) throw new Error("Gagal memuat data dashboard");
 
         const statuses = (statusesRes.data ?? []) as { status: AssetStatus }[];
         const items = (itemsRes.data ?? []) as { id: string; min_stock: number | null }[];
-        const balances = (balancesRes.data ?? []) as { item_id: string; qty: number }[];
+        const balances = (balancesRes.data ?? []) as {
+          item_id: string;
+          qty: number;
+          location_id: string;
+        }[];
+        const txToday = (txTodayRes.data ?? []) as { type: TransactionType }[];
         const txRecent = (txRecentRes.data ?? []) as { transaction_date: string }[];
 
-        // Agregasi stok per item (client-side) untuk hitung SKU di bawah minimum.
         const balanceByItem = new Map<string, number>();
+        const balanceByLoc = new Map<string, number>();
+        let totalStock = 0;
         for (const b of balances) {
-          balanceByItem.set(b.item_id, (balanceByItem.get(b.item_id) ?? 0) + Number(b.qty));
+          const q = Number(b.qty);
+          totalStock += q;
+          balanceByItem.set(b.item_id, (balanceByItem.get(b.item_id) ?? 0) + q);
+          balanceByLoc.set(b.location_id, (balanceByLoc.get(b.location_id) ?? 0) + q);
         }
+
         let lowStockCount = 0;
         for (const item of items) {
           if (item.min_stock === null) continue;
-          const total = balanceByItem.get(item.id) ?? 0;
-          if (total < item.min_stock) lowStockCount++;
+          if ((balanceByItem.get(item.id) ?? 0) < item.min_stock) lowStockCount++;
         }
 
-        // Transaksi 14 hari terakhir, group by transaction_date.
         const tx14: TxDay[] = [];
         const dayIndex = new Map<string, number>();
         for (let i = 13; i >= 0; i--) {
@@ -135,7 +223,6 @@ export function DashboardPage() {
           if (idx !== undefined) tx14[idx].count++;
         }
 
-        // Aset per status, group client-side.
         const countByStatus = new Map<AssetStatus, number>();
         for (const a of statuses) {
           countByStatus.set(a.status, (countByStatus.get(a.status) ?? 0) + 1);
@@ -144,14 +231,32 @@ export function DashboardPage() {
           ([status, count]) => ({ status, label: ASSET_STATUS_LABELS[status], count })
         );
 
+        const locMap = new Map(
+          ((locRes.data ?? []) as { id: string; code: string; name: string }[]).map((l) => [
+            l.id,
+            l,
+          ])
+        );
+        const locStock: LocationStock[] = [...balanceByLoc.entries()]
+          .map(([id, qty]) => ({
+            code: locMap.get(id)?.code ?? "—",
+            name: locMap.get(id)?.name ?? "Tanpa lokasi",
+            qty,
+          }))
+          .sort((a, b) => b.qty - a.qty)
+          .slice(0, 5);
+
         if (cancelled) return;
         setData({
-          totalAssets: assetsCountRes.count ?? 0,
+          totalStock,
           totalSku: items.length,
           lowStockCount,
-          tx30: txCountRes.count ?? 0,
+          inboundToday: txToday.filter((t) => t.type === "in").length,
+          outboundToday: txToday.filter((t) => t.type === "out").length,
           tx14,
           byStatus,
+          recent: (recentListRes.data ?? []) as RecentTx[],
+          locStock,
         });
       } catch {
         if (!cancelled) toast.error("Gagal memuat data dashboard");
@@ -167,99 +272,275 @@ export function DashboardPage() {
 
   if (loading || !data) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-8">
-        <PageHeader title="Dashboard" description="Ringkasan operasional aset & gudang" />
+      <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 w-full" />
+            <Skeleton key={i} className="h-32 w-full" />
           ))}
         </div>
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <Skeleton className="h-80 w-full" />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Skeleton className="h-80 w-full lg:col-span-2" />
           <Skeleton className="h-80 w-full" />
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
-      <PageHeader title="Dashboard" description="Ringkasan operasional aset & gudang" />
+  const maxLoc = Math.max(1, ...data.locStock.map((l) => l.qty));
+  const now = new Date().toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
+  return (
+    <div className="space-y-5">
+      {/* Command header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-display text-2xl font-bold tracking-tight text-white">
+              Command Center
+            </h1>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-400/30 bg-brand-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest text-brand-300">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand-400" />
+              </span>
+              Live
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">{now} — pantauan operasional gudang real-time</p>
+        </div>
+      </div>
+
+      {/* Stat tiles */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Aset"
-          value={data.totalAssets.toLocaleString("id-ID")}
-          description="Aset aktif (tidak diarsip)"
+        <StatTile
           icon={Boxes}
-          accent="navy"
+          label="Total Stok"
+          value={data.totalStock.toLocaleString("id-ID")}
+          sub={`${data.totalSku.toLocaleString("id-ID")} SKU aktif tercatat`}
+          tone="teal"
         />
-        <StatCard
-          title="Total SKU Aktif"
-          value={data.totalSku.toLocaleString("id-ID")}
-          description="Item persediaan aktif"
-          icon={Package}
-          accent="blue"
+        <StatTile
+          icon={ArrowDownToLine}
+          label="Inbound Hari Ini"
+          value={data.inboundToday.toLocaleString("id-ID")}
+          sub="Dokumen barang masuk"
+          tone="blue"
         />
-        <StatCard
-          title="SKU di Bawah Stok Minimum"
-          value={data.lowStockCount.toLocaleString("id-ID")}
-          description="Perlu restock"
+        <StatTile
+          icon={ArrowUpFromLine}
+          label="Outbound Hari Ini"
+          value={data.outboundToday.toLocaleString("id-ID")}
+          sub="Dokumen barang keluar"
+          tone="violet"
+        />
+        <StatTile
           icon={AlertTriangle}
-          accent={data.lowStockCount > 0 ? "yellow" : "green"}
-        />
-        <StatCard
-          title="Transaksi 30 Hari"
-          value={data.tx30.toLocaleString("id-ID")}
-          description="Dokumen transaksi tercatat"
-          icon={ArrowLeftRight}
-          accent="green"
+          label="Perlu Perhatian"
+          value={data.lowStockCount.toLocaleString("id-ID")}
+          sub="SKU di bawah stok minimum"
+          tone="amber"
         />
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Transaksi 14 Hari Terakhir</CardTitle>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Activity chart */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="font-display text-base text-white">
+                Aktivitas Transaksi
+              </CardTitle>
+              <p className="mt-0.5 text-xs text-slate-500">14 hari terakhir</p>
+            </div>
+            <span className="tnum rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-xs text-slate-400">
+              {data.tx14.reduce((s, d) => s + d.count, 0)} dokumen
+            </span>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={data.tx14} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11 }} interval={2} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={data.tx14} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="txFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#2dd4bf" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1a2233" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={shortDate}
+                  tick={{ fontSize: 11, fill: "#64748b" }}
+                  interval={2}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: "#64748b" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
                 <Tooltip
                   labelFormatter={(label) => shortDate(String(label))}
                   formatter={(value) => [value, "Transaksi"]}
+                  contentStyle={{
+                    background: "#131a28",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 8,
+                    color: "#fff",
+                  }}
                 />
-                <Bar dataKey="count" name="Transaksi" fill="#3467a3" radius={[4, 4, 0, 0]} />
-              </BarChart>
+                <Area
+                  type="monotone"
+                  dataKey="count"
+                  name="Transaksi"
+                  stroke="#2dd4bf"
+                  strokeWidth={2}
+                  fill="url(#txFill)"
+                />
+              </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
+        {/* Live feed */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Aset per Status</CardTitle>
+            <CardTitle className="font-display text-base text-white">Aktivitas Terakhir</CardTitle>
+            <p className="mt-0.5 text-xs text-slate-500">Dokumen terbaru tercatat</p>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {data.recent.length === 0 && (
+              <p className="py-8 text-center text-sm text-slate-500">Belum ada transaksi.</p>
+            )}
+            {data.recent.map((t) => {
+              const Icon = TX_ICON[t.type];
+              return (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/5"
+                >
+                  <span
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+                      TX_COLOR[t.type]
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="tnum truncate font-mono text-[13px] font-semibold text-slate-200">
+                      {t.transaction_number}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {TRANSACTION_TYPE_LABELS[t.type]} •{" "}
+                      {new Date(t.created_at).toLocaleString("id-ID", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Stock per location */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-display text-base text-white">
+              <Warehouse className="h-4 w-4 text-brand-300" />
+              Distribusi Stok per Lokasi
+            </CardTitle>
+            <p className="mt-0.5 text-xs text-slate-500">5 lokasi dengan stok terbesar</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {data.locStock.length === 0 && (
+              <p className="py-8 text-center text-sm text-slate-500">Belum ada stok tercatat.</p>
+            )}
+            {data.locStock.map((l) => (
+              <div key={l.code}>
+                <div className="mb-1.5 flex items-baseline justify-between">
+                  <p className="text-sm font-medium text-slate-200">
+                    <span className="tnum font-mono text-brand-300">{l.code}</span>
+                    <span className="ml-2 text-slate-400">{l.name}</span>
+                  </p>
+                  <p className="tnum font-mono text-sm text-slate-300">
+                    {l.qty.toLocaleString("id-ID")}
+                  </p>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-white/5">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-300 transition-all"
+                    style={{ width: `${Math.max(4, (l.qty / maxLoc) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Asset status donut */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-display text-base text-white">
+              <Package className="h-4 w-4 text-brand-300" />
+              Aset per Status
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
                   data={data.byStatus}
                   dataKey="count"
                   nameKey="label"
-                  outerRadius={105}
-                  label
+                  innerRadius={58}
+                  outerRadius={88}
+                  paddingAngle={3}
+                  strokeWidth={0}
                 >
                   {data.byStatus.map((s) => (
                     <Cell key={s.status} fill={STATUS_COLORS[s.status]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => [value, "Aset"]} />
-                <Legend />
+                <Tooltip
+                  formatter={(value) => [value, "Aset"]}
+                  contentStyle={{
+                    background: "#131a28",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 8,
+                    color: "#fff",
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
+            <div className="mt-2 space-y-1.5">
+              {data.byStatus.map((s) => (
+                <div key={s.status} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-slate-400">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ background: STATUS_COLORS[s.status] }}
+                    />
+                    {s.label}
+                  </span>
+                  <span className="tnum font-mono text-slate-200">
+                    {s.count.toLocaleString("id-ID")}
+                  </span>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>

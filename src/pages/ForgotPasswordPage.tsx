@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, ClipboardList, Loader2, MailCheck } from "lucide-react";
+import { ArrowLeft, Loader2, MailCheck } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -45,13 +45,17 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50 px-4 py-12">
-      <Card className="w-full max-w-md shadow-lg">
+    <div className="flex relative min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-ink-950 px-4 py-12">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_50%_30%,rgba(45,212,191,0.10),transparent_70%)]"
+      />
+      <Card className="relative w-full max-w-md shadow-card">
         <CardHeader className="space-y-1">
-          <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-navy-900">
-            <ClipboardList className="h-5 w-5 text-white" />
+          <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
+            <span className="font-display text-sm font-extrabold text-ink-950">IW</span>
           </div>
-          <CardTitle className="text-2xl">Lupa kata sandi</CardTitle>
+          <CardTitle className="font-display text-2xl text-white">Lupa kata sandi</CardTitle>
           <CardDescription>
             Masukkan email akun Anda — kami akan mengirimkan tautan untuk mengatur ulang
             kata sandi.
@@ -60,19 +64,19 @@ export function ForgotPasswordPage() {
         <CardContent>
           {sent ? (
             <div className="flex flex-col items-center py-4 text-center">
-              <div className="rounded-full bg-green-100 p-4">
-                <MailCheck className="h-8 w-8 text-green-700" />
+              <div className="rounded-full bg-brand-400/10 p-4 ring-1 ring-brand-400/20">
+                <MailCheck className="h-8 w-8 text-brand-300" />
               </div>
-              <h3 className="mt-4 text-base font-semibold text-slate-800">
+              <h3 className="mt-4 text-base font-semibold text-white">
                 Tautan reset telah dikirim
               </h3>
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-2 text-sm text-slate-400">
                 Jika email tersebut terdaftar, Anda akan menerima tautan pengaturan ulang
                 kata sandi dalam beberapa menit. Periksa juga folder spam Anda.
               </p>
               <Link
                 to="/login"
-                className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700"
+                className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-400 to-brand-500 px-4 py-2 text-sm font-semibold text-ink-950 shadow-glow transition-all hover:brightness-110"
               >
                 Kembali ke halaman masuk
               </Link>
@@ -89,11 +93,11 @@ export function ForgotPasswordPage() {
                   {...register("email")}
                 />
                 {errors.email && (
-                  <p className="text-xs text-red-600">{errors.email.message}</p>
+                  <p className="text-xs text-rose-400">{errors.email.message}</p>
                 )}
               </div>
               {error && (
-                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+                <p className="rounded-lg border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm text-rose-300">{error}</p>
               )}
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -103,7 +107,7 @@ export function ForgotPasswordPage() {
           )}
           <Link
             to="/login"
-            className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
+            className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-300 hover:text-brand-200"
           >
             <ArrowLeft className="h-4 w-4" />
             Kembali ke halaman masuk

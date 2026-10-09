@@ -202,7 +202,7 @@ export function InventoryListPage() {
         cell: ({ row }) => (
           <Link
             to={`/persediaan/${row.original.id}`}
-            className="font-medium text-brand-700 hover:underline"
+            className="font-medium text-brand-300 hover:underline"
           >
             {row.original.sku}
           </Link>
@@ -283,7 +283,7 @@ export function InventoryListPage() {
               <Label htmlFor="inv-sku">SKU *</Label>
               <Input id="inv-sku" {...register("sku")} placeholder="BRG-0001" />
               {fieldError("sku") && (
-                <p className="mt-1 text-xs text-red-600">{fieldError("sku")}</p>
+                <p className="mt-1 text-xs text-rose-400">{fieldError("sku")}</p>
               )}
             </div>
             <div>
@@ -294,7 +294,7 @@ export function InventoryListPage() {
               <Label htmlFor="inv-name">Nama Barang *</Label>
               <Input id="inv-name" {...register("name")} placeholder="Kabel UTP Cat6" />
               {fieldError("name") && (
-                <p className="mt-1 text-xs text-red-600">{fieldError("name")}</p>
+                <p className="mt-1 text-xs text-rose-400">{fieldError("name")}</p>
               )}
             </div>
             <div>
@@ -339,7 +339,7 @@ export function InventoryListPage() {
                 })}
               />
               {fieldError("min_stock") && (
-                <p className="mt-1 text-xs text-red-600">{fieldError("min_stock")}</p>
+                <p className="mt-1 text-xs text-rose-400">{fieldError("min_stock")}</p>
               )}
             </div>
             <div>
@@ -354,7 +354,7 @@ export function InventoryListPage() {
                 })}
               />
               {fieldError("purchase_price") && (
-                <p className="mt-1 text-xs text-red-600">{fieldError("purchase_price")}</p>
+                <p className="mt-1 text-xs text-rose-400">{fieldError("purchase_price")}</p>
               )}
             </div>
             <div>

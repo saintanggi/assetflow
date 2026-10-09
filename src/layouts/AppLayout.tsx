@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Boxes,
+  Bell,
   ClipboardCheck,
-  ClipboardList,
   FileText,
   Layers,
   LogOut,
@@ -118,7 +118,7 @@ function NavEntry({
           type="button"
           onClick={() => setOpen((v) => !v)}
           className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 hover:bg-navy-800 hover:text-white",
+            "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-white",
             collapsed && "justify-center px-2"
           )}
           title={collapsed ? item.label : undefined}
@@ -130,7 +130,7 @@ function NavEntry({
           )}
         </button>
         {open && !collapsed && (
-          <div className="ml-6 mt-1 space-y-1 border-l border-navy-700 pl-2">
+          <div className="ml-6 mt-1 space-y-1 border-l border-white/10 pl-2">
             {item.children.map((c) => (
               <NavLink
                 key={c.to}
@@ -138,8 +138,8 @@ function NavEntry({
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-navy-800 hover:text-white",
-                    isActive && "bg-navy-800 text-white"
+                    "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-white",
+                    isActive && "bg-brand-400/10 text-brand-300"
                   )
                 }
               >
@@ -158,15 +158,27 @@ function NavEntry({
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 hover:bg-navy-800 hover:text-white",
-          isActive && "bg-brand-600 text-white hover:bg-brand-600",
+          "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-white",
+          isActive && "bg-brand-400/10 text-brand-300 hover:bg-brand-400/10 hover:text-brand-300",
           collapsed && "justify-center px-2"
         )
       }
       title={collapsed ? item.label : undefined}
     >
-      <item.icon className="h-5 w-5 shrink-0" />
-      {!collapsed && <span>{item.label}</span>}
+      {({ isActive }) =>
+        isActive ? (
+          <>
+            <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-brand-400" />
+            <item.icon className="h-5 w-5 shrink-0" />
+            {!collapsed && <span>{item.label}</span>}
+          </>
+        ) : (
+          <>
+            <item.icon className="h-5 w-5 shrink-0" />
+            {!collapsed && <span>{item.label}</span>}
+          </>
+        )
+      }
     </NavLink>
   );
 }
@@ -188,17 +200,23 @@ function SidebarContent({
         to="/dashboard"
         onClick={onNavigate}
         className={cn(
-          "flex items-center gap-3 border-b border-navy-800 px-4 py-5",
+          "flex items-center gap-3 border-b border-white/5 px-4 py-5",
           collapsed && "justify-center px-2"
         )}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600">
-          <ClipboardList className="h-5 w-5 text-white" />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
+          <span className="font-display text-sm font-extrabold tracking-tight text-ink-950">
+            IW
+          </span>
         </div>
         {!collapsed && (
-          <div>
-            <p className="text-base font-bold text-white">AssetFlow</p>
-            <p className="text-xs text-slate-400">Aset & Gudang</p>
+          <div className="min-w-0">
+            <p className="truncate font-display text-[15px] font-bold leading-tight text-white">
+              Inventory Warehouse
+            </p>
+            <p className="text-[11px] uppercase tracking-widest text-brand-400/80">
+              Command Center
+            </p>
           </div>
         )}
       </Link>
@@ -209,21 +227,27 @@ function SidebarContent({
         ))}
       </nav>
 
-      <div className="border-t border-navy-800 p-3">
+      <div className="border-t border-white/5 p-3">
         {!collapsed && (
-          <div className="mb-2 px-2">
-            <p className="truncate text-sm font-medium text-white">
-              {profile?.full_name ?? user?.email}
-            </p>
-            <p className="truncate text-xs text-slate-400">
-              {isSuperAdmin ? "Super Admin" : "Admin"}
-            </p>
+          <div className="mb-2 flex items-center gap-2.5 px-2">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-400" />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-white">
+                {profile?.full_name ?? user?.email}
+              </p>
+              <p className="truncate text-xs text-slate-500">
+                {isSuperAdmin ? "Super Admin" : "Admin"} • Online
+              </p>
+            </div>
           </div>
         )}
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start text-slate-300 hover:bg-navy-800 hover:text-white"
+          className="w-full justify-start text-slate-400 hover:bg-white/5 hover:text-white"
           onClick={async () => {
             await signOut();
             navigate("/login");
@@ -251,19 +275,16 @@ function GlobalSearch() {
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Cari aset (kode/nama)…"
-        className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-3 pr-9 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+        placeholder="Cari aset, SKU, transaksi…"
+        className="h-9 w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-16 text-sm text-slate-200 placeholder:text-slate-500 focus:border-brand-400/50 focus:outline-none focus:ring-2 focus:ring-brand-400/20"
       />
-      <button
-        type="submit"
-        aria-label="Cari"
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-      >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.3-4.3" />
-        </svg>
-      </button>
+      <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.3-4.3" />
+      </svg>
+      <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 lg:inline-flex">
+        Ctrl K
+      </kbd>
     </form>
   );
 }
@@ -274,11 +295,11 @@ export function AppLayout(): ReactNode {
   const { profile, user, isSuperAdmin } = useAuth();
 
   return (
-    <div className="flex min-h-screen bg-slate-100">
+    <div className="flex min-h-screen bg-ink-950">
       {/* Sidebar desktop */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 bg-navy-900 transition-all duration-200 lg:block",
+          "sticky top-0 hidden h-screen shrink-0 border-r border-white/5 bg-ink-900 transition-all duration-200 lg:block",
           collapsed ? "w-20" : "w-64"
         )}
       >
@@ -288,8 +309,8 @@ export function AppLayout(): ReactNode {
       {/* Sidebar mobile */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-navy-950/60" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-72 bg-navy-900">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-72 border-r border-white/5 bg-ink-900">
             <button
               type="button"
               aria-label="Tutup menu"
@@ -304,11 +325,11 @@ export function AppLayout(): ReactNode {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white px-4">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/5 bg-ink-950/85 px-4 backdrop-blur-xl">
           <button
             type="button"
             aria-label="Menu"
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+            className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:hidden"
             onClick={() => setMobileOpen(true)}
           >
             <Menu className="h-5 w-5" />
@@ -316,28 +337,37 @@ export function AppLayout(): ReactNode {
           <button
             type="button"
             aria-label="Ciutkan sidebar"
-            className="hidden rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:block"
+            className="hidden rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:block"
             onClick={() => setCollapsed((v) => !v)}
           >
             <Menu className="h-5 w-5" />
           </button>
           <GlobalSearch />
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2">
             <Link
               to="/publik"
               target="_blank"
-              className="hidden text-sm text-slate-500 hover:text-brand-600 sm:block"
+              className="hidden rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-brand-300 sm:block"
             >
               Lihat situs publik
             </Link>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-800 text-sm font-semibold text-white">
+            <button
+              type="button"
+              aria-label="Notifikasi"
+              className="relative rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+            >
+              <Bell className="h-5 w-5" />
+              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-ink-950" />
+            </button>
+            <div className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-sm font-bold text-ink-950 ring-2 ring-brand-400/20">
               {(profile?.full_name ?? user?.email ?? "?").charAt(0).toUpperCase()}
             </div>
             <div className="hidden sm:block">
-              <p className="max-w-40 truncate text-sm font-medium text-slate-800">
+              <p className="max-w-40 truncate text-sm font-medium text-white">
                 {profile?.full_name ?? user?.email}
               </p>
-              <p className="text-xs text-slate-400">{isSuperAdmin ? "Super Admin" : "Admin"}</p>
+              <p className="text-xs text-slate-500">{isSuperAdmin ? "Super Admin" : "Admin"}</p>
             </div>
           </div>
         </header>

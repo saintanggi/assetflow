@@ -6,11 +6,11 @@ export function ForbiddenPage() {
   const navigate = useNavigate();
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
-      <div className="rounded-full bg-red-50 p-5">
-        <ShieldAlert className="h-10 w-10 text-red-500" />
+      <div className="rounded-full bg-rose-400/5 p-5">
+        <ShieldAlert className="h-10 w-10 text-rose-400" />
       </div>
       <p className="font-mono text-sm font-semibold text-slate-400">403</p>
-      <h1 className="text-2xl font-bold text-navy-900">Akses Ditolak</h1>
+      <h1 className="text-2xl font-bold text-white">Akses Ditolak</h1>
       <p className="max-w-sm text-sm text-slate-500">
         Anda tidak memiliki izin untuk mengakses halaman ini. Hubungi administrator jika Anda
         merasa ini keliru.

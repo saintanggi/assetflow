@@ -4,7 +4,7 @@ import { cn } from "../../lib/utils";
 
 export const Table = forwardRef<HTMLTableElement, HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
+    <div className="w-full overflow-x-auto rounded-lg border border-white/10 bg-ink-850">
       <table
         ref={ref}
         className={cn("w-full caption-bottom text-sm", className)}
@@ -16,7 +16,7 @@ export const Table = forwardRef<HTMLTableElement, HTMLAttributes<HTMLTableElemen
 Table.displayName = "Table";
 
 export function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("bg-slate-50", className)} {...props} />;
+  return <thead className={cn("bg-white/[0.03]", className)} {...props} />;
 }
 
 export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
@@ -25,14 +25,14 @@ export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSecti
 
 export function TableFooter({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <tfoot className={cn("border-t bg-slate-50 font-medium", className)} {...props} />
+    <tfoot className={cn("border-t border-white/10 bg-white/[0.03] font-medium", className)} {...props} />
   );
 }
 
 export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
-      className={cn("border-b border-slate-200 transition-colors hover:bg-slate-50", className)}
+      className={cn("border-b border-white/5 transition-colors hover:bg-white/[0.03] text-slate-300", className)}
       {...props}
     />
   );

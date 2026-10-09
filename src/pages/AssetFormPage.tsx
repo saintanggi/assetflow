@@ -342,7 +342,7 @@ export function AssetFormPage() {
                 <Label htmlFor="asset_code">Kode Aset *</Label>
                 <Input id="asset_code" {...register("asset_code")} placeholder="AST-0001" />
                 {fieldError("asset_code") && (
-                  <p className="mt-1 text-xs text-red-600">{fieldError("asset_code")}</p>
+                  <p className="mt-1 text-xs text-rose-400">{fieldError("asset_code")}</p>
                 )}
               </div>
               <div>
@@ -355,14 +355,14 @@ export function AssetFormPage() {
                   placeholder="ast-0001"
                 />
                 {fieldError("public_code") && (
-                  <p className="mt-1 text-xs text-red-600">{fieldError("public_code")}</p>
+                  <p className="mt-1 text-xs text-rose-400">{fieldError("public_code")}</p>
                 )}
               </div>
               <div className="sm:col-span-2">
                 <Label htmlFor="name">Nama Aset *</Label>
                 <Input id="name" {...register("name")} placeholder="Laptop Dell Latitude 5440" />
                 {fieldError("name") && (
-                  <p className="mt-1 text-xs text-red-600">{fieldError("name")}</p>
+                  <p className="mt-1 text-xs text-rose-400">{fieldError("name")}</p>
                 )}
               </div>
               <div>
@@ -376,7 +376,7 @@ export function AssetFormPage() {
                   })}
                 />
                 {fieldError("category_id") && (
-                  <p className="mt-1 text-xs text-red-600">{fieldError("category_id")}</p>
+                  <p className="mt-1 text-xs text-rose-400">{fieldError("category_id")}</p>
                 )}
               </div>
               <div>
@@ -390,7 +390,7 @@ export function AssetFormPage() {
                   })}
                 />
                 {fieldError("location_id") && (
-                  <p className="mt-1 text-xs text-red-600">{fieldError("location_id")}</p>
+                  <p className="mt-1 text-xs text-rose-400">{fieldError("location_id")}</p>
                 )}
               </div>
               <div>
@@ -431,7 +431,7 @@ export function AssetFormPage() {
                   })}
                 />
                 {fieldError("purchase_price") && (
-                  <p className="mt-1 text-xs text-red-600">{fieldError("purchase_price")}</p>
+                  <p className="mt-1 text-xs text-rose-400">{fieldError("purchase_price")}</p>
                 )}
               </div>
               <div>
@@ -483,7 +483,7 @@ export function AssetFormPage() {
                 )}
                 <Label
                   htmlFor="photo"
-                  className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-600 hover:bg-slate-50"
+                  className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 px-4 py-6 text-sm text-slate-400 hover:bg-white/[0.03]"
                 >
                   <Upload className="h-4 w-4" />
                   {photoFile ? photoFile.name : "Pilih foto (opsional, maks 5 MB)"}

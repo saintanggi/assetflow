@@ -266,7 +266,7 @@ export function AssetDetailPage() {
                   <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
                     {r.label}
                   </dt>
-                  <dd className="mt-0.5 text-sm font-medium text-slate-900">{r.value}</dd>
+                  <dd className="mt-0.5 text-sm font-medium text-slate-100">{r.value}</dd>
                 </div>
               ))}
             </dl>

@@ -182,7 +182,7 @@ export function InventoryDetailPage() {
                   <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
                     {r.label}
                   </dt>
-                  <dd className="mt-0.5 text-sm font-medium text-slate-900">{r.value}</dd>
+                  <dd className="mt-0.5 text-sm font-medium text-slate-100">{r.value}</dd>
                 </div>
               ))}
             </dl>
@@ -292,7 +292,7 @@ export function InventoryDetailPage() {
                     </TableCell>
                     <TableCell
                       className={`text-right font-medium ${
-                        Number(l.qty_change) >= 0 ? "text-emerald-600" : "text-red-600"
+                        Number(l.qty_change) >= 0 ? "text-emerald-600" : "text-rose-400"
                       }`}
                     >
                       {Number(l.qty_change) >= 0 ? "+" : ""}

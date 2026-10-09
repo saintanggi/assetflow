@@ -85,7 +85,7 @@ export function AssetListPage() {
         cell: ({ row }) => (
           <Link
             to={`/aset/${row.original.id}`}
-            className="font-medium text-brand-700 hover:underline"
+            className="font-medium text-brand-300 hover:underline"
           >
             {row.original.asset_code}
           </Link>
