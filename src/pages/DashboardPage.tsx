@@ -41,7 +41,7 @@ interface StatusSlice {
 
 interface RecentTx {
   id: string;
-  transaction_number: string;
+  doc_number: string;
   type: TransactionType;
   created_at: string;
 }
@@ -167,7 +167,7 @@ export function DashboardPage() {
             .limit(200),
           supabase
             .from("inventory_transactions")
-            .select("id, transaction_number, type, created_at")
+            .select("id, doc_number, type, created_at")
             .order("created_at", { ascending: false })
             .limit(8),
           supabase.from("locations").select("id, code, name"),
@@ -435,7 +435,7 @@ export function DashboardPage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="tnum truncate font-mono text-[13px] font-semibold text-slate-200">
-                      {t.transaction_number}
+                      {t.doc_number}
                     </p>
                     <p className="text-xs text-slate-500">
                       {TRANSACTION_TYPE_LABELS[t.type]} •{" "}
