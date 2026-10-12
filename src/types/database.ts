@@ -203,6 +203,9 @@ export interface InventoryTransactionItem {
   qty: number;
   unit_price: number | null;
   notes: string | null;
+  resi: string | null;
+  gerai: string | null;
+  status_aset: string | null;
   inventory_items?: Pick<InventoryItem, "sku" | "name"> & {
     units?: Pick<Unit, "code"> | null;
   };
@@ -295,7 +298,17 @@ export interface TransactionItemInput {
   qty: number;
   unit_price?: number | null;
   notes?: string | null;
+  /** No resi (Excel KARTU STOK). */
+  resi?: string | null;
+  /** Nama gerai tujuan/asal (Excel KARTU STOK: NAMA GERAI). */
+  gerai?: string | null;
+  /** Status aset Excel: ASSET BARU / ASSET RETUR / UNREADY. */
+  status_aset?: "ASSET BARU" | "ASSET RETUR" | "UNREADY" | null;
 }
+
+/** Status aset ala Excel KARTU STOK. */
+export const EXCEL_STATUS_ASET = ["ASSET BARU", "ASSET RETUR", "UNREADY"] as const;
+export type ExcelStatusAset = (typeof EXCEL_STATUS_ASET)[number];
 
 export const ASSET_STATUS_LABELS: Record<AssetStatus, string> = {
   tersedia: "Tersedia",

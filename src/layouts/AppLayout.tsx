@@ -29,6 +29,8 @@ import {
   Truck,
   KeyRound,
   ScrollText,
+  ClipboardList,
+  Activity,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -68,11 +70,13 @@ const NAV: NavItem[] = [
       { to: "/transaksi/keluar", label: "Barang Keluar", icon: ArrowUpFromLine, permission: "inventory.issue" },
       { to: "/transaksi/transfer", label: "Transfer Stok", icon: ArrowLeftRight, permission: "inventory.transfer" },
       { to: "/transaksi/opname", label: "Stock Opname", icon: ClipboardCheck, permission: "inventory.adjust" },
+      { to: "/transaksi/kartu-stok", label: "Input Kartu Stok", icon: ClipboardList, permission: "inventory.receive" },
       { to: "/transaksi/riwayat", label: "Riwayat Transaksi", icon: History, permission: "inventory.view" },
     ],
   },
   { to: "/pindai", label: "Pindai Kode", icon: ScanLine },
   { to: "/label", label: "Cetak Label", icon: Printer, permission: "labels.print" },
+  { to: "/laporan/live-stok", label: "Live Stok", icon: Activity, permission: "reports.view" },
   { to: "/laporan", label: "Laporan", icon: FileText, permission: "reports.view" },
   {
     to: "#master",

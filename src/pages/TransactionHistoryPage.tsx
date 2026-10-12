@@ -121,7 +121,7 @@ export function TransactionHistoryPage() {
     setDetailLoading(true);
     const { data, error } = await supabase
       .from("inventory_transaction_items")
-      .select("id, qty, unit_price, notes, inventory_items(sku, name)")
+      .select("id, qty, unit_price, notes, resi, gerai, status_aset, inventory_items(sku, name)")
       .eq("transaction_id", tx.id);
     setDetailLoading(false);
     if (error) {
@@ -324,6 +324,9 @@ export function TransactionHistoryPage() {
                       <TableHead>SKU</TableHead>
                       <TableHead>Nama</TableHead>
                       <TableHead className="text-right">Qty</TableHead>
+                      <TableHead>Status Aset</TableHead>
+                      <TableHead>Resi</TableHead>
+                      <TableHead>Gerai</TableHead>
                       <TableHead className="text-right">Harga Satuan</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -335,6 +338,9 @@ export function TransactionHistoryPage() {
                         </TableCell>
                         <TableCell>{it.inventory_items?.name ?? "—"}</TableCell>
                         <TableCell className="text-right">{formatQty(it.qty)}</TableCell>
+                        <TableCell>{it.status_aset ?? "—"}</TableCell>
+                        <TableCell className="max-w-[160px] truncate" title={it.resi ?? ""}>{it.resi ?? "—"}</TableCell>
+                        <TableCell>{it.gerai ?? "—"}</TableCell>
                         <TableCell className="text-right">
                           {formatQty(it.unit_price)}
                         </TableCell>

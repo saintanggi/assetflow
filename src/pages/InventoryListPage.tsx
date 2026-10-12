@@ -210,6 +210,11 @@ export function InventoryListPage() {
       },
       { header: "Nama", accessorKey: "name" },
       {
+        header: "Merek",
+        accessorKey: "brand",
+        cell: ({ row }) => row.original.brand ?? "—",
+      },
+      {
         header: "Kategori",
         cell: ({ row }) => row.original.asset_categories?.name ?? "—",
       },

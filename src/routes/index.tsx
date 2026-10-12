@@ -21,6 +21,8 @@ import { IssuePage } from "../pages/IssuePage";
 import { TransferPage } from "../pages/TransferPage";
 import { StockOpnamePage } from "../pages/StockOpnamePage";
 import { TransactionHistoryPage } from "../pages/TransactionHistoryPage";
+import { KartuStokPage } from "../pages/KartuStokPage";
+import { LiveStockPage } from "../pages/LiveStockPage";
 import { ScannerPage } from "../pages/ScannerPage";
 import { LabelPrintPage } from "../pages/LabelPrintPage";
 import { CategoriesPage } from "../pages/CategoriesPage";
@@ -146,6 +148,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: "/transaksi/kartu-stok",
+        element: (
+          <RequirePermission code="inventory.receive">
+            <KartuStokPage />
+          </RequirePermission>
+        ),
+      },
+      {
         path: "/transaksi/riwayat",
         element: (
           <RequirePermission code="inventory.view">
@@ -216,6 +226,14 @@ export const router = createBrowserRouter([
           <RequireSuperAdmin>
             <RolesPage />
           </RequireSuperAdmin>
+        ),
+      },
+      {
+        path: "/laporan/live-stok",
+        element: (
+          <RequirePermission code="reports.view">
+            <LiveStockPage />
+          </RequirePermission>
         ),
       },
       {
