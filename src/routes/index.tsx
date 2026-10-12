@@ -23,6 +23,7 @@ import { StockOpnamePage } from "../pages/StockOpnamePage";
 import { TransactionHistoryPage } from "../pages/TransactionHistoryPage";
 import { KartuStokPage } from "../pages/KartuStokPage";
 import { LiveStockPage } from "../pages/LiveStockPage";
+import { StockAlertsPage } from "../pages/StockAlertsPage";
 import { ScannerPage } from "../pages/ScannerPage";
 import { LabelPrintPage } from "../pages/LabelPrintPage";
 import { CategoriesPage } from "../pages/CategoriesPage";
@@ -144,6 +145,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission code="inventory.adjust">
             <StockOpnamePage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/persediaan/peringatan-stok",
+        element: (
+          <RequirePermission code="inventory.view">
+            <StockAlertsPage />
           </RequirePermission>
         ),
       },

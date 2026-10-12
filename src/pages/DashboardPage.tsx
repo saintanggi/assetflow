@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Area,
   AreaChart,
@@ -338,13 +339,15 @@ export function DashboardPage() {
           sub="Dokumen barang keluar"
           tone="violet"
         />
-        <StatTile
-          icon={AlertTriangle}
-          label="Perlu Perhatian"
-          value={data.lowStockCount.toLocaleString("id-ID")}
-          sub="SKU di bawah stok minimum"
-          tone="amber"
-        />
+        <Link to="/persediaan/peringatan-stok" className="block transition hover:-translate-y-0.5">
+          <StatTile
+            icon={AlertTriangle}
+            label="Perlu Perhatian"
+            value={data.lowStockCount.toLocaleString("id-ID")}
+            sub="SKU di bawah stok minimum — klik untuk detail"
+            tone="amber"
+          />
+        </Link>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
