@@ -211,7 +211,7 @@ BEGIN
       FROM public.request_items WHERE id = v_ri_id AND request_id = p_request_id;
 
     IF v_item_id IS NULL THEN RAISE EXCEPTION 'Item permintaan tidak valid'; END IF;
-    IF v_approved IS NULL THEN RAISE EXCEPTION 'Item belum di-approve (id %)'; END IF;
+    IF v_approved IS NULL THEN RAISE EXCEPTION 'Item belum di-approve (id %)', v_ri_id; END IF;
     IF v_item_status NOT IN ('disetujui','siap','pending_sebagian') THEN
       RAISE EXCEPTION 'Item belum siap dikirim (status: %)', v_item_status;
     END IF;
