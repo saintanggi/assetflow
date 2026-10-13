@@ -416,6 +416,7 @@ export function RequestUploadPage() {
               p_location_id: locId,
               p_lines: payload,
               p_notes: `Upload dokumen pengiriman ${ticket ?? ""} (${kode})`.trim(),
+              p_allow_negative: true,
             });
             if (shipErr) throw new Error(`Gagal kirim ${ticket ?? req.id} [${kode}]: ${shipErr.message}`);
           }
