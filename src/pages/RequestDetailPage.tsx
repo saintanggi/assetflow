@@ -320,8 +320,8 @@ export function RequestDetailPage() {
   return (
     <div>
       <PageHeader
-        title={req.request_number}
-        description={`Tiket ${req.ticket_no} • ${req.branch_name}${req.branch_code ? ` (${req.branch_code})` : ""} • ${req.request_date}`}
+        title={req.ticket_no || req.request_number}
+        description={`${req.request_number} • ${req.branch_name}${req.branch_code ? ` (${req.branch_code})` : ""} • ${req.request_date}`}
         actions={
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={handlePrint}>
@@ -576,18 +576,40 @@ export function RequestDetailPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-slate-500">
-                  <th className="pb-2 pr-3">Barang</th>
-                  <th className="pb-2 pr-3 text-right">Minta</th>
+                  <th className="pb-2 pr-3">Item</th>
+                  <th className="pb-2 pr-3 text-right">Request</th>
                   <th className="pb-2 pr-3 text-right">Disetujui</th>
                   <th className="pb-2 pr-3 text-right">Terkirim</th>
                   <th className="pb-2 pr-3">Barcode</th>
-                  <th className="pb-2 pr-3">SN / Keterangan</th>
+                  <th className="pb-2 pr-3">SN</th>
                   <th className="pb-2 pr-3">Resi</th>
-                  <th className="pb-2">Status</th>
+                  <th className="pb-2 pr-3">Status Request</th>
+                  <th className="pb-2 pr-3">Status Asset</th>
+                  <th className="pb-2">Keterangan</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((x) => (
+                {items.map((x) => {
+                  // Parse notes: "Ket: <SN> | Status request: <SR>" per baris.
+                  const snList: string[] = [];
+                  const srList: string[] = [];
+                  const ketList: string[] = [];
+                  for (const n of (x.notes ?? "").split("\n")) {
+                    const parts = n.split("|").map((s) => s.trim());
+                    for (const p of parts) {
+                      const ketM = p.match(/^Ket:\s*(.+)$/i);
+                      const srM = p.match(/^Status request:\s*(.+)$/i);
+                      if (ketM) {
+                        snList.push(ketM[1].trim());
+                        ketList.push(ketM[1].trim());
+                      } else if (srM) {
+                        srList.push(srM[1].trim());
+                      } else if (p) {
+                        ketList.push(p);
+                      }
+                    }
+                  }
+                  return (
                   <tr key={x.id} className="border-b border-white/5">
                     <td className="py-2 pr-3">
                       <div className="font-medium">{x.inventory_items?.name}</div>
@@ -605,22 +627,14 @@ export function RequestDetailPage() {
                             <div key={i} className="text-slate-200">{b.trim()}</div>
                           ))}
                         </div>
-                      ) : (
-                        "—"
-                      )}
+                      ) : "—"}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">
-                      {x.notes ? (
+                      {snList.length > 0 ? (
                         <div className="space-y-0.5">
-                          {x.notes.split("\n").map((n, i) => {
-                            // Bersihkan prefix "Ket: " agar tampil seperti di Excel.
-                            const clean = n.trim().replace(/^Ket:\s*/i, "");
-                            return <div key={i} className="text-slate-400">{clean}</div>;
-                          })}
+                          {snList.map((s, i) => <div key={i} className="text-slate-200">{s}</div>)}
                         </div>
-                      ) : (
-                        "—"
-                      )}
+                      ) : "—"}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">
                       {x.resi ? (
@@ -629,17 +643,32 @@ export function RequestDetailPage() {
                             <div key={i} className="text-slate-200">{r.trim()}</div>
                           ))}
                         </div>
+                      ) : "—"}
+                    </td>
+                    <td className="py-2 pr-3 font-mono text-xs">
+                      {srList.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {[...new Set(srList)].map((s, i) => <div key={i} className="text-amber-200">{s}</div>)}
+                        </div>
                       ) : (
-                        "—"
+                        <Badge variant={ITEM_VARIANT[x.item_status] ?? "default"}>
+                          {REQUEST_ITEM_STATUS_LABELS[x.item_status]}
+                        </Badge>
                       )}
                     </td>
-                    <td className="py-2">
-                      <Badge variant={ITEM_VARIANT[x.item_status] ?? "default"}>
-                        {REQUEST_ITEM_STATUS_LABELS[x.item_status]}
-                      </Badge>
+                    <td className="py-2 pr-3 font-mono text-xs">
+                      {x.status_aset ? <span className="text-sky-200">{x.status_aset}</span> : "—"}
+                    </td>
+                    <td className="py-2 font-mono text-xs">
+                      {ketList.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {ketList.map((k, i) => <div key={i} className="text-slate-400">{k}</div>)}
+                        </div>
+                      ) : "—"}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
