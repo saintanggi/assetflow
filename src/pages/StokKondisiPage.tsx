@@ -1,15 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Download } from "lucide-react";
+import { Download, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { formatQty } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
+import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { DataTable } from "../components/DataTable";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 
 export type KondisiStok = "baru" | "return" | "unready";
 
@@ -52,8 +62,17 @@ interface StokRow {
 
 export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   const cfg = KONDISI_CONFIG[kondisi];
+  const { isSuperAdmin } = useAuth();
   const [rows, setRows] = useState<StokRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [locationId, setLocationId] = useState<string | null>(null);
+
+  // Edit inline (superadmin): nama & qty stok awal.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRow, setEditRow] = useState<StokRow | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editQty, setEditQty] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -74,19 +93,22 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         .order("name");
       if (itemErr) throw new Error(itemErr.message);
 
-      // Saldo per lokasi kondisi.
+      // Saldo + stok awal per lokasi kondisi.
       const balanceMap = new Map<string, number>();
+      const openingMap = new Map<string, number>();
       // IN/OUT dari ledger per lokasi kondisi.
       const inMap = new Map<string, number>();
       const outMap = new Map<string, number>();
 
       if (locationId) {
+        setLocationId(locationId);
         const { data: bals } = await supabase
           .from("inventory_balances")
-          .select("item_id, qty")
+          .select("item_id, qty, opening_qty")
           .eq("location_id", locationId);
-        for (const b of (bals ?? []) as { item_id: string; qty: number | string }[]) {
+        for (const b of (bals ?? []) as { item_id: string; qty: number | string; opening_qty: number | string }[]) {
           balanceMap.set(b.item_id, Number(b.qty));
+          openingMap.set(b.item_id, Number(b.opening_qty ?? 0));
         }
 
         const { data: leds } = await supabase
@@ -107,10 +129,10 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         min_stock: number | null;
         units: { code: string } | { code: string }[] | null;
       }[]).map((it, idx) => {
-        const stokAkhir = balanceMap.get(it.id) ?? 0;
+        const stokAwal = openingMap.get(it.id) ?? 0;
         const totalIn = inMap.get(it.id) ?? 0;
         const totalOut = outMap.get(it.id) ?? 0;
-        const stokAwal = stokAkhir - totalIn + totalOut;
+        const stokAkhir = stokAwal + totalIn - totalOut;
         const buffer = Number(it.min_stock ?? 0);
         const units = Array.isArray(it.units) ? it.units[0] : it.units;
         let status: StokRow["status"] = "AMAN";
@@ -160,6 +182,52 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
     return <Badge variant="secondary">HABIS</Badge>;
   };
 
+  const openEdit = (row: StokRow) => {
+    setEditRow(row);
+    setEditName(row.itemName);
+    setEditQty(String(row.stokAwal));
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editRow || !locationId) return;
+    const qty = Number(editQty);
+    if (!editName.trim()) {
+      toast.error("Nama barang wajib diisi.");
+      return;
+    }
+    if (isNaN(qty) || qty < 0) {
+      toast.error("Stok awal harus angka ≥ 0.");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      // Update nama barang.
+      const { error: nameErr } = await supabase
+        .from("inventory_items")
+        .update({ name: editName.trim() })
+        .eq("id", editRow.id);
+      if (nameErr) throw new Error(nameErr.message);
+
+      // Update stok awal (upsert balance).
+      const { error: balErr } = await supabase
+        .from("inventory_balances")
+        .upsert(
+          { item_id: editRow.id, location_id: locationId, qty: qty + editRow.totalIn - editRow.totalOut, opening_qty: qty },
+          { onConflict: "item_id,location_id" }
+        );
+      if (balErr) throw new Error(balErr.message);
+
+      toast.success("Berhasil diperbarui.");
+      setEditOpen(false);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const columns: ColumnDef<StokRow, unknown>[] = [
     { header: "NO", accessorKey: "no", cell: ({ row }) => row.original.no },
     {
@@ -204,6 +272,19 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       accessorKey: "status",
       cell: ({ row }) => statusBadge(row.original.status),
     },
+    ...(isSuperAdmin
+      ? [
+          {
+            header: "",
+            id: "edit",
+            cell: ({ row }: { row: { original: StokRow } }) => (
+              <Button variant="outline" size="sm" onClick={() => openEdit(row.original)}>
+                <Pencil className="mr-1 h-3 w-3" /> Ubah
+              </Button>
+            ),
+          } as ColumnDef<StokRow, unknown>,
+        ]
+      : []),
   ];
 
   const handleExport = () => {
@@ -279,6 +360,38 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
           />
         </CardContent>
       </Card>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogHeader>
+          <DialogTitle>Ubah — {editRow?.itemName}</DialogTitle>
+          <DialogDescription>
+            Ubah nama barang dan stok awal ({cfg.badge}). Khusus superadmin.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 px-1 py-2">
+          <div className="space-y-1.5">
+            <Label>Nama Barang</Label>
+            <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Stok Awal ({cfg.badge})</Label>
+            <Input
+              type="number"
+              min="0"
+              value={editQty}
+              onChange={(e) => setEditQty(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>
+            Batal
+          </Button>
+          <Button onClick={saveEdit} disabled={editSaving}>
+            {editSaving ? "Menyimpan…" : "Simpan"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }

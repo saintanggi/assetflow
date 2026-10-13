@@ -228,29 +228,21 @@ export function InventoryListPage() {
         .select("id, code")
         .in("code", ["STOK-BARU", "STOK-RETUR"]);
       const locMap = new Map(((locs ?? []) as { id: string; code: string }[]).map((l) => [l.code, l.id]));
-      const jobs: { code: string; target: number; current: number }[] = [
-        { code: "STOK-BARU", target: targetBaru, current: Number(adjustItem.stock_baru ?? 0) },
-        { code: "STOK-RETUR", target: targetRetur, current: Number(adjustItem.stock_retur ?? 0) },
+      const jobs: { code: string; target: number }[] = [
+        { code: "STOK-BARU", target: targetBaru },
+        { code: "STOK-RETUR", target: targetRetur },
       ];
-      const today = new Date().toISOString().slice(0, 10);
       for (const j of jobs) {
-        const delta = j.target - j.current;
-        if (delta === 0) continue;
         const locId = locMap.get(j.code);
-        if (!locId) throw new Error(`Lokasi ${j.code} belum ada — jalankan migrasi 0010 dulu.`);
-        const { error } = await supabase.rpc("post_inventory_transaction", {
-          p_idempotency_key: crypto.randomUUID(),
-          p_type: delta > 0 ? "in" : "out",
-          p_transaction_date: today,
-          p_source_location_id: delta > 0 ? null : locId,
-          p_dest_location_id: delta > 0 ? locId : null,
-          p_reference: null,
-          p_notes: `Atur stok ${j.code === "STOK-BARU" ? "Baru" : "Retur"} via menu Persediaan (dari ${j.current} ke ${j.target}).`,
-          p_items: [{ item_id: adjustItem.id, qty: Math.abs(delta) }],
-        });
+        if (!locId) throw new Error(`Lokasi ${j.code} belum ada.`);
+        // Set langsung sebagai stok awal (bukan transaksi).
+        const { error } = await supabase.from("inventory_balances").upsert(
+          { item_id: adjustItem.id, location_id: locId, qty: j.target, opening_qty: j.target },
+          { onConflict: "item_id,location_id" }
+        );
         if (error) throw new Error(error.message);
       }
-      toast.success(`Stok ${adjustItem.name} diperbarui (Baru: ${targetBaru}, Retur: ${targetRetur}).`);
+      toast.success(`Stok awal ${adjustItem.name} diatur (Baru: ${targetBaru}, Retur: ${targetRetur}).`);
       setAdjustOpen(false);
       await loadItems();
     } catch (e) {
