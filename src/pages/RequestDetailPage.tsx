@@ -598,10 +598,34 @@ export function RequestDetailPage() {
                     </td>
                     <td className="tnum py-2 pr-3 text-right">{fmt(Number(x.qty_shipped))}</td>
                     <td className="py-2 pr-3 font-mono text-xs">
-                      {x.barcode ?? "—"}
-                      {x.serial_number && <div className="text-slate-500">SN: {x.serial_number}</div>}
+                      {x.barcode ? (
+                        <div className="space-y-0.5">
+                          {x.barcode.split("\n").map((b, i) => (
+                            <div key={i} className="text-slate-200">{b.trim()}</div>
+                          ))}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                      {x.notes && (
+                        <div className="mt-1 space-y-0.5">
+                          {x.notes.split("\n").map((n, i) => (
+                            <div key={i} className="text-slate-500">{n.trim()}</div>
+                          ))}
+                        </div>
+                      )}
                     </td>
-                    <td className="py-2 pr-3 font-mono text-xs">{x.resi ?? "—"}</td>
+                    <td className="py-2 pr-3 font-mono text-xs">
+                      {x.resi ? (
+                        <div className="space-y-0.5">
+                          {x.resi.split("\n").map((r, i) => (
+                            <div key={i} className="text-slate-200">{r.trim()}</div>
+                          ))}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="py-2">
                       <Badge variant={ITEM_VARIANT[x.item_status] ?? "default"}>
                         {REQUEST_ITEM_STATUS_LABELS[x.item_status]}
