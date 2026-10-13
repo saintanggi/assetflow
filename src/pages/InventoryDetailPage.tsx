@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Printer, ArrowDownToLine, ArrowUpFromLine, Pencil } from "lucide-react";
+import { ArrowLeft, ArrowDownToLine, ArrowUpFromLine, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { formatDate, formatDateTime, formatQty, formatRupiah } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
@@ -28,7 +28,6 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { EmptyState } from "../components/EmptyState";
-import { BarcodeLabel } from "../features/barcodes/BarcodeLabel";
 import type {
   InventoryItem,
   InventoryLedger,
@@ -231,8 +230,6 @@ export function InventoryDetailPage() {
   if (!item) return null;
 
   const infoRows: { label: string; value: string }[] = [
-    { label: "SKU", value: item.sku },
-    { label: "Barcode", value: item.barcode ?? "—" },
     { label: "Nama", value: item.name },
     { label: "Kategori", value: item.asset_categories?.name ?? "—" },
     {
@@ -253,7 +250,7 @@ export function InventoryDetailPage() {
     <div>
       <PageHeader
         title={item.name}
-        description={`SKU: ${item.sku}`}
+        description={item.brand ? `Merek: ${item.brand}` : "Detail barang persediaan"}
         actions={
           <>
             <Button variant="outline" onClick={() => navigate("/persediaan")}>
@@ -264,9 +261,6 @@ export function InventoryDetailPage() {
                 <Pencil className="mr-2 h-4 w-4" /> Ubah Master
               </Button>
             )}
-            <Button variant="outline" onClick={() => navigate(`/label?sku=${item.id}`)}>
-              <Printer className="mr-2 h-4 w-4" /> Cetak Barcode
-            </Button>
             <Button variant="outline" onClick={() => navigate("/transaksi/masuk")}>
               <ArrowDownToLine className="mr-2 h-4 w-4" /> Barang Masuk
             </Button>
@@ -277,12 +271,19 @@ export function InventoryDetailPage() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="grid gap-6">
+        <Card>
           <CardHeader>
             <CardTitle>Informasi Barang</CardTitle>
           </CardHeader>
           <CardContent>
+            {item.photo_url ? (
+              <img
+                src={item.photo_url}
+                alt={item.name}
+                className="mb-4 h-40 w-full rounded-lg border object-cover"
+              />
+            ) : null}
             <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
               {infoRows.map((r) => (
                 <div key={r.label} className="flex flex-col">
@@ -303,24 +304,6 @@ export function InventoryDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Barcode</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center gap-3">
-            {item.photo_url ? (
-              <img
-                src={item.photo_url}
-                alt={item.name}
-                className="h-32 w-full rounded-lg border object-cover"
-              />
-            ) : null}
-            <BarcodeLabel
-              value={item.sku || item.barcode || ""}
-              fileName={item.sku}
-            />
-          </CardContent>
-        </Card>
       </div>
 
       <Card className="mt-6">
