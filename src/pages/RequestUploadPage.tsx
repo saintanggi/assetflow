@@ -68,6 +68,41 @@ export function RequestUploadPage() {
 
   const canShip = hasPermission("requests.review");
 
+  const downloadTemplate = async () => {
+    try {
+      const { data: items } = await supabase
+        .from("inventory_items")
+        .select("sku, name")
+        .eq("is_active", true)
+        .order("name")
+        .limit(5000);
+      const wb = XLSX.utils.book_new();
+      const headers = ["In Progress Date","NO TICKET","CABANG/GERAI","KODE GERAI","NAMA BARANG","QTY",
+        "KETERANGAN","RESI","BARCODE","TYPE BARANG","STATUS REQUEST","STATUS ASSET","STATUS TERKIRIM"];
+      const example = ["2026-10-13","A2610130001","Jakarta Sortation","","KOMPUTER RAKITAN",3,
+        "V3165SB380260700885","","A130025539","","","ASSET BARU","TERKIRIM"];
+      XLSX.utils.book_append_sheet(wb,
+        XLSX.utils.aoa_to_sheet([headers, example]), "PENGIRIMAN");
+      const tips = [
+        ["PETUNJUK PENGISIAN TEMPLATE DOKUMEN PENGIRIMAN"],
+        [""],
+        ["1. Isi data pada sheet PENGIRIMAN mulai baris 3 (baris 1 header, baris 2 contoh — contoh boleh dihapus)."],
+        ["2. In Progress Date: tanggal pengiriman format YYYY-MM-DD."],
+        ["3. NAMA BARANG: samakan dengan sheet DAFTAR BARANG (huruf besar/kecil bebas)."],
+        ["4. QTY kosong + BARCODE terisi = dihitung 1."],
+        ["5. STATUS TERKIRIM: TERKIRIM atau PENDING. Baris PENDING masuk dashboard Sisa Belum Terkirim."],
+        ["6. Upload file terisi di menu ini (Upload Dokumen)."],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tips), "PETUNJUK");
+      const daftar = [["KODE","NAMA BARANG (pakai nama ini di kolom NAMA BARANG)"],
+        ...(((items ?? []) as { sku: string; name: string }[]).map((x) => [x.sku, x.name]))];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(daftar), "DAFTAR BARANG");
+      XLSX.writeFile(wb, "Template_Upload_Pengiriman.xlsx");
+    } catch (e) {
+      toast.error("Gagal membuat template.");
+    }
+  };
+
   const handleFile = async (f: File) => {
     setPreview(null);
     setResult(null);
@@ -341,11 +376,9 @@ export function RequestUploadPage() {
         title="Upload Dokumen Pengiriman"
         description="Upload file Excel dokumen pengiriman — otomatis masuk sebagai data permintaan."
         actions={
-          <a href="/Template_Upload_Pengiriman.xlsx" download>
-            <Button variant="outline">
-              <Download className="mr-1 h-4 w-4" /> Download Template
-            </Button>
-          </a>
+          <Button variant="outline" onClick={downloadTemplate}>
+            <Download className="mr-1 h-4 w-4" /> Download Template
+          </Button>
         }
       />
 
