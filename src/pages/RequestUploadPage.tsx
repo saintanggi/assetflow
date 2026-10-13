@@ -47,6 +47,7 @@ interface Preview {
   groups: number;
   unmatched: string[];
   dupTickets: string[];
+  dupRows: number;
 }
 
 const cleanNum = (v: unknown): string => {
@@ -199,15 +200,39 @@ export function RequestUploadPage() {
       );
       const unmatched = [...new Set(rows.filter((r) => !nameSet.has(r.itemName.toUpperCase())).map((r) => r.itemName))];
 
-      // Deteksi tiket duplikat (sudah ada di DB).
+      // Deteksi baris duplikat per-baris (tiket + item + barcode), bukan per-tiket.
       const tickets = [...new Set(rows.map((r) => r.ticket).filter(Boolean))];
-      let dupTickets: string[] = [];
+      let dupRows = 0;
+      const dupTickets: string[] = [];
       if (tickets.length > 0) {
         const { data: existing } = await supabase
           .from("requests")
-          .select("ticket_no")
+          .select("id, ticket_no")
           .in("ticket_no", tickets.slice(0, 200));
-        dupTickets = [...new Set(((existing ?? []) as { ticket_no: string }[]).map((x) => x.ticket_no))];
+        const reqIds = ((existing ?? []) as { id: string; ticket_no: string }[]);
+        if (reqIds.length > 0) {
+          const { data: exItems } = await supabase
+            .from("request_items")
+            .select("request_id, item_id, barcode, requests!inner(ticket_no)")
+            .in("request_id", reqIds.map((x) => x.id));
+          const fp = new Set<string>();
+          for (const ei of (exItems ?? []) as unknown as { item_id: string; barcode: string | null; requests: { ticket_no: string } | { ticket_no: string }[] }[]) {
+            const tno = Array.isArray(ei.requests) ? ei.requests[0]?.ticket_no : ei.requests.ticket_no;
+            if (!tno) continue;
+            for (const bc of (ei.barcode ?? "").split("\n").map((s) => s.trim()).filter(Boolean)) {
+              fp.add(`${tno}|${ei.item_id}|${bc}`);
+            }
+          }
+          // Butuh mapping nama->id untuk cek; pakai items yang sudah diambil.
+          const idByName = new Map<string, string>();
+          for (const it of (items ?? []) as { id: string; name: string }[])
+            idByName.set(it.name.trim().toUpperCase(), it.id);
+          for (const r of rows) {
+            if (!r.ticket || !r.barcode) continue;
+            const id = idByName.get(r.itemName.toUpperCase());
+            if (id && fp.has(`${r.ticket}|${id}|${r.barcode.trim()}`)) dupRows++;
+          }
+        }
       }
 
       // Hitung grup.
@@ -217,9 +242,9 @@ export function RequestUploadPage() {
         )
       );
 
-      setPreview({ rows, groups: groups.size, unmatched, dupTickets });
-      if (dupTickets.length > 0)
-        toast.warning(`${dupTickets.length} no tiket sudah ada di sistem — akan dilewati.`);
+      setPreview({ rows, groups: groups.size, unmatched, dupTickets, dupRows });
+      if (dupRows > 0)
+        toast.warning(`${dupRows} baris duplikat terdeteksi — akan dilewati, sisanya tetap masuk.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal membaca file.");
     }
@@ -552,13 +577,11 @@ export function RequestUploadPage() {
                     </div>
                   </div>
                 )}
-                {preview.dupTickets.length > 0 && (
-                  <div className="flex gap-2 rounded-md bg-rose-400/10 p-3 text-xs text-rose-200">
+                {preview.dupRows > 0 && (
+                  <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
-                      {preview.dupTickets.length} no tiket sudah ada dan akan dilewati:{" "}
-                      {preview.dupTickets.slice(0, 5).join(", ")}
-                      {preview.dupTickets.length > 5 && "…"}
+                      {preview.dupRows} baris duplikat (tiket + barang + barcode sama) akan dilewati — sisanya tetap masuk dan stok tetap dipotong.
                     </div>
                   </div>
                 )}
