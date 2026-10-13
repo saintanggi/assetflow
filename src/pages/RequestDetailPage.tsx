@@ -44,6 +44,21 @@ interface StockMap {
   [itemId: string]: number;
 }
 
+// Ubah pesan error teknis (berisi UUID) menjadi bahasa yang mudah dipahami.
+function formatShipError(raw: string, items: RequestItem[]): string {
+  const m = raw.match(/Stok tidak mencukupi \(item ([0-9a-f-]{36})/i);
+  if (m) {
+    const found = items.find((x) => x.item_id === m[1]);
+    const itemName = found?.inventory_items?.name ?? "barang";
+    const avail = raw.match(/tersedia ([\d.,]+)/i)?.[1] ?? "?";
+    const need = raw.match(/perubahan -([\d.,]+)/i)?.[1] ?? "?";
+    return `Stok "${itemName}" tidak cukup (tersedia ${avail}, dibutuhkan ${need}). Tambah stok dulu di menu Persediaan.`;
+  }
+  return raw
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[id]")
+    .trim() || "Gagal mengirim.";
+}
+
 export function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -285,7 +300,7 @@ export function RequestDetailPage() {
       toast.success(`Berhasil dikirim. Transaksi tercatat (ID: ${String(data).slice(0, 8)}…).`);
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal mengirim.");
+      toast.error(formatShipError(e instanceof Error ? e.message : "Gagal mengirim.", items));
     } finally {
       setBusy(false);
     }
