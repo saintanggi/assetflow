@@ -25,6 +25,7 @@
     "recharts": "^2.15.4",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {

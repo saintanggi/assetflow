@@ -34,6 +34,7 @@ import {
   Siren,
   Inbox,
   Hourglass,
+  FileUp,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -81,6 +82,12 @@ const NAV: NavItem[] = [
     label: "Sisa Belum Terkirim",
     icon: Hourglass,
     permission: "requests.view",
+  },
+  {
+    to: "/permintaan/upload",
+    label: "Upload Dokumen",
+    icon: FileUp,
+    permission: "requests.create",
   },
   {
     to: "#transaksi",

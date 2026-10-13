@@ -28,6 +28,7 @@ import { RequestListPage } from "../pages/RequestListPage";
 import { RequestFormPage } from "../pages/RequestFormPage";
 import { RequestDetailPage } from "../pages/RequestDetailPage";
 import { PendingPartialPage } from "../pages/PendingPartialPage";
+import { RequestUploadPage } from "../pages/RequestUploadPage";
 import { ScannerPage } from "../pages/ScannerPage";
 import { LabelPrintPage } from "../pages/LabelPrintPage";
 import { CategoriesPage } from "../pages/CategoriesPage";
@@ -165,6 +166,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission code="requests.create">
             <RequestFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/permintaan/upload",
+        element: (
+          <RequirePermission code="requests.create">
+            <RequestUploadPage />
           </RequirePermission>
         ),
       },
