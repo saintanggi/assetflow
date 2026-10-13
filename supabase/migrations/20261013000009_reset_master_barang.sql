@@ -11,6 +11,8 @@ DELETE FROM public.inventory_ledger;
 DELETE FROM public.inventory_transaction_items;
 DELETE FROM public.inventory_transactions;
 DELETE FROM public.inventory_balances;
+DELETE FROM public.stock_count_items;
+DELETE FROM public.stock_counts;
 DELETE FROM public.inventory_items;
 
 -- 2) Reset sequence penomoran permintaan.
