@@ -9,7 +9,6 @@ import { PageHeader } from "../components/PageHeader";
 import { DataTable } from "../components/DataTable";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
 
 interface LogRow {
@@ -306,27 +305,27 @@ export function TransactionLogPage() {
 
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="space-y-1.5">
-              <Label>Dari tanggal</Label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Sampai tanggal</Label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
-              />
-            </div>
-            <div className="w-full space-y-1.5 sm:max-w-xs">
-              <Label>Jenis</Label>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-slate-400">Filter:</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
+            />
+            <span className="text-sm text-slate-500">s/d</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
+            />
+            {(dateFrom || dateTo || jenis) && (
+              <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setJenis(""); }}>
+                Reset
+              </Button>
+            )}
+            <div className="ml-auto w-48">
               <Select
                 placeholder="Semua IN & OUT"
                 value={jenis}
@@ -337,19 +336,6 @@ export function TransactionLogPage() {
                 ]}
               />
             </div>
-            {(dateFrom || dateTo || jenis) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setDateFrom("");
-                  setDateTo("");
-                  setJenis("");
-                }}
-              >
-                Reset
-              </Button>
-            )}
           </div>
 
           <DataTable

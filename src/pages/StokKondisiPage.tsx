@@ -72,6 +72,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   const [editRow, setEditRow] = useState<StokRow | null>(null);
   const [editName, setEditName] = useState("");
   const [editQty, setEditQty] = useState("");
+  const [editBuffer, setEditBuffer] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   const load = async () => {
@@ -186,12 +187,14 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
     setEditRow(row);
     setEditName(row.itemName);
     setEditQty(String(row.stokAwal));
+    setEditBuffer(String(row.buffer));
     setEditOpen(true);
   };
 
   const saveEdit = async () => {
     if (!editRow || !locationId) return;
     const qty = Number(editQty);
+    const buffer = Number(editBuffer);
     if (!editName.trim()) {
       toast.error("Nama barang wajib diisi.");
       return;
@@ -200,12 +203,16 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       toast.error("Stok awal harus angka ≥ 0.");
       return;
     }
+    if (isNaN(buffer) || buffer < 0) {
+      toast.error("Buffer harus angka ≥ 0.");
+      return;
+    }
     setEditSaving(true);
     try {
-      // Update nama barang.
+      // Update nama & buffer barang.
       const { error: nameErr } = await supabase
         .from("inventory_items")
-        .update({ name: editName.trim() })
+        .update({ name: editName.trim(), min_stock: buffer })
         .eq("id", editRow.id);
       if (nameErr) throw new Error(nameErr.message);
 
@@ -380,6 +387,15 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
               min="0"
               value={editQty}
               onChange={(e) => setEditQty(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Buffer Minimum</Label>
+            <Input
+              type="number"
+              min="0"
+              value={editBuffer}
+              onChange={(e) => setEditBuffer(e.target.value)}
             />
           </div>
         </div>
