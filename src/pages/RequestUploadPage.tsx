@@ -228,16 +228,20 @@ export function RequestUploadPage() {
 
       if (autoCreate) {
         const missing = [...new Set(rows.map((r) => r.itemName).filter((n) => !byName.has(n.toUpperCase())))];
+        // Ambil unit default (PCS) untuk barang baru.
+        const { data: units } = await supabase.from("units").select("id, code").eq("is_active", true).limit(50);
+        const pcsUnit = ((units ?? []) as { id: string; code: string }[]).find((u) => u.code.toUpperCase() === "PCS")
+          ?? (units?.[0] as { id: string } | undefined);
+        if (!pcsUnit) throw new Error("Tidak ada satuan aktif untuk barang baru.");
         for (let i = 0; i < missing.length; i += 50) {
-          const batch = missing.slice(i, i + 50).map((n) => ({
-            sku: `UPL-${Date.now().toString(36).toUpperCase()}${i}`,
-            name: n,
-            unit_code: "PCS",
-            is_active: true,
-            notes: "Auto-create dari upload dokumen pengiriman",
-          }));
+          const batch = missing.slice(i, i + 50);
           // SKU unik per batch.
-          const withSku = batch.map((b, j) => ({ ...b, sku: `UPL-${Date.now().toString(36).toUpperCase()}-${i + j}` }));
+          const withSku = batch.map((n, j) => ({
+            sku: `UPL-${Date.now().toString(36).toUpperCase()}-${i + j}`,
+            name: n,
+            unit_id: pcsUnit.id,
+            is_active: true,
+          }));
           const { data: created, error } = await supabase.from("inventory_items").insert(withSku).select("id, name");
           if (error) throw new Error(`Gagal membuat barang: ${error.message}`);
           for (const c of (created ?? []) as { id: string; name: string }[])
