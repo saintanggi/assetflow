@@ -284,33 +284,53 @@ export function RequestUploadPage() {
         groups.get(key)!.push(r);
       }
 
-      // Timpa duplikat: tiket yang sudah ada di DB dibalik pengirimannya lalu dihapus,
-      // agar upload ini menggantikan data lama (tidak dobel).
+      // Deteksi duplikat per-baris: tiket + nama item + cabang + barcode harus sama semua
+      // baru dianggap duplikat (bukan hanya tiket saja).
       const uploadTickets = [...new Set(rows.map((r) => r.ticket).filter(Boolean))];
-      let overwritten = 0;
+      const existingFp = new Set<string>(); // fingerprint: ticket|item_id|barcode
+      const existingReqByTicket = new Map<string, string>(); // ticket -> request id
+      let skippedDup = 0;
       if (uploadTickets.length > 0) {
-        setProgress("Mengecek tiket duplikat…");
+        setProgress("Mengecek duplikat…");
         const { data: existing } = await supabase
           .from("requests")
-          .select("id, ticket_no, request_number")
+          .select("id, ticket_no")
           .in("ticket_no", uploadTickets);
-        for (const ex of (existing ?? []) as { id: string; ticket_no: string; request_number: string }[]) {
-          setProgress(`Menimpa tiket ${ex.ticket_no}…`);
-          // Balik transaksi pengiriman lama (kembalikan stok).
-          const { data: txns } = await supabase
-            .from("inventory_transactions")
-            .select("id")
-            .eq("reference", `REQ-KIRIM/${ex.request_number}`);
-          for (const t of (txns ?? []) as { id: string }[]) {
-            await supabase.rpc("reverse_inventory_transaction", {
-              p_transaction_id: t.id,
-              p_reason: `Ditimpa upload ulang tiket ${ex.ticket_no}`,
-            });
-          }
-          // Hapus request lama (cascade ke request_items).
-          await supabase.from("requests").delete().eq("id", ex.id);
-          overwritten++;
+        for (const ex of (existing ?? []) as { id: string; ticket_no: string }[]) {
+          existingReqByTicket.set(ex.ticket_no, ex.id);
         }
+        if (existingReqByTicket.size > 0) {
+          const { data: exItems } = await supabase
+            .from("request_items")
+            .select("request_id, item_id, barcode, requests!inner(ticket_no)")
+            .in("request_id", [...existingReqByTicket.values()]);
+          for (const ei of (exItems ?? []) as unknown as { request_id: string; item_id: string; barcode: string | null; requests: { ticket_no: string } | { ticket_no: string }[] }[]) {
+            const tno = Array.isArray(ei.requests) ? ei.requests[0]?.ticket_no : ei.requests.ticket_no;
+            if (!tno) continue;
+            for (const bc of (ei.barcode ?? "").split("\n").map((s) => s.trim()).filter(Boolean)) {
+              existingFp.add(`${tno}|${ei.item_id}|${bc}`);
+            }
+          }
+        }
+      }
+      // Filter baris duplikat sebelum grouping.
+      const filteredRows = rows.filter((r) => {
+        if (!r.ticket || !r.barcode) return true;
+        const id = byName.get(r.itemName.toUpperCase());
+        if (!id) return true;
+        const fp = `${r.ticket}|${id}|${r.barcode.trim()}`;
+        if (existingFp.has(fp)) {
+          skippedDup++;
+          return false;
+        }
+        return true;
+      });
+      // Rebuild groups dari baris yang lolos filter.
+      groups.clear();
+      for (const r of filteredRows) {
+        const key = r.ticket ? `${r.date}|${r.branch}|${r.ticket}` : `${r.date}|${r.branch}|ITEM:${r.itemName.toUpperCase()}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(r);
       }
       const dupSet = new Set<string>();
       // Lokasi kanonis per kondisi untuk pengurangan stok.
@@ -450,8 +470,8 @@ export function RequestUploadPage() {
 
       setFailList(failures);
       const failMsg = failures.length > 0 ? ` Gagal: ${failures.length} permintaan (lihat rincian di bawah).` : "";
-      const overMsg = overwritten > 0 ? ` ${overwritten} tiket lama ditimpa.` : "";
-      setResult(`Berhasil: ${reqCount} permintaan, ${itemCount} baris barang terimpor.${deductStock ? " Stok otomatis berkurang." : ""}${overMsg}${failMsg}`);
+      const dupMsg = skippedDup > 0 ? ` ${skippedDup} baris duplikat dilewati.` : "";
+      setResult(`Berhasil: ${reqCount} permintaan, ${itemCount} baris barang terimpor.${deductStock ? " Stok otomatis berkurang." : ""}${dupMsg}${failMsg}`);
       if (failures.length > 0) toast.warning(`${failures.length} permintaan gagal — lihat rincian.`);
       else toast.success("Import selesai.");
       setPreview(null);
