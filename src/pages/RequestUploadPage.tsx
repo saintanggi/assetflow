@@ -90,8 +90,9 @@ export function RequestUploadPage() {
         ["2. In Progress Date: tanggal pengiriman format YYYY-MM-DD."],
         ["3. NAMA BARANG: samakan dengan sheet DAFTAR BARANG (huruf besar/kecil bebas)."],
         ["4. QTY kosong + BARCODE terisi = dihitung 1."],
-        ["5. STATUS TERKIRIM: TERKIRIM atau PENDING. Baris PENDING masuk dashboard Sisa Belum Terkirim."],
-        ["6. Upload file terisi di menu ini (Upload Dokumen)."],
+        ["5. STATUS ASSET menentukan stok mana yang dipotong: ASSET BARU → stok Baru, ASSET RETURN → stok Return, ASSET UNREADY → stok Unready. Kosong = dianggap ASSET BARU."],
+        ["6. STATUS TERKIRIM: TERKIRIM atau PENDING. Baris PENDING masuk dashboard Sisa Belum Terkirim."],
+        ["7. Upload file terisi di menu ini (Upload Dokumen)."],
       ];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tips), "PETUNJUK");
       const daftar = [["KODE","NAMA BARANG (pakai nama ini di kolom NAMA BARANG)"],
@@ -263,16 +264,19 @@ export function RequestUploadPage() {
 
       // Skip tiket duplikat.
       const dupSet = new Set(preview.dupTickets);
-      let defaultLocId: string | null = null;
+      // Lokasi kanonis per kondisi untuk pengurangan stok.
+      const locByKondisi = new Map<string, string>();
       if (deductStock) {
         const { data: locs } = await supabase
           .from("locations")
-          .select("id")
-          .eq("is_active", true)
-          .order("code")
-          .limit(1);
-        defaultLocId = (locs?.[0] as { id: string } | undefined)?.id ?? null;
-        if (!defaultLocId) throw new Error("Tidak ada lokasi aktif untuk pengurangan stok.");
+          .select("id, code")
+          .in("code", ["STOK-BARU", "STOK-RETUR", "STOK-UNREADY"]);
+        for (const l of ((locs ?? []) as { id: string; code: string }[])) {
+          locByKondisi.set(l.code, l.id);
+        }
+        if (!locByKondisi.has("STOK-BARU")) {
+          throw new Error("Lokasi STOK-BARU belum ada — jalankan migrasi 0010 dulu.");
+        }
       }
       let reqCount = 0;
       let itemCount = 0;
@@ -334,20 +338,38 @@ export function RequestUploadPage() {
         reqCount++;
         itemCount += (inserted ?? []).length;
 
-        // 3) Kurangi stok via RPC, atau tandai langsung.
+        // 3) Kurangi stok via RPC per kondisi (STATUS ASSET), atau tandai langsung.
         if (deductStock) {
-          const lines = ((inserted ?? []) as { id: string; qty_approved: number | string }[]).map((x, idx) => ({
-            request_item_id: x.id,
-            qty: Number(x.qty_approved),
-            resi: (itemsPayload[idx]?.resi ?? "").split("\n")[0] ?? "",
-          }));
-          const { error: shipErr } = await supabase.rpc("ship_request_items", {
-            p_request_id: req.id,
-            p_location_id: defaultLocId,
-            p_lines: lines,
-            p_notes: `Upload dokumen pengiriman ${ticket ?? ""}`.trim(),
+          // Kelompokkan item per kondisi: RETURN → STOK-RETUR, UNREADY → STOK-UNREADY, lainnya → STOK-BARU.
+          const byKondisi = new Map<string, { id: string; qty_approved: number | string; resi: string }[]>();
+          ((inserted ?? []) as { id: string; qty_approved: number | string }[]).forEach((x, idx) => {
+            const aset = (itemsPayload[idx]?.status_aset ?? "").toUpperCase();
+            const kode = aset.includes("RETURN") ? "STOK-RETUR"
+              : aset.includes("UNREADY") ? "STOK-UNREADY"
+              : "STOK-BARU";
+            if (!byKondisi.has(kode)) byKondisi.set(kode, []);
+            byKondisi.get(kode)!.push({
+              id: x.id,
+              qty_approved: x.qty_approved,
+              resi: (itemsPayload[idx]?.resi ?? "").split("\n")[0] ?? "",
+            });
           });
-          if (shipErr) throw new Error(`Gagal kirim ${ticket ?? req.id}: ${shipErr.message}`);
+          for (const [kode, lines] of byKondisi) {
+            const locId = locByKondisi.get(kode);
+            if (!locId) throw new Error(`Lokasi ${kode} belum ada di database.`);
+            const payload = lines.map((x) => ({
+              request_item_id: x.id,
+              qty: Number(x.qty_approved),
+              resi: x.resi,
+            }));
+            const { error: shipErr } = await supabase.rpc("ship_request_items", {
+              p_request_id: req.id,
+              p_location_id: locId,
+              p_lines: payload,
+              p_notes: `Upload dokumen pengiriman ${ticket ?? ""} (${kode})`.trim(),
+            });
+            if (shipErr) throw new Error(`Gagal kirim ${ticket ?? req.id} [${kode}]: ${shipErr.message}`);
+          }
         } else {
           // Tandai selesai tanpa ubah stok.
           const { data: cur } = await supabase.from("request_items").select("id, qty_approved").eq("request_id", req.id);
