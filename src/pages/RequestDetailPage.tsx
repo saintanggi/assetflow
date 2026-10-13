@@ -580,7 +580,8 @@ export function RequestDetailPage() {
                   <th className="pb-2 pr-3 text-right">Minta</th>
                   <th className="pb-2 pr-3 text-right">Disetujui</th>
                   <th className="pb-2 pr-3 text-right">Terkirim</th>
-                  <th className="pb-2 pr-3">Barcode / SN</th>
+                  <th className="pb-2 pr-3">Barcode</th>
+                  <th className="pb-2 pr-3">SN / Keterangan</th>
                   <th className="pb-2 pr-3">Resi</th>
                   <th className="pb-2">Status</th>
                 </tr>
@@ -607,12 +608,18 @@ export function RequestDetailPage() {
                       ) : (
                         "—"
                       )}
-                      {x.notes && (
-                        <div className="mt-1 space-y-0.5">
-                          {x.notes.split("\n").map((n, i) => (
-                            <div key={i} className="text-slate-500">{n.trim()}</div>
-                          ))}
+                    </td>
+                    <td className="py-2 pr-3 font-mono text-xs">
+                      {x.notes ? (
+                        <div className="space-y-0.5">
+                          {x.notes.split("\n").map((n, i) => {
+                            // Bersihkan prefix "Ket: " agar tampil seperti di Excel.
+                            const clean = n.trim().replace(/^Ket:\s*/i, "");
+                            return <div key={i} className="text-slate-400">{clean}</div>;
+                          })}
                         </div>
+                      ) : (
+                        "—"
                       )}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">
