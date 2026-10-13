@@ -25,6 +25,23 @@ interface ParsedRow {
   terkirim: string;
 }
 
+// Ubah pesan error teknis (berisi UUID) menjadi bahasa yang mudah dipahami.
+function formatShipError(raw: string, itemNameById: Map<string, string>): string {
+  // Pola: Stok tidak mencukupi (item <uuid>, lokasi <uuid>): tersedia X, perubahan -Y
+  const m = raw.match(/Stok tidak mencukupi \(item ([0-9a-f-]{36})/i);
+  if (m) {
+    const itemName = itemNameById.get(m[1]) ?? "barang";
+    const avail = raw.match(/tersedia ([\d.,]+)/i)?.[1] ?? "?";
+    const need = raw.match(/perubahan -([\d.,]+)/i)?.[1] ?? "?";
+    return `${itemName}: stok tidak cukup (tersedia ${avail}, dibutuhkan ${need}). Isi stok dulu atau matikan "Kurangi stok otomatis".`;
+  }
+  // Pola lain dari RPC: bersihkan UUID yang tersisa.
+  return raw
+    .replace(/Gagal kirim [A-Z0-9-]+:\s*/i, "")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[id]")
+    .trim() || "gagal tanpa keterangan";
+}
+
 interface Preview {
   rows: ParsedRow[];
   groups: number;
@@ -65,6 +82,7 @@ export function RequestUploadPage() {
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<string | null>(null);
+  const [failList, setFailList] = useState<{ ticket: string; detail: string }[]>([]);
 
   const canShip = hasPermission("requests.review");
 
@@ -107,6 +125,7 @@ export function RequestUploadPage() {
   const handleFile = async (f: File) => {
     setPreview(null);
     setResult(null);
+    setFailList([]);
     setFileName(f.name);
     try {
       const buf = await f.arrayBuffer();
@@ -224,8 +243,11 @@ export function RequestUploadPage() {
         .eq("is_active", true)
         .limit(5000);
       const byName = new Map<string, string>();
-      for (const it of (items ?? []) as { id: string; name: string }[])
+      const itemNameById = new Map<string, string>();
+      for (const it of (items ?? []) as { id: string; name: string }[]) {
         byName.set(it.name.trim().toUpperCase(), it.id);
+        itemNameById.set(it.id, it.name);
+      }
 
       if (autoCreate) {
         const missing = [...new Set(rows.map((r) => r.itemName).filter((n) => !byName.has(n.toUpperCase())))];
@@ -262,8 +284,35 @@ export function RequestUploadPage() {
         groups.get(key)!.push(r);
       }
 
-      // Skip tiket duplikat.
-      const dupSet = new Set(preview.dupTickets);
+      // Timpa duplikat: tiket yang sudah ada di DB dibalik pengirimannya lalu dihapus,
+      // agar upload ini menggantikan data lama (tidak dobel).
+      const uploadTickets = [...new Set(rows.map((r) => r.ticket).filter(Boolean))];
+      let overwritten = 0;
+      if (uploadTickets.length > 0) {
+        setProgress("Mengecek tiket duplikat…");
+        const { data: existing } = await supabase
+          .from("requests")
+          .select("id, ticket_no, request_number")
+          .in("ticket_no", uploadTickets);
+        for (const ex of (existing ?? []) as { id: string; ticket_no: string; request_number: string }[]) {
+          setProgress(`Menimpa tiket ${ex.ticket_no}…`);
+          // Balik transaksi pengiriman lama (kembalikan stok).
+          const { data: txns } = await supabase
+            .from("inventory_transactions")
+            .select("id")
+            .eq("reference", `REQ-KIRIM/${ex.request_number}`);
+          for (const t of (txns ?? []) as { id: string }[]) {
+            await supabase.rpc("reverse_inventory_transaction", {
+              p_transaction_id: t.id,
+              p_reason: `Ditimpa upload ulang tiket ${ex.ticket_no}`,
+            });
+          }
+          // Hapus request lama (cascade ke request_items).
+          await supabase.from("requests").delete().eq("id", ex.id);
+          overwritten++;
+        }
+      }
+      const dupSet = new Set<string>();
       // Lokasi kanonis per kondisi untuk pengurangan stok.
       const locByKondisi = new Map<string, string>();
       if (deductStock) {
@@ -280,7 +329,7 @@ export function RequestUploadPage() {
       }
       let reqCount = 0;
       let itemCount = 0;
-      const failures: string[] = [];
+      const failures: { ticket: string; detail: string }[] = [];
       let n = 0;
       for (const [key, rs] of groups) {
         n++;
@@ -390,14 +439,18 @@ export function RequestUploadPage() {
         } catch (e) {
           // Gagal di satu permintaan: hapus request yang sudah terbuat (rollback parsial), catat, lanjut.
           if (reqId) await supabase.from("requests").delete().eq("id", reqId);
-          failures.push(`${ticket ?? `baris ${n}`}: ${e instanceof Error ? e.message : "gagal"}`);
+          const rawMsg = e instanceof Error ? e.message : "gagal";
+          failures.push({
+            ticket: ticket ?? `baris ${n}`,
+            detail: formatShipError(rawMsg, itemNameById),
+          });
         }
       }
 
-      const failMsg = failures.length > 0
-        ? ` Gagal ${failures.length}: ${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""}`
-        : "";
-      setResult(`Berhasil: ${reqCount} permintaan, ${itemCount} baris barang terimpor.${deductStock ? " Stok otomatis berkurang." : ""}${failMsg}`);
+      setFailList(failures);
+      const failMsg = failures.length > 0 ? ` Gagal: ${failures.length} permintaan (lihat rincian di bawah).` : "";
+      const overMsg = overwritten > 0 ? ` ${overwritten} tiket lama ditimpa.` : "";
+      setResult(`Berhasil: ${reqCount} permintaan, ${itemCount} baris barang terimpor.${deductStock ? " Stok otomatis berkurang." : ""}${overMsg}${failMsg}`);
       if (failures.length > 0) toast.warning(`${failures.length} permintaan gagal — lihat rincian.`);
       else toast.success("Import selesai.");
       setPreview(null);
@@ -492,9 +545,26 @@ export function RequestUploadPage() {
             )}
 
             {result && (
-              <div className="flex gap-2 rounded-md bg-brand-400/10 p-3 text-sm text-brand-200">
-                <CheckCircle2 className="h-5 w-5 shrink-0" />
-                <p>{result}</p>
+              <div className="space-y-3">
+                <div className="flex gap-2 rounded-md bg-brand-400/10 p-3 text-sm text-brand-200">
+                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                  <p>{result}</p>
+                </div>
+                {failList.length > 0 && (
+                  <div className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3">
+                    <p className="mb-2 text-sm font-semibold text-rose-200">
+                      Rincian kegagalan ({failList.length}):
+                    </p>
+                    <ul className="max-h-64 space-y-1.5 overflow-y-auto text-sm text-rose-100/90">
+                      {failList.map((f, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="shrink-0 font-mono font-semibold text-rose-300">{f.ticket}:</span>
+                          <span>{f.detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
