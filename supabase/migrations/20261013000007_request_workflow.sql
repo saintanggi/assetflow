@@ -193,7 +193,7 @@ BEGIN
 
   -- Buat header transaksi OUT.
   INSERT INTO public.inventory_transactions
-    (type, status, source_location_id, notes, reference, requested_by)
+    (type, status, source_location_id, notes, reference, created_by)
   VALUES
     ('out', 'posted', p_location_id, p_notes,
      (SELECT 'REQ-KIRIM/' || request_number FROM public.requests WHERE id = p_request_id),
