@@ -229,10 +229,10 @@ export function RequestUploadPage() {
       if (autoCreate) {
         const missing = [...new Set(rows.map((r) => r.itemName).filter((n) => !byName.has(n.toUpperCase())))];
         // Ambil unit default (PCS) untuk barang baru.
-        const { data: units } = await supabase.from("units").select("id, code").eq("is_active", true).limit(50);
+        const { data: units } = await supabase.from("units").select("id, code").limit(50);
         const pcsUnit = ((units ?? []) as { id: string; code: string }[]).find((u) => u.code.toUpperCase() === "PCS")
           ?? (units?.[0] as { id: string } | undefined);
-        if (!pcsUnit) throw new Error("Tidak ada satuan aktif untuk barang baru.");
+        if (!pcsUnit) throw new Error("Tabel satuan kosong — hubungi super admin.");
         for (let i = 0; i < missing.length; i += 50) {
           const batch = missing.slice(i, i + 50);
           // SKU unik per batch.
