@@ -164,13 +164,20 @@ export function InventoryListPage() {
     try {
       // SKU otomatis (tidak ditampilkan ke user).
       const autoSku = `BRG-${Date.now().toString(36).toUpperCase()}`;
+      // Satuan default ke PCS bila tidak dipilih.
+      let unitId = values.unit_id ?? null;
+      if (!unitId) {
+        const { data: pcs } = await supabase.from("units").select("id").ilike("code", "pcs").limit(1).maybeSingle();
+        unitId = (pcs as { id: string } | null)?.id ?? null;
+      }
+      if (!unitId) throw new Error("Satuan wajib dipilih (unit PCS tidak ditemukan).");
       const { error } = await supabase.from("inventory_items").insert({
         sku: autoSku,
         name: values.name,
         category_id: values.category_id ?? null,
         brand: values.brand || null,
         model: values.model || null,
-        unit_id: values.unit_id ?? null,
+        unit_id: unitId,
         barcode: values.barcode || null,
         min_stock: values.min_stock ?? null,
         location_id: values.location_id ?? null,
