@@ -276,6 +276,7 @@ export function RequestUploadPage() {
       }
       let reqCount = 0;
       let itemCount = 0;
+      const failures: string[] = [];
       let n = 0;
       for (const [key, rs] of groups) {
         n++;
@@ -284,6 +285,8 @@ export function RequestUploadPage() {
         if (ticket && dupSet.has(ticket)) continue;
 
         setProgress(`Mengimpor permintaan ${n}/${groups.size}…`);
+        let reqId: string | null = null;
+        try {
         const hasPending = rs.some((r) => r.terkirim === "PENDING");
         const { data: req, error: reqErr } = await supabase
           .from("requests")
@@ -301,6 +304,7 @@ export function RequestUploadPage() {
           .select("id")
           .single();
         if (reqErr) throw new Error(reqErr.message);
+        reqId = req.id;
 
         // Agregasi per item (hindari duplikat unique constraint).
         const byItem = new Map<string, ParsedRow[]>();
@@ -361,10 +365,19 @@ export function RequestUploadPage() {
             .update({ status: hasPending ? "disetujui_sebagian" : "selesai" })
             .eq("id", req.id);
         }
+        } catch (e) {
+          // Gagal di satu permintaan: hapus request yang sudah terbuat (rollback parsial), catat, lanjut.
+          if (reqId) await supabase.from("requests").delete().eq("id", reqId);
+          failures.push(`${ticket ?? `baris ${n}`}: ${e instanceof Error ? e.message : "gagal"}`);
+        }
       }
 
-      setResult(`Berhasil: ${reqCount} permintaan, ${itemCount} baris barang terimpor.${deductStock ? " Stok otomatis berkurang." : ""}`);
-      toast.success("Import selesai.");
+      const failMsg = failures.length > 0
+        ? ` Gagal ${failures.length}: ${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""}`
+        : "";
+      setResult(`Berhasil: ${reqCount} permintaan, ${itemCount} baris barang terimpor.${deductStock ? " Stok otomatis berkurang." : ""}${failMsg}`);
+      if (failures.length > 0) toast.warning(`${failures.length} permintaan gagal — lihat rincian.`);
+      else toast.success("Import selesai.");
       setPreview(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal mengimpor.");
