@@ -100,6 +100,7 @@ const NAV: NavItem[] = [
       { to: "/transaksi/opname", label: "Stock Opname", icon: ClipboardCheck, permission: "inventory.adjust" },
       { to: "/transaksi/kartu-stok", label: "Input Kartu Stok", icon: ClipboardList, permission: "inventory.receive" },
       { to: "/transaksi/riwayat", label: "Riwayat Transaksi", icon: History, permission: "inventory.view" },
+      { to: "/transaksi/log", label: "Log Transaksi", icon: ScrollText, permission: "inventory.view" },
     ],
   },
   { to: "/pindai", label: "Pindai Kode", icon: ScanLine },

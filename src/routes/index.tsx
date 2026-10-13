@@ -21,6 +21,7 @@ import { IssuePage } from "../pages/IssuePage";
 import { TransferPage } from "../pages/TransferPage";
 import { StockOpnamePage } from "../pages/StockOpnamePage";
 import { TransactionHistoryPage } from "../pages/TransactionHistoryPage";
+import { TransactionLogPage } from "../pages/TransactionLogPage";
 import { KartuStokPage } from "../pages/KartuStokPage";
 import { LiveStockPage } from "../pages/LiveStockPage";
 import { StockAlertsPage } from "../pages/StockAlertsPage";
@@ -206,6 +207,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission code="inventory.receive">
             <KartuStokPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/transaksi/log",
+        element: (
+          <RequirePermission code="inventory.view">
+            <TransactionLogPage />
           </RequirePermission>
         ),
       },
