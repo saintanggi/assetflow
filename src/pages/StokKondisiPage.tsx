@@ -221,13 +221,12 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         .eq("id", editRow.id);
       if (nameErr) throw new Error(nameErr.message);
 
-      // Update stok awal (upsert balance).
-      const { error: balErr } = await supabase
-        .from("inventory_balances")
-        .upsert(
-          { item_id: editRow.id, location_id: locationId, qty: qty + editRow.totalIn - editRow.totalOut, opening_qty: qty },
-          { onConflict: "item_id,location_id" }
-        );
+      // Update stok awal via RPC (bypass RLS).
+      const { error: balErr } = await supabase.rpc("set_opening_stock", {
+        p_item_id: editRow.id,
+        p_location_id: locationId,
+        p_qty: qty,
+      });
       if (balErr) throw new Error(balErr.message);
 
       toast.success("Berhasil diperbarui.");

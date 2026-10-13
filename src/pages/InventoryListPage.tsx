@@ -235,11 +235,12 @@ export function InventoryListPage() {
       for (const j of jobs) {
         const locId = locMap.get(j.code);
         if (!locId) throw new Error(`Lokasi ${j.code} belum ada.`);
-        // Set langsung sebagai stok awal (bukan transaksi).
-        const { error } = await supabase.from("inventory_balances").upsert(
-          { item_id: adjustItem.id, location_id: locId, qty: j.target, opening_qty: j.target },
-          { onConflict: "item_id,location_id" }
-        );
+        // Set langsung sebagai stok awal via RPC (bukan transaksi).
+        const { error } = await supabase.rpc("set_opening_stock", {
+          p_item_id: adjustItem.id,
+          p_location_id: locId,
+          p_qty: j.target,
+        });
         if (error) throw new Error(error.message);
       }
       toast.success(`Stok awal ${adjustItem.name} diatur (Baru: ${targetBaru}, Retur: ${targetRetur}).`);
