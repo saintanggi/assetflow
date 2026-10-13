@@ -3,9 +3,9 @@ import { z } from "zod";
 export const inventoryItemSchema = z.object({
   sku: z
     .string()
-    .min(1, "SKU wajib diisi")
     .max(50, "SKU maksimal 50 karakter")
-    .regex(/^[A-Za-z0-9-_/.]+$/, "SKU hanya boleh huruf, angka, - _ / ."),
+    .regex(/^[A-Za-z0-9-_/.]*$/, "SKU hanya boleh huruf, angka, - _ / .")
+    .optional(),
   name: z.string().min(1, "Nama barang wajib diisi").max(200),
   category_id: z.string().uuid("Kategori tidak valid").nullable().optional(),
   brand: z.string().max(100).nullable().optional(),

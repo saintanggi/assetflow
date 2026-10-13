@@ -144,19 +144,10 @@ export function InventoryListPage() {
   const onAddItem = async (values: InventoryPageFormValues) => {
     setSaving(true);
     try {
-      const { count } = await supabase
-        .from("inventory_items")
-        .select("id", { count: "exact", head: true })
-        .eq("sku", values.sku);
-      if ((count ?? 0) > 0) {
-        toast.error("SKU sudah dipakai", {
-          description: `SKU "${values.sku}" sudah terdaftar.`,
-        });
-        setSaving(false);
-        return;
-      }
+      // SKU otomatis (tidak ditampilkan ke user).
+      const autoSku = `BRG-${Date.now().toString(36).toUpperCase()}`;
       const { error } = await supabase.from("inventory_items").insert({
-        sku: values.sku,
+        sku: autoSku,
         name: values.name,
         category_id: values.category_id ?? null,
         brand: values.brand || null,
@@ -183,6 +174,62 @@ export function InventoryListPage() {
     }
   };
 
+  // --- Atur Stok (isi/edit stok awal manual) ---
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustItem, setAdjustItem] = useState<ItemRow | null>(null);
+  const [adjustQty, setAdjustQty] = useState("");
+  const [adjustSaving, setAdjustSaving] = useState(false);
+
+  const openAdjust = (row: ItemRow) => {
+    setAdjustItem(row);
+    setAdjustQty(String(row.total_stock ?? 0));
+    setAdjustOpen(true);
+  };
+
+  const saveAdjust = async () => {
+    if (!adjustItem) return;
+    const target = Number(adjustQty);
+    if (isNaN(target) || target < 0) {
+      toast.error("Stok harus angka ≥ 0.");
+      return;
+    }
+    const current = Number(adjustItem.total_stock ?? 0);
+    const delta = target - current;
+    if (delta === 0) {
+      toast.info("Stok tidak berubah.");
+      setAdjustOpen(false);
+      return;
+    }
+    // Lokasi default: lokasi aktif pertama.
+    const locId = locations[0]?.id;
+    if (!locId) {
+      toast.error("Tidak ada lokasi aktif.");
+      return;
+    }
+    setAdjustSaving(true);
+    try {
+      const type = delta > 0 ? "in" : "out";
+      const { error } = await supabase.rpc("post_inventory_transaction", {
+        p_idempotency_key: crypto.randomUUID(),
+        p_type: type,
+        p_transaction_date: new Date().toISOString().slice(0, 10),
+        p_source_location_id: delta > 0 ? null : locId,
+        p_dest_location_id: delta > 0 ? locId : null,
+        p_reference: null,
+        p_notes: `Atur stok manual via menu Persediaan (dari ${current} ke ${target}).`,
+        p_items: [{ item_id: adjustItem.id, qty: Math.abs(delta) }],
+      });
+      if (error) throw new Error(error.message);
+      toast.success(`Stok ${adjustItem.name} diatur ke ${target}.`);
+      setAdjustOpen(false);
+      await loadItems();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal mengatur stok.");
+    } finally {
+      setAdjustSaving(false);
+    }
+  };
+
   const stockBadge = (row: ItemRow) => {
     switch (row.stock_status) {
       case "habis":
@@ -197,18 +244,17 @@ export function InventoryListPage() {
   const columns: ColumnDef<ItemRow>[] = useMemo(
     () => [
       {
-        header: "SKU",
-        accessorKey: "sku",
+        header: "Nama",
+        accessorKey: "name",
         cell: ({ row }) => (
           <Link
             to={`/persediaan/${row.original.id}`}
             className="font-medium text-brand-300 hover:underline"
           >
-            {row.original.sku}
+            {row.original.name}
           </Link>
         ),
       },
-      { header: "Nama", accessorKey: "name" },
       {
         header: "Merek",
         accessorKey: "brand",
@@ -248,6 +294,19 @@ export function InventoryListPage() {
             <Badge variant="secondary">Tidak</Badge>
           ),
       },
+      {
+        header: "",
+        id: "atur-stok",
+        cell: ({ row }) => (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => openAdjust(row.original)}
+          >
+            Atur Stok
+          </Button>
+        ),
+      },
     ],
     []
   );
@@ -269,7 +328,7 @@ export function InventoryListPage() {
         columns={columns}
         data={items}
         loading={loading}
-        searchPlaceholder="Cari SKU atau nama barang…"
+        searchPlaceholder="Cari nama barang…"
         pageSize={15}
         emptyTitle="Tidak ada barang"
         emptyDescription="Belum ada barang persediaan yang terdaftar."
@@ -284,13 +343,6 @@ export function InventoryListPage() {
         </DialogHeader>
         <form onSubmit={handleSubmit(onAddItem)}>
           <div className="grid gap-4 px-1 py-2 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="inv-sku">SKU *</Label>
-              <Input id="inv-sku" {...register("sku")} placeholder="BRG-0001" />
-              {fieldError("sku") && (
-                <p className="mt-1 text-xs text-rose-400">{fieldError("sku")}</p>
-              )}
-            </div>
             <div>
               <Label htmlFor="inv-barcode">Barcode</Label>
               <Input id="inv-barcode" {...register("barcode")} placeholder="Opsional" />
@@ -408,6 +460,38 @@ export function InventoryListPage() {
             </Button>
           </DialogFooter>
         </form>
+      </Dialog>
+
+      <Dialog open={adjustOpen} onOpenChange={setAdjustOpen}>
+        <DialogHeader>
+          <DialogTitle>Atur Stok — {adjustItem?.name}</DialogTitle>
+          <DialogDescription>
+            Isi atau ubah stok manual. Tercatat sebagai transaksi penyesuaian di Log Transaksi.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 px-1 py-2">
+          <p className="text-sm text-slate-400">
+            Stok saat ini: <span className="font-semibold text-slate-100">{formatQty(adjustItem?.total_stock ?? 0)}</span>
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="adjust-qty">Stok baru</Label>
+            <Input
+              id="adjust-qty"
+              type="number"
+              min="0"
+              value={adjustQty}
+              onChange={(e) => setAdjustQty(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setAdjustOpen(false)} disabled={adjustSaving}>
+            Batal
+          </Button>
+          <Button onClick={saveAdjust} disabled={adjustSaving}>
+            {adjustSaving ? "Menyimpan…" : "Simpan"}
+          </Button>
+        </DialogFooter>
       </Dialog>
     </div>
   );
