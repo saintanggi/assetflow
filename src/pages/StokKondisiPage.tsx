@@ -66,6 +66,8 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   const [rows, setRows] = useState<StokRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [locationId, setLocationId] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   // Edit inline (superadmin): nama & qty stok awal.
   const [editOpen, setEditOpen] = useState(false);
@@ -112,11 +114,14 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
           openingMap.set(b.item_id, Number(b.opening_qty ?? 0));
         }
 
-        const { data: leds } = await supabase
+        let ledQuery = supabase
           .from("inventory_ledger")
           .select("item_id, qty_change")
           .eq("location_id", locationId)
           .limit(10000);
+        if (dateFrom) ledQuery = ledQuery.gte("created_at", `${dateFrom}T00:00:00`);
+        if (dateTo) ledQuery = ledQuery.lte("created_at", `${dateTo}T23:59:59`);
+        const { data: leds } = await ledQuery;
         for (const l of (leds ?? []) as { item_id: string; qty_change: number | string }[]) {
           const q = Number(l.qty_change);
           if (q > 0) inMap.set(l.item_id, (inMap.get(l.item_id) ?? 0) + q);
@@ -163,7 +168,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kondisi]);
+  }, [kondisi, dateFrom, dateTo]);
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -355,7 +360,33 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       </div>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="space-y-4 pt-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-slate-400">Filter:</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
+            />
+            <span className="text-sm text-slate-500">s/d</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
+            />
+            {(dateFrom || dateTo) && (
+              <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+                Reset
+              </Button>
+            )}
+            {(dateFrom || dateTo) && (
+              <span className="text-xs text-slate-500">
+                IN/OUT menampilkan periode {dateFrom || "…"} s/d {dateTo || "…"}
+              </span>
+            )}
+          </div>
           <DataTable
             columns={columns}
             data={rows}
