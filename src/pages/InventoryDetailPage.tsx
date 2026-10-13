@@ -1,13 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Printer, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { ArrowLeft, Printer, ArrowDownToLine, ArrowUpFromLine, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { formatDate, formatDateTime, formatQty, formatRupiah } from "../lib/format";
+import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Select } from "../components/ui/select";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -50,10 +61,101 @@ interface LedgerRow extends InventoryLedger {
 export function InventoryDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { isSuperAdmin } = useAuth();
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [balances, setBalances] = useState<BalanceRow[]>([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // State edit master (superadmin).
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [units, setUnits] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [form, setForm] = useState({
+    name: "",
+    sku: "",
+    barcode: "",
+    category_id: "",
+    unit_id: "",
+    brand: "",
+    model: "",
+    min_stock: "",
+    purchase_price: "",
+    supplier_id: "",
+    photo_url: "",
+    is_active: true,
+  });
+
+  const openEdit = async () => {
+    if (!item) return;
+    setForm({
+      name: item.name ?? "",
+      sku: item.sku ?? "",
+      barcode: item.barcode ?? "",
+      category_id: item.category_id ?? "",
+      unit_id: item.unit_id ?? "",
+      brand: item.brand ?? "",
+      model: item.model ?? "",
+      min_stock: String(item.min_stock ?? 0),
+      purchase_price: item.purchase_price != null ? String(item.purchase_price) : "",
+      supplier_id: item.supplier_id ?? "",
+      photo_url: item.photo_url ?? "",
+      is_active: item.is_active ?? true,
+    });
+    setEditOpen(true);
+    const [c, u, s] = await Promise.all([
+      supabase.from("asset_categories").select("id, name").order("name"),
+      supabase.from("units").select("id, code, name").order("code"),
+      supabase.from("suppliers").select("id, name").order("name"),
+    ]);
+    setCategories((c.data ?? []) as { id: string; name: string }[]);
+    setUnits((u.data ?? []) as { id: string; code: string; name: string }[]);
+    setSuppliers((s.data ?? []) as { id: string; name: string }[]);
+  };
+
+  const saveEdit = async () => {
+    if (!item) return;
+    if (!form.name.trim()) {
+      toast.error("Nama barang wajib diisi.");
+      return;
+    }
+    if (!form.unit_id) {
+      toast.error("Satuan wajib dipilih.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("inventory_items")
+        .update({
+          name: form.name.trim(),
+          sku: form.sku.trim() || item.sku,
+          barcode: form.barcode.trim() || null,
+          category_id: form.category_id || null,
+          unit_id: form.unit_id,
+          brand: form.brand.trim() || null,
+          model: form.model.trim() || null,
+          min_stock: Number(form.min_stock) || 0,
+          purchase_price: form.purchase_price === "" ? null : Number(form.purchase_price),
+          supplier_id: form.supplier_id || null,
+          photo_url: form.photo_url.trim() || null,
+          is_active: form.is_active,
+        })
+        .eq("id", item.id);
+      if (error) throw new Error(error.message);
+      toast.success("Master barang diperbarui.");
+      setEditOpen(false);
+      // Muat ulang.
+      const { data } = await supabase.from("inventory_items").select(ITEM_SELECT).eq("id", item.id).maybeSingle();
+      if (data) setItem(data as InventoryItem);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -157,6 +259,11 @@ export function InventoryDetailPage() {
             <Button variant="outline" onClick={() => navigate("/persediaan")}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
             </Button>
+            {isSuperAdmin && (
+              <Button variant="outline" onClick={openEdit}>
+                <Pencil className="mr-2 h-4 w-4" /> Ubah Master
+              </Button>
+            )}
             <Button variant="outline" onClick={() => navigate(`/label?sku=${item.id}`)}>
               <Printer className="mr-2 h-4 w-4" /> Cetak Barcode
             </Button>
@@ -308,6 +415,88 @@ export function InventoryDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogHeader>
+          <DialogTitle>Ubah Master Barang</DialogTitle>
+          <DialogDescription>
+            Hanya superadmin yang dapat mengubah master barang.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Nama Barang *</Label>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>SKU</Label>
+            <Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Barcode</Label>
+            <Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder="Otomatis = SKU bila kosong" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Kategori</Label>
+            <Select
+              value={form.category_id}
+              onValueChange={(v) => setForm({ ...form, category_id: v })}
+              placeholder="Pilih kategori"
+              options={categories.map((c) => ({ value: c.id, label: c.name }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Satuan *</Label>
+            <Select
+              value={form.unit_id}
+              onValueChange={(v) => setForm({ ...form, unit_id: v })}
+              placeholder="Pilih satuan"
+              options={units.map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Merek</Label>
+            <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Model</Label>
+            <Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Stok Minimum (Buffer)</Label>
+            <Input type="number" min="0" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Harga Beli</Label>
+            <Input type="number" min="0" value={form.purchase_price} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Pemasok</Label>
+            <Select
+              value={form.supplier_id}
+              onValueChange={(v) => setForm({ ...form, supplier_id: v })}
+              placeholder="Pilih pemasok"
+              options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>URL Foto</Label>
+            <Input value={form.photo_url} onChange={(e) => setForm({ ...form, photo_url: e.target.value })} placeholder="https://…" />
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+            />
+            <span className="text-sm text-slate-200">Aktif</span>
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditOpen(false)}>Batal</Button>
+          <Button onClick={saveEdit} disabled={saving}>{saving ? "Menyimpan…" : "Simpan"}</Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }
