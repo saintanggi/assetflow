@@ -79,7 +79,7 @@ export function RequestDetailPage() {
         supabase.from("requests").select("*").eq("id", id).single(),
         supabase
           .from("request_items")
-          .select("*, inventory_items(sku, name, brand, unit_code)")
+          .select("*, inventory_items(sku, name, brand)")
           .eq("request_id", id)
           .order("created_at"),
       ]);
