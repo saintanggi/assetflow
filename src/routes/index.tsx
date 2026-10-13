@@ -22,6 +22,7 @@ import { TransferPage } from "../pages/TransferPage";
 import { StockOpnamePage } from "../pages/StockOpnamePage";
 import { TransactionHistoryPage } from "../pages/TransactionHistoryPage";
 import { TransactionLogPage } from "../pages/TransactionLogPage";
+import { StokKondisiPage } from "../pages/StokKondisiPage";
 import { KartuStokPage } from "../pages/KartuStokPage";
 import { LiveStockPage } from "../pages/LiveStockPage";
 import { StockAlertsPage } from "../pages/StockAlertsPage";
@@ -191,6 +192,30 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission code="requests.view">
             <RequestDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/persediaan/baru",
+        element: (
+          <RequirePermission code="inventory.view">
+            <StokKondisiPage kondisi="baru" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/persediaan/return",
+        element: (
+          <RequirePermission code="inventory.view">
+            <StokKondisiPage kondisi="return" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/persediaan/unready",
+        element: (
+          <RequirePermission code="inventory.view">
+            <StokKondisiPage kondisi="unready" />
           </RequirePermission>
         ),
       },
