@@ -237,7 +237,7 @@ export function InventoryDetailPage() {
     { label: "Kategori", value: item.asset_categories?.name ?? "—" },
     {
       label: "Satuan",
-      value: item.units ? `${item.units.code} — ${item.units.name}` : "—",
+      value: item.units ? item.units.code.toUpperCase() : "—",
     },
     { label: "Merek", value: item.brand ?? "—" },
     { label: "Model", value: item.model ?? "—" },
@@ -451,7 +451,7 @@ export function InventoryDetailPage() {
               value={form.unit_id}
               onValueChange={(v) => setForm({ ...form, unit_id: v })}
               placeholder="Pilih satuan"
-              options={units.map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))}
+              options={units.map((u) => ({ value: u.id, label: u.code.toUpperCase() }))}
             />
           </div>
           <div className="space-y-1.5">

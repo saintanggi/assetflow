@@ -296,8 +296,7 @@ export function InventoryListPage() {
       },
       {
         header: "Satuan",
-        cell: ({ row }) =>
-          row.original.units ? `${row.original.units.code} — ${row.original.units.name}` : "—",
+        cell: ({ row }) => row.original.units?.code?.toUpperCase() ?? "—",
       },
       {
         header: "Stok Baru",
@@ -409,7 +408,7 @@ export function InventoryListPage() {
               <Select
                 id="inv-unit"
                 placeholder="Pilih satuan"
-                options={units.map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))}
+                options={units.map((u) => ({ value: u.id, label: u.code.toUpperCase() }))}
                 {...register("unit_id", {
                   setValueAs: (v: string) => (v === "" ? null : v),
                 })}
