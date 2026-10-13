@@ -12,6 +12,7 @@ import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { Card, CardContent } from "../components/ui/card";
+import { exportToCsv } from "../lib/csv";
 import {
   Dialog,
   DialogDescription,
@@ -70,6 +71,149 @@ export function TransactionHistoryPage() {
   const [reversing, setReversing] = useState(false);
 
   const canAdjust = hasPermission("inventory.adjust");
+
+  // ===== Tampilan rincian per baris barang =====
+  type LineRow = {
+    id: string;
+    qty: number | string;
+    resi: string | null;
+    gerai: string | null;
+    status_aset: string | null;
+    notes: string | null;
+    created_at: string;
+    tx: { doc_number: string; transaction_date: string; type: TransactionType; status: TransactionStatus } | null;
+    item: { sku: string; name: string } | null;
+  };
+  const [view, setView] = useState<"dokumen" | "baris">("dokumen");
+  const [lineRows, setLineRows] = useState<LineRow[]>([]);
+  const [lineLoading, setLineLoading] = useState(false);
+  const [lineLoaded, setLineLoaded] = useState(false);
+
+  const loadLineItems = async () => {
+    setLineLoading(true);
+    const { data, error } = await supabase
+      .from("inventory_transaction_items")
+      .select(
+        "id, qty, resi, gerai, status_aset, notes, created_at, " +
+          "inventory_transactions!inner(doc_number, transaction_date, type, status), " +
+          "inventory_items!inner(sku, name)"
+      )
+      .order("created_at", { ascending: false })
+      .limit(5000);
+    setLineLoading(false);
+    if (error) {
+      toast.error(`Gagal memuat rincian barang: ${error.message}`);
+      return;
+    }
+    const rows = ((data ?? []) as unknown as {
+      id: string;
+      qty: number | string;
+      resi: string | null;
+      gerai: string | null;
+      status_aset: string | null;
+      notes: string | null;
+      created_at: string;
+      inventory_transactions: LineRow["tx"] | LineRow["tx"][];
+      inventory_items: LineRow["item"] | LineRow["item"][];
+    }[]).map((r) => ({
+      id: r.id,
+      qty: r.qty,
+      resi: r.resi,
+      gerai: r.gerai,
+      status_aset: r.status_aset,
+      notes: r.notes,
+      created_at: r.created_at,
+      tx: Array.isArray(r.inventory_transactions) ? (r.inventory_transactions[0] ?? null) : r.inventory_transactions,
+      item: Array.isArray(r.inventory_items) ? (r.inventory_items[0] ?? null) : r.inventory_items,
+    }));
+    setLineRows(rows);
+    setLineLoaded(true);
+  };
+
+  const switchView = (v: "dokumen" | "baris") => {
+    setView(v);
+    if (v === "baris" && !lineLoaded && !lineLoading) void loadLineItems();
+  };
+
+  const lineColumns: ColumnDef<LineRow, unknown>[] = [
+    {
+      header: "Tanggal",
+      accessorKey: "created_at",
+      cell: ({ row }) =>
+        formatDate(row.original.tx?.transaction_date ?? row.original.created_at),
+    },
+    {
+      header: "Nama Barang",
+      id: "nama",
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.item?.name ?? "—"}</div>
+          <div className="font-mono text-xs text-slate-500">{row.original.item?.sku ?? ""}</div>
+        </div>
+      ),
+    },
+    {
+      header: "Qty",
+      accessorKey: "qty",
+      cell: ({ row }) => <span className="tnum">{formatQty(row.original.qty)}</span>,
+    },
+    {
+      header: "Tipe",
+      id: "tipe",
+      cell: ({ row }) =>
+        row.original.tx ? (
+          <Badge variant={TYPE_BADGE[row.original.tx.type]}>
+            {TRANSACTION_TYPE_LABELS[row.original.tx.type]}
+          </Badge>
+        ) : (
+          "—"
+        ),
+    },
+    { header: "Resi", accessorKey: "resi", cell: ({ row }) => row.original.resi ?? "—" },
+    { header: "Gerai", accessorKey: "gerai", cell: ({ row }) => row.original.gerai ?? "—" },
+    {
+      header: "Status Aset",
+      accessorKey: "status_aset",
+      cell: ({ row }) => row.original.status_aset ?? "—",
+    },
+    {
+      header: "No Dokumen",
+      id: "dok",
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-slate-500">{row.original.tx?.doc_number ?? "—"}</span>
+      ),
+    },
+  ];
+
+  const filteredLines = useMemo(() => {
+    return lineRows.filter(
+      (r) =>
+        (!typeFilter || r.tx?.type === typeFilter) &&
+        (!statusFilter || r.tx?.status === statusFilter)
+    );
+  }, [lineRows, typeFilter, statusFilter]);
+
+  const handleExportLines = () => {
+    if (filteredLines.length === 0) {
+      toast.error("Tidak ada data untuk diekspor.");
+      return;
+    }
+    exportToCsv(
+      "rincian-barang-transaksi",
+      filteredLines.map((r) => ({
+        Tanggal: formatDate(r.tx?.transaction_date ?? r.created_at),
+        "Nama Barang": r.item?.name ?? "",
+        SKU: r.item?.sku ?? "",
+        Qty: r.qty,
+        Tipe: r.tx ? TRANSACTION_TYPE_LABELS[r.tx.type] : "",
+        Resi: r.resi ?? "",
+        Gerai: r.gerai ?? "",
+        "Status Aset": r.status_aset ?? "",
+        "No Dokumen": r.tx?.doc_number ?? "",
+        Keterangan: r.notes ?? "",
+      }))
+    );
+  };
 
   const loadTransactions = async () => {
     setLoading(true);
@@ -232,6 +376,35 @@ export function TransactionHistoryPage() {
 
       <Card>
         <CardContent className="space-y-4 pt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-2">
+              <button
+                onClick={() => switchView("dokumen")}
+                className={`rounded-full px-3 py-1.5 text-sm transition ${
+                  view === "dokumen"
+                    ? "bg-brand-400/15 text-brand-200 ring-1 ring-brand-400/30"
+                    : "bg-white/5 text-slate-400 ring-1 ring-white/10 hover:bg-white/10"
+                }`}
+              >
+                Per Dokumen
+              </button>
+              <button
+                onClick={() => switchView("baris")}
+                className={`rounded-full px-3 py-1.5 text-sm transition ${
+                  view === "baris"
+                    ? "bg-brand-400/15 text-brand-200 ring-1 ring-brand-400/30"
+                    : "bg-white/5 text-slate-400 ring-1 ring-white/10 hover:bg-white/10"
+                }`}
+              >
+                Rincian per Barang
+              </button>
+            </div>
+            {view === "baris" && (
+              <Button variant="outline" size="sm" onClick={handleExportLines}>
+                Export CSV
+              </Button>
+            )}
+          </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="w-full space-y-1.5 sm:max-w-xs">
               <Label htmlFor="filter-type">Tipe</Label>
@@ -259,14 +432,25 @@ export function TransactionHistoryPage() {
             </div>
           </div>
 
-          <DataTable
-            columns={columns}
-            data={filtered}
-            loading={loading}
-            searchPlaceholder="Cari nomor dokumen, lokasi…"
-            emptyTitle="Tidak ada transaksi"
-            emptyDescription="Belum ada transaksi yang cocok dengan filter saat ini."
-          />
+          {view === "dokumen" ? (
+            <DataTable
+              columns={columns}
+              data={filtered}
+              loading={loading}
+              searchPlaceholder="Cari nomor dokumen, lokasi…"
+              emptyTitle="Tidak ada transaksi"
+              emptyDescription="Belum ada transaksi yang cocok dengan filter saat ini."
+            />
+          ) : (
+            <DataTable
+              columns={lineColumns}
+              data={filteredLines}
+              loading={lineLoading}
+              searchPlaceholder="Cari tanggal, barang, resi, gerai…"
+              emptyTitle="Tidak ada rincian"
+              emptyDescription="Belum ada baris barang yang cocok dengan filter saat ini."
+            />
+          )}
         </CardContent>
       </Card>
 
