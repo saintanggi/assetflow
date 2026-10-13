@@ -30,7 +30,6 @@ import { inventoryItemSchema } from "../schemas/inventory";
 type InventoryPageFormValues = z.input<typeof inventoryItemSchema>;
 import type {
   AssetCategory,
-  InventoryBalance,
   InventoryItem,
   Location,
   Supplier,
@@ -44,6 +43,8 @@ type StockStatus = "habis" | "menipis" | "aman";
 
 interface ItemRow extends InventoryItem {
   total_stock: number;
+  stock_baru: number;
+  stock_retur: number;
   stock_status: StockStatus;
 }
 
@@ -65,27 +66,44 @@ export function InventoryListPage() {
 
   const loadItems = async () => {
     setLoading(true);
-    const [{ data: itemData, error: itemError }, { data: balData, error: balError }] =
-      await Promise.all([
-        supabase.from("inventory_items").select(ITEM_SELECT).order("name"),
-        supabase.from("inventory_balances").select("item_id, qty"),
-      ]);
+    const [
+      { data: itemData, error: itemError },
+      { data: balData, error: balError },
+      { data: locData },
+    ] = await Promise.all([
+      supabase.from("inventory_items").select(ITEM_SELECT).order("name"),
+      supabase.from("inventory_balances").select("item_id, location_id, qty"),
+      supabase.from("locations").select("id, code").in("code", ["STOK-BARU", "STOK-RETUR"]),
+    ]);
     if (itemError || balError) {
       toast.error("Gagal memuat persediaan", {
         description: itemError?.message ?? balError?.message,
       });
       setItems([]);
     } else {
+      const baruId = (locData ?? []).find((l: { code: string }) => l.code === "STOK-BARU")?.id;
+      const returId = (locData ?? []).find((l: { code: string }) => l.code === "STOK-RETUR")?.id;
       const totals = new Map<string, number>();
-      for (const b of (balData ?? []) as Pick<InventoryBalance, "item_id" | "qty">[]) {
-        totals.set(b.item_id, (totals.get(b.item_id) ?? 0) + Number(b.qty));
+      const baruMap = new Map<string, number>();
+      const returMap = new Map<string, number>();
+      for (const b of (balData ?? []) as { item_id: string; location_id: string; qty: number | string }[]) {
+        const q = Number(b.qty);
+        totals.set(b.item_id, (totals.get(b.item_id) ?? 0) + q);
+        if (baruId && b.location_id === baruId) baruMap.set(b.item_id, (baruMap.get(b.item_id) ?? 0) + q);
+        if (returId && b.location_id === returId) returMap.set(b.item_id, (returMap.get(b.item_id) ?? 0) + q);
       }
       const rows: ItemRow[] = ((itemData ?? []) as InventoryItem[]).map((it) => {
         const total = totals.get(it.id) ?? 0;
         const min = it.min_stock ?? 0;
         const status: StockStatus =
           total <= 0 ? "habis" : total < min ? "menipis" : "aman";
-        return { ...it, total_stock: total, stock_status: status };
+        return {
+          ...it,
+          total_stock: total,
+          stock_baru: baruMap.get(it.id) ?? 0,
+          stock_retur: returMap.get(it.id) ?? 0,
+          stock_status: status,
+        };
       });
       setItems(rows);
     }
@@ -174,53 +192,58 @@ export function InventoryListPage() {
     }
   };
 
-  // --- Atur Stok (isi/edit stok awal manual) ---
+  // --- Atur Stok (isi/edit stok awal manual, pisah Baru & Retur) ---
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [adjustItem, setAdjustItem] = useState<ItemRow | null>(null);
-  const [adjustQty, setAdjustQty] = useState("");
+  const [adjustBaru, setAdjustBaru] = useState("");
+  const [adjustRetur, setAdjustRetur] = useState("");
   const [adjustSaving, setAdjustSaving] = useState(false);
 
   const openAdjust = (row: ItemRow) => {
     setAdjustItem(row);
-    setAdjustQty(String(row.total_stock ?? 0));
+    setAdjustBaru(String(row.stock_baru ?? 0));
+    setAdjustRetur(String(row.stock_retur ?? 0));
     setAdjustOpen(true);
   };
 
   const saveAdjust = async () => {
     if (!adjustItem) return;
-    const target = Number(adjustQty);
-    if (isNaN(target) || target < 0) {
+    const targetBaru = Number(adjustBaru);
+    const targetRetur = Number(adjustRetur);
+    if (isNaN(targetBaru) || targetBaru < 0 || isNaN(targetRetur) || targetRetur < 0) {
       toast.error("Stok harus angka ≥ 0.");
-      return;
-    }
-    const current = Number(adjustItem.total_stock ?? 0);
-    const delta = target - current;
-    if (delta === 0) {
-      toast.info("Stok tidak berubah.");
-      setAdjustOpen(false);
-      return;
-    }
-    // Lokasi default: lokasi aktif pertama.
-    const locId = locations[0]?.id;
-    if (!locId) {
-      toast.error("Tidak ada lokasi aktif.");
       return;
     }
     setAdjustSaving(true);
     try {
-      const type = delta > 0 ? "in" : "out";
-      const { error } = await supabase.rpc("post_inventory_transaction", {
-        p_idempotency_key: crypto.randomUUID(),
-        p_type: type,
-        p_transaction_date: new Date().toISOString().slice(0, 10),
-        p_source_location_id: delta > 0 ? null : locId,
-        p_dest_location_id: delta > 0 ? locId : null,
-        p_reference: null,
-        p_notes: `Atur stok manual via menu Persediaan (dari ${current} ke ${target}).`,
-        p_items: [{ item_id: adjustItem.id, qty: Math.abs(delta) }],
-      });
-      if (error) throw new Error(error.message);
-      toast.success(`Stok ${adjustItem.name} diatur ke ${target}.`);
+      const { data: locs } = await supabase
+        .from("locations")
+        .select("id, code")
+        .in("code", ["STOK-BARU", "STOK-RETUR"]);
+      const locMap = new Map(((locs ?? []) as { id: string; code: string }[]).map((l) => [l.code, l.id]));
+      const jobs: { code: string; target: number; current: number }[] = [
+        { code: "STOK-BARU", target: targetBaru, current: Number(adjustItem.stock_baru ?? 0) },
+        { code: "STOK-RETUR", target: targetRetur, current: Number(adjustItem.stock_retur ?? 0) },
+      ];
+      const today = new Date().toISOString().slice(0, 10);
+      for (const j of jobs) {
+        const delta = j.target - j.current;
+        if (delta === 0) continue;
+        const locId = locMap.get(j.code);
+        if (!locId) throw new Error(`Lokasi ${j.code} belum ada — jalankan migrasi 0010 dulu.`);
+        const { error } = await supabase.rpc("post_inventory_transaction", {
+          p_idempotency_key: crypto.randomUUID(),
+          p_type: delta > 0 ? "in" : "out",
+          p_transaction_date: today,
+          p_source_location_id: delta > 0 ? null : locId,
+          p_dest_location_id: delta > 0 ? locId : null,
+          p_reference: null,
+          p_notes: `Atur stok ${j.code === "STOK-BARU" ? "Baru" : "Retur"} via menu Persediaan (dari ${j.current} ke ${j.target}).`,
+          p_items: [{ item_id: adjustItem.id, qty: Math.abs(delta) }],
+        });
+        if (error) throw new Error(error.message);
+      }
+      toast.success(`Stok ${adjustItem.name} diperbarui (Baru: ${targetBaru}, Retur: ${targetRetur}).`);
       setAdjustOpen(false);
       await loadItems();
     } catch (e) {
@@ -270,9 +293,18 @@ export function InventoryListPage() {
           row.original.units ? `${row.original.units.code} — ${row.original.units.name}` : "—",
       },
       {
-        header: "Total Stok",
-        accessorKey: "total_stock",
-        cell: ({ row }) => formatQty(row.original.total_stock),
+        header: "Stok Baru",
+        id: "stock_baru",
+        cell: ({ row }) => (
+          <span className="tnum font-semibold text-emerald-300">{formatQty(row.original.stock_baru)}</span>
+        ),
+      },
+      {
+        header: "Stok Retur",
+        id: "stock_retur",
+        cell: ({ row }) => (
+          <span className="tnum font-semibold text-amber-300">{formatQty(row.original.stock_retur)}</span>
+        ),
       },
       {
         header: "Stok Min",
@@ -470,18 +502,29 @@ export function InventoryListPage() {
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-1 py-2">
-          <p className="text-sm text-slate-400">
-            Stok saat ini: <span className="font-semibold text-slate-100">{formatQty(adjustItem?.total_stock ?? 0)}</span>
-          </p>
-          <div className="space-y-1.5">
-            <Label htmlFor="adjust-qty">Stok baru</Label>
-            <Input
-              id="adjust-qty"
-              type="number"
-              min="0"
-              value={adjustQty}
-              onChange={(e) => setAdjustQty(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="adjust-baru">Stok Baru</Label>
+              <Input
+                id="adjust-baru"
+                type="number"
+                min="0"
+                value={adjustBaru}
+                onChange={(e) => setAdjustBaru(e.target.value)}
+              />
+              <p className="text-xs text-slate-500">Saat ini: {formatQty(adjustItem?.stock_baru ?? 0)}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="adjust-retur">Stok Retur</Label>
+              <Input
+                id="adjust-retur"
+                type="number"
+                min="0"
+                value={adjustRetur}
+                onChange={(e) => setAdjustRetur(e.target.value)}
+              />
+              <p className="text-xs text-slate-500">Saat ini: {formatQty(adjustItem?.stock_retur ?? 0)}</p>
+            </div>
           </div>
         </div>
         <DialogFooter>
