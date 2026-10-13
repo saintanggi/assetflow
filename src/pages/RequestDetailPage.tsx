@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, PackageCheck, Printer, Send, XCircle } from "lucide-react";
+import { CheckCircle2, PackageCheck, Pencil, Printer, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -11,6 +11,13 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import {
   REQUEST_STATUS_LABELS,
   REQUEST_ITEM_STATUS_LABELS,
@@ -62,13 +69,23 @@ function formatShipError(raw: string, items: RequestItem[]): string {
 export function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, isSuperAdmin } = useAuth();
   const [req, setReq] = useState<Request | null>(null);
   const [items, setItems] = useState<RequestItem[]>([]);
   const [stock, setStock] = useState<StockMap>({});
   const [locations, setLocations] = useState<{ id: string; code: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+
+  // Edit item (superadmin) — revisi data per baris.
+  const [editItem, setEditItem] = useState<RequestItem | null>(null);
+  const [eBarcode, setEBarcode] = useState("");
+  const [eSn, setESn] = useState("");
+  const [eResi, setEResi] = useState("");
+  const [eStatusReq, setEStatusReq] = useState("");
+  const [eStatusAset, setEStatusAset] = useState("");
+  const [eKet, setEKet] = useState("");
+  const [eSaving, setESaving] = useState(false);
 
   // Review state (admin gudang)
   const [approved, setApproved] = useState<Record<string, string>>({});
@@ -307,6 +324,63 @@ export function RequestDetailPage() {
   };
 
   const handlePrint = () => window.print();
+
+  // Buka dialog edit item (superadmin).
+  const openItemEdit = (x: RequestItem) => {
+    const snList: string[] = [];
+    const srList: string[] = [];
+    const ketList: string[] = [];
+    for (const n of (x.notes ?? "").split("\n")) {
+      for (const p of n.split("|").map((s) => s.trim())) {
+        const ketM = p.match(/^Ket:\s*(.+)$/i);
+        const srM = p.match(/^Status request:\s*(.+)$/i);
+        if (ketM) snList.push(ketM[1].trim());
+        else if (srM) srList.push(srM[1].trim());
+        else if (p) ketList.push(p);
+      }
+    }
+    setEditItem(x);
+    setEBarcode(x.barcode ?? "");
+    setESn(snList.join("\n"));
+    setEResi(x.resi ?? "");
+    setEStatusReq([...new Set(srList)].join(", "));
+    setEStatusAset(x.status_aset ?? "");
+    setEKet(ketList.join("\n"));
+  };
+
+  const saveItemEdit = async () => {
+    if (!editItem) return;
+    setESaving(true);
+    try {
+      // Rekonstruksi notes: "Ket: <SN>" per baris + "Status request: <SR>".
+      const notesLines: string[] = [];
+      for (const s of eSn.split("\n").map((v) => v.trim()).filter(Boolean)) {
+        notesLines.push(`Ket: ${s}`);
+      }
+      if (eStatusReq.trim()) notesLines.push(`Status request: ${eStatusReq.trim()}`);
+      for (const k of eKet.split("\n").map((v) => v.trim()).filter(Boolean)) {
+        notesLines.push(k);
+      }
+      const { error } = await supabase
+        .from("request_items")
+        .update({
+          barcode: eBarcode.trim() || null,
+          resi: eResi.trim() || null,
+          status_aset: eStatusAset.trim() || null,
+          notes: notesLines.join("\n") || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editItem.id);
+      if (error) throw new Error(error.message);
+      toast.success("Data item diperbarui.");
+      setEditItem(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+    } finally {
+      setESaving(false);
+    }
+  };
 
   if (loading) return <div className="text-sm text-slate-500">Memuat…</div>;
   if (!req) return <div className="text-sm text-slate-500">Permintaan tidak ditemukan.</div>;
@@ -585,7 +659,8 @@ export function RequestDetailPage() {
                   <th className="pb-2 pr-3">Resi</th>
                   <th className="pb-2 pr-3">Status Request</th>
                   <th className="pb-2 pr-3">Status Asset</th>
-                  <th className="pb-2">Keterangan</th>
+                  <th className="pb-2 pr-3">Keterangan</th>
+                  {isSuperAdmin && <th className="pb-2"></th>}
                 </tr>
               </thead>
               <tbody>
@@ -659,13 +734,20 @@ export function RequestDetailPage() {
                     <td className="py-2 pr-3 font-mono text-xs">
                       {x.status_aset ? <span className="text-sky-200">{x.status_aset}</span> : "—"}
                     </td>
-                    <td className="py-2 font-mono text-xs">
+                    <td className="py-2 pr-3 font-mono text-xs">
                       {ketList.length > 0 ? (
                         <div className="space-y-0.5">
                           {ketList.map((k, i) => <div key={i} className="text-slate-400">{k}</div>)}
                         </div>
                       ) : "—"}
                     </td>
+                    {isSuperAdmin && (
+                      <td className="py-2">
+                        <Button variant="outline" size="sm" onClick={() => openItemEdit(x)}>
+                          <Pencil className="mr-1 h-3 w-3" /> Edit
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                   );
                 })}
@@ -674,6 +756,50 @@ export function RequestDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialog edit item (superadmin) */}
+      <Dialog open={!!editItem} onOpenChange={(o) => !o && setEditItem(null)}>
+        <DialogHeader>
+          <DialogTitle>Edit — {editItem?.inventory_items?.name}</DialogTitle>
+          <DialogDescription>
+            Revisi data item. Satu nilai per baris untuk Barcode, SN, Resi, Keterangan.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 px-1 py-2 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Barcode (satu per baris)</Label>
+            <Textarea rows={4} value={eBarcode} onChange={(e) => setEBarcode(e.target.value)} className="font-mono text-xs" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>SN (satu per baris)</Label>
+            <Textarea rows={4} value={eSn} onChange={(e) => setESn(e.target.value)} className="font-mono text-xs" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Resi (satu per baris)</Label>
+            <Textarea rows={3} value={eResi} onChange={(e) => setEResi(e.target.value)} className="font-mono text-xs" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Keterangan (satu per baris)</Label>
+            <Textarea rows={3} value={eKet} onChange={(e) => setEKet(e.target.value)} className="font-mono text-xs" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Status Request</Label>
+            <Input value={eStatusReq} onChange={(e) => setEStatusReq(e.target.value)} placeholder="cth: PENAMBAHAN" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Status Asset</Label>
+            <Input value={eStatusAset} onChange={(e) => setEStatusAset(e.target.value)} placeholder="cth: ASSET RETUR" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditItem(null)} disabled={eSaving}>
+            Batal
+          </Button>
+          <Button onClick={saveItemEdit} disabled={eSaving}>
+            {eSaving ? "Menyimpan…" : "Simpan"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }
