@@ -32,6 +32,8 @@ import {
   ClipboardList,
   Activity,
   Siren,
+  Inbox,
+  Hourglass,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -67,6 +69,18 @@ const NAV: NavItem[] = [
     label: "Peringatan Stok",
     icon: Siren,
     permission: "inventory.view",
+  },
+  {
+    to: "/permintaan",
+    label: "Permintaan",
+    icon: Inbox,
+    permission: "requests.view",
+  },
+  {
+    to: "/permintaan/sisa",
+    label: "Sisa Belum Terkirim",
+    icon: Hourglass,
+    permission: "requests.view",
   },
   {
     to: "#transaksi",

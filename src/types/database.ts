@@ -339,3 +339,76 @@ export const TRANSACTION_STATUS_LABELS: Record<TransactionStatus, string> = {
   posted: "Diposting",
   reversed: "Dibatalkan",
 };
+
+export type RequestStatus =
+  | "diajukan"
+  | "disetujui"
+  | "disetujui_sebagian"
+  | "ditolak"
+  | "diproses"
+  | "selesai";
+
+export type RequestItemStatus =
+  | "menunggu"
+  | "disetujui"
+  | "ditolak"
+  | "diproses"
+  | "siap"
+  | "terkirim"
+  | "pending_sebagian";
+
+export interface Request {
+  id: string;
+  request_number: string;
+  ticket_no: string;
+  request_date: string;
+  branch_name: string;
+  branch_code: string | null;
+  status: RequestStatus;
+  requested_by: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RequestItem {
+  id: string;
+  request_id: string;
+  item_id: string;
+  qty_requested: number;
+  qty_approved: number | null;
+  qty_shipped: number;
+  barcode: string | null;
+  serial_number: string | null;
+  item_type: string | null;
+  status_aset: string | null;
+  resi: string | null;
+  item_status: RequestItemStatus;
+  notes: string | null;
+  processed_by: string | null;
+  created_at: string;
+  updated_at: string;
+  inventory_items?: { sku: string; name: string; brand: string | null; unit_code: string | null } | null;
+}
+
+export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
+  diajukan: "Diajukan",
+  disetujui: "Disetujui",
+  disetujui_sebagian: "Disetujui Sebagian",
+  ditolak: "Ditolak",
+  diproses: "Diproses",
+  selesai: "Selesai",
+};
+
+export const REQUEST_ITEM_STATUS_LABELS: Record<RequestItemStatus, string> = {
+  menunggu: "Menunggu Review",
+  disetujui: "Disetujui",
+  ditolak: "Ditolak",
+  diproses: "Diproses",
+  siap: "Siap Kirim",
+  terkirim: "Terkirim",
+  pending_sebagian: "Pending Sebagian",
+};

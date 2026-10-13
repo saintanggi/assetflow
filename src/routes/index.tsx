@@ -24,6 +24,10 @@ import { TransactionHistoryPage } from "../pages/TransactionHistoryPage";
 import { KartuStokPage } from "../pages/KartuStokPage";
 import { LiveStockPage } from "../pages/LiveStockPage";
 import { StockAlertsPage } from "../pages/StockAlertsPage";
+import { RequestListPage } from "../pages/RequestListPage";
+import { RequestFormPage } from "../pages/RequestFormPage";
+import { RequestDetailPage } from "../pages/RequestDetailPage";
+import { PendingPartialPage } from "../pages/PendingPartialPage";
 import { ScannerPage } from "../pages/ScannerPage";
 import { LabelPrintPage } from "../pages/LabelPrintPage";
 import { CategoriesPage } from "../pages/CategoriesPage";
@@ -145,6 +149,38 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission code="inventory.adjust">
             <StockOpnamePage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/permintaan",
+        element: (
+          <RequirePermission code="requests.view">
+            <RequestListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/permintaan/baru",
+        element: (
+          <RequirePermission code="requests.create">
+            <RequestFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/permintaan/sisa",
+        element: (
+          <RequirePermission code="requests.view">
+            <PendingPartialPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/permintaan/:id",
+        element: (
+          <RequirePermission code="requests.view">
+            <RequestDetailPage />
           </RequirePermission>
         ),
       },
