@@ -688,7 +688,6 @@ export function RequestDetailPage() {
                       const srM = p.match(/^Status request:\s*(.+)$/i);
                       if (ketM) {
                         snList.push(ketM[1].trim());
-                        ketList.push(ketM[1].trim());
                       } else if (srM) {
                         srList.push(srM[1].trim());
                       } else if (p) {
