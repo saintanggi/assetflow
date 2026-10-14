@@ -123,11 +123,13 @@ export function RequestListPage() {
     if (!delReq) return;
     setDelBusy(true);
     try {
-      // 1) Balikkan transaksi pengiriman (stok kembali).
+      // 1) Balikkan transaksi pengiriman yang masih posted (stok kembali).
+      //    Yang sudah reversed di-skip agar retry tidak gagal.
       const { data: txns } = await supabase
         .from("inventory_transactions")
-        .select("id")
-        .eq("reference", `REQ-KIRIM/${delReq.request_number}`);
+        .select("id, status")
+        .eq("reference", `REQ-KIRIM/${delReq.request_number}`)
+        .eq("status", "posted");
       for (const t of (txns ?? []) as { id: string }[]) {
         const { error } = await supabase.rpc("reverse_inventory_transaction", {
           p_transaction_id: t.id,
