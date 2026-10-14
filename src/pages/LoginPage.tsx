@@ -5,6 +5,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -17,7 +18,7 @@ import {
 } from "../components/ui/card";
 
 const loginSchema = z.object({
-  email: z.string().min(1, "Email wajib diisi").email("Masukkan alamat email yang valid"),
+  username: z.string().min(1, "Username wajib diisi"),
   password: z.string().min(1, "Kata sandi wajib diisi"),
 });
 
@@ -44,9 +45,17 @@ export function LoginPage() {
 
   async function onSubmit(data: LoginForm) {
     setFormError(null);
-    const { error } = await signIn(data.email, data.password);
+    const uname = data.username.trim().toLowerCase();
+    const { data: acc } = await supabase
+      .from("user_accounts")
+      .select("username")
+      .eq("username", uname)
+      .eq("is_active", true)
+      .maybeSingle();
+    const email = acc ? `${uname}@inventory.internal` : data.username;
+    const { error } = await signIn(email, data.password);
     if (error) {
-      setFormError("Email atau kata sandi salah");
+      setFormError("Username atau kata sandi salah");
       return;
     }
     navigate(from, { replace: true });
@@ -129,16 +138,16 @@ export function LoginPage() {
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="username">Username</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="nama@perusahaan.id"
-                  {...register("email")}
+                  id="username"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="username"
+                  {...register("username")}
                 />
-                {errors.email && (
-                  <p className="text-xs text-rose-400">{errors.email.message}</p>
+                {errors.username && (
+                  <p className="text-xs text-rose-400">{errors.username.message}</p>
                 )}
               </div>
               <div className="space-y-2">

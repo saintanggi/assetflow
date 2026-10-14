@@ -124,6 +124,7 @@ const NAV: NavItem[] = [
     ],
   },
   { to: "/pengguna", label: "Pengguna", icon: Users, permission: "users.manage" },
+  { to: "/pengaturan/akun", label: "Kelola Akun", icon: Users, permission: "users.manage" },
   { to: "/peran", label: "Peran & Izin", icon: KeyRound, superAdminOnly: true },
   { to: "/audit", label: "Audit Log", icon: ScrollText, permission: "audit.view" },
   { to: "/pengaturan", label: "Pengaturan", icon: Settings, permission: "settings.manage" },

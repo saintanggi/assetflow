@@ -63,6 +63,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPermissions([]);
       return;
     }
+    // Cek akun operasional (username) dulu.
+    const { data: acc } = await supabase
+      .from("user_accounts")
+      .select("username, role, display_name, is_active")
+      .eq("auth_user_id", u.id)
+      .maybeSingle();
+    if (acc && (acc as { is_active: boolean }).is_active) {
+      const a = acc as { username: string; role: string; display_name: string };
+      // Bangun profile sintetis dari user_accounts.
+      const roleName = a.role;
+      setProfile({
+        id: u.id,
+        email: `${a.username}@inventory.internal`,
+        display_name: a.display_name,
+        roles: { name: roleName },
+        is_active: true,
+      } as unknown as typeof profile);
+      // Permissions berdasarkan role.
+      const rolePerms: Record<string, string[]> = {
+        super_admin: ["*"],
+        admin_ho: ["requests.view", "requests.create"],
+        admin_gudang: ["requests.view", "requests.approve", "inventory.view"],
+        helper: ["requests.view", "requests.process"],
+      };
+      setPermissions(rolePerms[roleName] ?? []);
+      return;
+    }
     const { data, error } = await supabase
       .from("profiles")
       .select("*, roles(name)")

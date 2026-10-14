@@ -27,6 +27,7 @@ import { KartuStokPage } from "../pages/KartuStokPage";
 import { LiveStockPage } from "../pages/LiveStockPage";
 import { StockAlertsPage } from "../pages/StockAlertsPage";
 import { RequestListPage } from "../pages/RequestListPage";
+import { UserManagementPage } from "../pages/UserManagementPage";
 import { RequestFormPage } from "../pages/RequestFormPage";
 import { RequestDetailPage } from "../pages/RequestDetailPage";
 import { PendingPartialPage } from "../pages/PendingPartialPage";
@@ -56,6 +57,14 @@ export const router = createBrowserRouter([
       { path: "/reset-password", element: <ResetPasswordPage /> },
       { path: "/publik", element: <PublicDashboardPage /> },
       { path: "/publik/aset/:publicCode", element: <PublicAssetDetailPage /> },
+      {
+        path: "/pengaturan/akun",
+        element: (
+          <RequirePermission code="users.manage">
+            <UserManagementPage />
+          </RequirePermission>
+        ),
+      },
       { path: "/403", element: <ForbiddenPage /> },
     ],
   },
@@ -345,6 +354,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission code="settings.manage">
             <SettingsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/pengaturan/akun",
+        element: (
+          <RequirePermission code="users.manage">
+            <UserManagementPage />
           </RequirePermission>
         ),
       },
