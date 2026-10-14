@@ -33,7 +33,7 @@ export function PublicDashboardPage() {
     let cancelled = false;
     async function loadCategories() {
       const { data, error } = await supabase
-        .from("categories")
+        .from("asset_categories")
         .select("id, code, name")
         .eq("is_active", true)
         .order("name");

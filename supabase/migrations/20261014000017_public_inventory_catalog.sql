@@ -34,7 +34,7 @@ AS $$
       SELECT SUM(b.qty) FROM public.inventory_balances b WHERE b.item_id = i.id
     ), 0)
   FROM public.inventory_items i
-  LEFT JOIN public.categories c ON c.id = i.category_id
+  LEFT JOIN public.asset_categories c ON c.id = i.category_id
   LEFT JOIN public.units u ON u.id = i.unit_id
   WHERE i.is_active
     AND (
