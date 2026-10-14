@@ -79,6 +79,8 @@ export function RequestDetailPage() {
 
   // Edit item (superadmin) — revisi data per baris.
   const [editItem, setEditItem] = useState<RequestItem | null>(null);
+  const [masterItems, setMasterItems] = useState<{ id: string; name: string }[]>([]);
+  const [eItemId, setEItemId] = useState("");
   const [eBarcode, setEBarcode] = useState("");
   const [eSn, setESn] = useState("");
   const [eResi, setEResi] = useState("");
@@ -120,6 +122,14 @@ export function RequestDetailPage() {
       setReq(r as Request);
       const its = (it ?? []) as RequestItem[];
       setItems(its);
+
+      // Master barang untuk dropdown ganti item (superadmin).
+      const { data: mi } = await supabase
+        .from("inventory_items")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("name");
+      setMasterItems(((mi ?? []) as { id: string; name: string }[]));
 
       // Stok tersedia per barang (untuk panel review).
       const itemIds = its.map((x) => x.item_id);
@@ -340,6 +350,7 @@ export function RequestDetailPage() {
       }
     }
     setEditItem(x);
+    setEItemId(x.item_id);
     setEBarcode(x.barcode ?? "");
     setESn(snList.join("\n"));
     setEResi(x.resi ?? "");
@@ -364,6 +375,7 @@ export function RequestDetailPage() {
       const { error } = await supabase
         .from("request_items")
         .update({
+          item_id: eItemId || editItem.item_id,
           barcode: eBarcode.trim() || null,
           resi: eResi.trim() || null,
           status_aset: eStatusAset.trim() || null,
@@ -766,6 +778,18 @@ export function RequestDetailPage() {
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 px-1 py-2 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Nama Barang</Label>
+            <select
+              value={eItemId}
+              onChange={(e) => setEItemId(e.target.value)}
+              className="w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white"
+            >
+              {masterItems.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-1.5">
             <Label>Barcode (satu per baris)</Label>
             <Textarea rows={4} value={eBarcode} onChange={(e) => setEBarcode(e.target.value)} className="font-mono text-xs" />

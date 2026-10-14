@@ -79,7 +79,7 @@ export function RequestUploadPage() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [fileName, setFileName] = useState("");
   const [deductStock, setDeductStock] = useState(true);
-  const [autoCreate, setAutoCreate] = useState(true);
+  const [autoCreate, setAutoCreate] = useState(false);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<string | null>(null);
@@ -297,7 +297,10 @@ export function RequestUploadPage() {
           setProgress(`Membuat barang baru… ${Math.min(i + 50, missing.length)}/${missing.length}`);
         }
       } else if (preview.unmatched.length > 0) {
-        throw new Error(`${preview.unmatched.length} nama barang tidak cocok dan opsi buat-otomatis mati.`);
+        const names = preview.unmatched.slice(0, 10).join(", ");
+        throw new Error(
+          `${preview.unmatched.length} nama barang tidak ada di master dan opsi buat-otomatis mati: ${names}${preview.unmatched.length > 10 ? "…" : ""}. Tambahkan dulu di Master Barang atau aktifkan "Buat barang baru otomatis".`
+        );
       }
 
       // 2) Grouping.
