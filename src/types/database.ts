@@ -279,6 +279,28 @@ export interface AppSetting {
  * Whitelist kolom publik — HANYA kolom ini yang boleh keluar lewat
  * RPC get_public_asset / search_public_assets. Jangan tambah kolom privat.
  */
+export interface PublicInventoryItem {
+  sku: string;
+  name: string;
+  category: string | null;
+  brand: string | null;
+  model: string | null;
+  unit: string | null;
+  photo_url: string | null;
+  total_stock: number;
+}
+
+export interface PublicInventoryItem {
+  sku: string;
+  name: string;
+  category: string | null;
+  brand: string | null;
+  model: string | null;
+  unit: string | null;
+  photo_url: string | null;
+  total_stock: number;
+}
+
 export interface PublicAsset {
   public_code: string;
   name: string;
