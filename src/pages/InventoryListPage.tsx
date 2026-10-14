@@ -63,6 +63,8 @@ export function InventoryListPage() {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [saving, setSaving] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const loadItems = async () => {
     setLoading(true);
@@ -171,6 +173,19 @@ export function InventoryListPage() {
         unitId = (pcs as { id: string } | null)?.id ?? null;
       }
       if (!unitId) throw new Error("Satuan wajib dipilih (unit PCS tidak ditemukan).");
+      // Upload foto dulu bila ada.
+      let photoUrl: string | null = null;
+      if (photoFile) {
+        if (photoFile.size > 5 * 1024 * 1024) throw new Error("Ukuran foto maksimal 5MB.");
+        const ext = photoFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+        const path = `new/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("item-photos")
+          .upload(path, photoFile, { contentType: photoFile.type });
+        if (upErr) throw new Error(`Gagal upload foto: ${upErr.message}`);
+        const { data } = supabase.storage.from("item-photos").getPublicUrl(path);
+        photoUrl = data.publicUrl;
+      }
       const { error } = await supabase.from("inventory_items").insert({
         sku: autoSku,
         name: values.name,
@@ -184,11 +199,14 @@ export function InventoryListPage() {
         supplier_id: values.supplier_id ?? null,
         purchase_price: values.purchase_price ?? null,
         is_active: values.is_active ?? true,
+        photo_url: photoUrl,
       });
       if (error) throw new Error(error.message);
       toast.success("Barang berhasil ditambahkan");
       setDialogOpen(false);
       reset();
+      setPhotoFile(null);
+      setPhotoPreview(null);
       await loadItems();
     } catch (err) {
       toast.error("Gagal menambah barang", {
@@ -469,6 +487,23 @@ export function InventoryListPage() {
                   setValueAs: (v: string) => (v === "" ? null : v),
                 })}
               />
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="inv-photo">Foto Barang</Label>
+              {photoPreview && (
+                <img src={photoPreview} alt="Preview" className="mb-2 h-24 w-24 rounded-lg object-cover" />
+              )}
+              <Input
+                id="inv-photo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setPhotoFile(f);
+                  setPhotoPreview(f ? URL.createObjectURL(f) : null);
+                }}
+              />
+              <p className="mt-1 text-xs text-slate-500">JPG, PNG, WEBP, GIF — maks 5MB.</p>
             </div>
             <div className="flex items-center gap-2 sm:col-span-2">
               <Checkbox id="inv-active" {...register("is_active")} />

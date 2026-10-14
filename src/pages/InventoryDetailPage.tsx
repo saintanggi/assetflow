@@ -86,6 +86,7 @@ export function InventoryDetailPage() {
     photo_url: "",
     is_active: true,
   });
+  const [uploading, setUploading] = useState(false);
 
   const openEdit = async () => {
     if (!item) return;
@@ -463,8 +464,40 @@ export function InventoryDetailPage() {
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label>URL Foto</Label>
-            <Input value={form.photo_url} onChange={(e) => setForm({ ...form, photo_url: e.target.value })} placeholder="https://…" />
+            <Label>Foto Barang</Label>
+            {form.photo_url && (
+              <img src={form.photo_url} alt="Foto barang" className="h-24 w-24 rounded-lg object-cover" />
+            )}
+            <Input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              disabled={uploading}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (file.size > 5 * 1024 * 1024) {
+                  toast.error("Ukuran file maksimal 5MB.");
+                  return;
+                }
+                setUploading(true);
+                try {
+                  const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+                  const path = `${item.id}/${Date.now()}.${ext}`;
+                  const { error: upErr } = await supabase.storage
+                    .from("item-photos")
+                    .upload(path, file, { upsert: true, contentType: file.type });
+                  if (upErr) throw new Error(upErr.message);
+                  const { data } = supabase.storage.from("item-photos").getPublicUrl(path);
+                  setForm({ ...form, photo_url: data.publicUrl });
+                  toast.success("Foto terupload.");
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Gagal upload foto.");
+                } finally {
+                  setUploading(false);
+                }
+              }}
+            />
+            {uploading && <p className="text-xs text-slate-400">Mengupload…</p>}
           </div>
           <label className="flex cursor-pointer items-center gap-2 sm:col-span-2">
             <input
