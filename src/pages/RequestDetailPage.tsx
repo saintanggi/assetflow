@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, PackageCheck, Pencil, Printer, Send, XCircle } from "lucide-react";
+import { CheckCircle2, PackageCheck, Pencil, Printer, Scissors, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -394,6 +394,80 @@ export function RequestDetailPage() {
     }
   };
 
+  // Split 1 baris item (qty N) menjadi N baris @1 satuan,
+  // supaya tiap satuan punya barcode/SN/resi sendiri.
+  const [splitting, setSplitting] = useState(false);
+  const splitItemRow = async (x: RequestItem) => {
+    const n = Math.round(Number(x.qty_approved ?? x.qty_requested ?? 0));
+    if (n <= 1) return;
+    if (Number(x.qty_shipped ?? 0) > 0) {
+      toast.error("Item sudah ada yang terkirim — tidak bisa di-split.");
+      return;
+    }
+    const itemName = x.inventory_items?.name ?? "barang";
+    if (!window.confirm(`Split "${itemName}" menjadi ${n} baris (1 per satuan)?`)) return;
+    setSplitting(true);
+    try {
+      // Pecah nilai yang sudah terisi (satu per baris) ke tiap satuan.
+      const barcodeLines = (x.barcode ?? "").split("\n").map((s) => s.trim());
+      const resiLines = (x.resi ?? "").split("\n").map((s) => s.trim());
+      const snLines: string[] = [];
+      const otherNoteLines: string[] = [];
+      for (const ln of (x.notes ?? "").split("\n")) {
+        const m = ln.match(/^Ket:\s*(.+)$/i);
+        if (m) snLines.push(m[1].trim());
+        else if (ln.trim()) otherNoteLines.push(ln.trim());
+      }
+      const sharedNotes = otherNoteLines.join("\n") || null;
+      const notesFor = (i: number) => {
+        const parts: string[] = [];
+        if (snLines[i]) parts.push(`Ket: ${snLines[i]}`);
+        if (sharedNotes) parts.push(sharedNotes);
+        return parts.join("\n") || null;
+      };
+      // Baris pertama: update baris asli jadi qty 1.
+      const { error: updErr } = await supabase
+        .from("request_items")
+        .update({
+          qty_requested: 1,
+          qty_approved: x.qty_approved != null ? 1 : null,
+          barcode: barcodeLines[0] || null,
+          resi: resiLines[0] || null,
+          notes: notesFor(0),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", x.id);
+      if (updErr) throw new Error(updErr.message);
+      // Baris 2..N: insert baris baru qty 1.
+      const rows = [];
+      for (let i = 1; i < n; i++) {
+        rows.push({
+          request_id: x.request_id,
+          item_id: x.item_id,
+          qty_requested: 1,
+          qty_approved: x.qty_approved != null ? 1 : null,
+          qty_shipped: 0,
+          barcode: barcodeLines[i] || null,
+          resi: resiLines[i] || null,
+          item_type: x.item_type,
+          status_aset: x.status_aset,
+          item_status: x.item_status,
+          notes: notesFor(i),
+        });
+      }
+      if (rows.length > 0) {
+        const { error: insErr } = await supabase.from("request_items").insert(rows);
+        if (insErr) throw new Error(insErr.message);
+      }
+      toast.success(`"${itemName}" di-split menjadi ${n} baris.`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal split item.");
+    } finally {
+      setSplitting(false);
+    }
+  };
+
   if (loading) return <div className="text-sm text-slate-500">Memuat…</div>;
   if (!req) return <div className="text-sm text-slate-500">Permintaan tidak ditemukan.</div>;
 
@@ -754,9 +828,23 @@ export function RequestDetailPage() {
                     </td>
                     {isSuperAdmin && (
                       <td className="py-2">
-                        <Button variant="outline" size="sm" onClick={() => openItemEdit(x)}>
-                          <Pencil className="mr-1 h-3 w-3" /> Edit
-                        </Button>
+                        <div className="flex gap-1">
+                          {Math.round(Number(x.qty_approved ?? x.qty_requested ?? 0)) > 1 &&
+                            Number(x.qty_shipped ?? 0) === 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => splitItemRow(x)}
+                                disabled={splitting}
+                                title="Split menjadi 1 baris per satuan"
+                              >
+                                <Scissors className="mr-1 h-3 w-3" /> Split
+                              </Button>
+                            )}
+                          <Button variant="outline" size="sm" onClick={() => openItemEdit(x)}>
+                            <Pencil className="mr-1 h-3 w-3" /> Edit
+                          </Button>
+                        </div>
                       </td>
                     )}
                   </tr>
