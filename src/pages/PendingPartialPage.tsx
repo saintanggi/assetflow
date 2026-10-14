@@ -21,6 +21,8 @@ interface PendingRow {
   qty_shipped: number;
   sisa: number;
   resi: string | null;
+  jenis: "Belum Terkirim" | "Menunggu Stok";
+  keterangan: string | null;
 }
 
 const fmt = (n: number) => Number(n).toLocaleString("id-ID", { maximumFractionDigits: 3 });
@@ -50,10 +52,32 @@ const columns: ColumnDef<PendingRow, unknown>[] = [
     ),
   },
   {
+    header: "Jenis",
+    accessorKey: "jenis",
+    cell: ({ row }) => (
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs ${
+          row.original.jenis === "Menunggu Stok"
+            ? "bg-sky-400/15 text-sky-300"
+            : "bg-amber-400/15 text-amber-300"
+        }`}
+      >
+        {row.original.jenis}
+      </span>
+    ),
+  },
+  {
     header: "Sisa Belum Terkirim",
     accessorKey: "sisa",
     cell: ({ row }) => (
       <span className="tnum font-semibold text-amber-300">{fmt(row.original.sisa)}</span>
+    ),
+  },
+  {
+    header: "Keterangan Gudang",
+    accessorKey: "keterangan",
+    cell: ({ row }) => (
+      <span className="text-xs text-slate-400">{row.original.keterangan ?? "—"}</span>
     ),
   },
   {
@@ -72,7 +96,7 @@ const columns: ColumnDef<PendingRow, unknown>[] = [
     cell: ({ row }) => (
       <Link to={`/permintaan/${row.original.request_id}`}>
         <Button size="sm" variant="outline">
-          Kirim Susulan
+          {row.original.jenis === "Menunggu Stok" ? "Setujui" : "Kirim Susulan"}
         </Button>
       </Link>
     ),
@@ -89,9 +113,9 @@ export function PendingPartialPage() {
       const { data, error } = await supabase
         .from("request_items")
         .select(
-          "id, request_id, qty_requested, qty_approved, qty_shipped, resi, item_status, inventory_items(sku, name), requests(request_number, branch_name)"
+          "id, request_id, qty_requested, qty_approved, qty_shipped, resi, item_status, notes, inventory_items(sku, name), requests(request_number, branch_name)"
         )
-        .eq("item_status", "pending_sebagian")
+        .in("item_status", ["pending_sebagian", "menunggu_stok"])
         .order("updated_at", { ascending: false })
         .limit(500);
       if (cancelled) return;
@@ -104,25 +128,35 @@ export function PendingPartialPage() {
           id: string;
           request_id: string;
           qty_requested: number | string;
-          qty_approved: number | string;
+          qty_approved: number | string | null;
           qty_shipped: number | string;
           resi: string | null;
+          item_status: string;
+          notes: string | null;
           inventory_items: { sku: string; name: string } | { sku: string; name: string }[] | null;
           requests: { request_number: string; branch_name: string } | { request_number: string; branch_name: string }[] | null;
         }[])
-          .map((x) => ({
-            id: x.id,
-            request_id: x.request_id,
-            request_number: one(x.requests)?.request_number ?? "—",
-            branch_name: one(x.requests)?.branch_name ?? "—",
-            sku: one(x.inventory_items)?.sku ?? "—",
-            name: one(x.inventory_items)?.name ?? "—",
-            qty_requested: Number(x.qty_requested),
-            qty_approved: Number(x.qty_approved),
-            qty_shipped: Number(x.qty_shipped),
-            sisa: Number(x.qty_approved) - Number(x.qty_shipped),
-            resi: x.resi,
-          }))
+          .map((x) => {
+            const isMenungguStok = x.item_status === "menunggu_stok";
+            const approved = Number(x.qty_approved ?? 0);
+            const shipped = Number(x.qty_shipped ?? 0);
+            const requested = Number(x.qty_requested ?? 0);
+            return {
+              id: x.id,
+              request_id: x.request_id,
+              request_number: one(x.requests)?.request_number ?? "—",
+              branch_name: one(x.requests)?.branch_name ?? "—",
+              sku: one(x.inventory_items)?.sku ?? "—",
+              name: one(x.inventory_items)?.name ?? "—",
+              qty_requested: requested,
+              qty_approved: approved,
+              qty_shipped: shipped,
+              sisa: isMenungguStok ? requested : approved - shipped,
+              resi: x.resi,
+              jenis: (isMenungguStok ? "Menunggu Stok" : "Belum Terkirim") as PendingRow["jenis"],
+              keterangan: x.notes,
+            };
+          })
           .filter((x) => x.sisa > 0);
         setRows(mapped);
       }

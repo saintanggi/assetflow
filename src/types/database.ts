@@ -377,7 +377,8 @@ export type RequestItemStatus =
   | "diproses"
   | "siap"
   | "terkirim"
-  | "pending_sebagian";
+  | "pending_sebagian"
+  | "menunggu_stok";
 
 export interface Request {
   id: string;
@@ -433,4 +434,5 @@ export const REQUEST_ITEM_STATUS_LABELS: Record<RequestItemStatus, string> = {
   siap: "Siap Kirim",
   terkirim: "Terkirim",
   pending_sebagian: "Pending Sebagian",
+  menunggu_stok: "Menunggu Stok",
 };

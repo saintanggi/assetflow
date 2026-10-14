@@ -43,6 +43,7 @@ const ITEM_VARIANT: Record<string, "default" | "info" | "warning" | "success" | 
   siap: "success",
   terkirim: "secondary",
   pending_sebagian: "warning",
+  menunggu_stok: "warning",
 };
 
 const fmt = (n: number) => Number(n).toLocaleString("id-ID", { maximumFractionDigits: 3 });
@@ -93,6 +94,7 @@ export function RequestDetailPage() {
   const [approved, setApproved] = useState<Record<string, string>>({});
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
+  const [warehouseNote, setWarehouseNote] = useState("");
 
   // Process state (helper)
   const [proc, setProc] = useState<Record<string, { barcode: string; sn: string; type: string }>>({});
@@ -210,22 +212,53 @@ export function RequestDetailPage() {
         await supabase.from("request_items").update({ item_status: "ditolak", qty_approved: 0 }).eq("request_id", id);
       } else {
         // Validasi qty approve per item.
+        let needNote = false;
         for (const x of items) {
           const q = Number(approved[x.id]);
           if (!(q >= 0) || q > Number(x.qty_requested)) {
             throw new Error(`Qty setuju "${x.inventory_items?.name}" harus 0–${fmt(Number(x.qty_requested))}.`);
           }
+          if (q > 0 && q < Number(x.qty_requested)) needNote = true;
+        }
+        if (needNote && !warehouseNote.trim()) {
+          throw new Error("Keterangan gudang wajib diisi bila ada item yang disetujui sebagian.");
         }
         for (const x of items) {
           const q = Number(approved[x.id]);
-          const { error } = await supabase
-            .from("request_items")
-            .update({
-              qty_approved: q,
-              item_status: q > 0 ? "disetujui" : "ditolak",
-            })
-            .eq("id", x.id);
-          if (error) throw new Error(error.message);
+          const minta = Number(x.qty_requested);
+          if (q > 0 && q < minta) {
+            // Approve sebagian: baris asli jadi qty yg disetujui,
+            // sisanya jadi baris pending "menunggu_stok" + keterangan gudang.
+            const sisaQty = minta - q;
+            const { error: updErr } = await supabase
+              .from("request_items")
+              .update({
+                qty_requested: q,
+                qty_approved: q,
+                item_status: "disetujui",
+              })
+              .eq("id", x.id);
+            if (updErr) throw new Error(updErr.message);
+            const { error: insErr } = await supabase.from("request_items").insert({
+              request_id: x.request_id,
+              item_id: x.item_id,
+              qty_requested: sisaQty,
+              qty_approved: null,
+              qty_shipped: 0,
+              item_status: "menunggu_stok",
+              notes: `Menunggu stok: ${warehouseNote.trim()}`,
+            });
+            if (insErr) throw new Error(insErr.message);
+          } else {
+            const { error } = await supabase
+              .from("request_items")
+              .update({
+                qty_approved: q,
+                item_status: q > 0 ? "disetujui" : "ditolak",
+              })
+              .eq("id", x.id);
+            if (error) throw new Error(error.message);
+          }
         }
         const allFull = items.every((x) => Number(approved[x.id]) >= Number(x.qty_requested));
         const anyApproved = items.some((x) => Number(approved[x.id]) > 0);
@@ -251,6 +284,25 @@ export function RequestDetailPage() {
       setShowReject(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menyimpan review.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Setujui item yang menunggu stok (stok sudah datang).
+  const approvePendingStock = async (itemId: string, qty: number) => {
+    if (!window.confirm(`Setujui ${fmt(qty)} unit yang menunggu stok?`)) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("request_items")
+        .update({ qty_approved: qty, item_status: "disetujui", updated_at: new Date().toISOString() })
+        .eq("id", itemId);
+      if (error) throw new Error(error.message);
+      toast.success("Item disetujui — siap diproses helper.");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menyetujui.");
     } finally {
       setBusy(false);
     }
@@ -547,6 +599,16 @@ export function RequestDetailPage() {
                 </div>
               );
             })}
+            <div className="space-y-1.5 pt-2">
+              <Label>Keterangan Gudang <span className="text-slate-500">(wajib bila ada yang disetujui sebagian)</span></Label>
+              <Textarea
+                rows={2}
+                value={warehouseNote}
+                onChange={(e) => setWarehouseNote(e.target.value)}
+                placeholder="cth: stok gudang hanya 3, sisanya menunggu kiriman"
+                className="text-sm"
+              />
+            </div>
             <div className="flex flex-wrap gap-2 pt-2">
               <Button onClick={() => submitReview("approve")} disabled={busy}>
                 <CheckCircle2 className="mr-1 h-4 w-4" /> Setujui
@@ -569,6 +631,42 @@ export function RequestDetailPage() {
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ===== PANEL SETUJUI MENUNGGU STOK ===== */}
+      {canReview && items.some((x) => x.item_status === "menunggu_stok") && (
+        <Card className="mb-4 border-sky-400/20">
+          <CardHeader>
+            <CardTitle className="font-display text-base text-white">
+              Menunggu Stok — setujui saat stok sudah datang
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {items
+              .filter((x) => x.item_status === "menunggu_stok")
+              .map((x) => (
+                <div
+                  key={x.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3"
+                >
+                  <div>
+                    <div className="font-medium">{x.inventory_items?.name}</div>
+                    <div className="text-xs text-slate-500">
+                      Qty: {fmt(Number(x.qty_requested))}
+                      {x.notes && <span className="ml-2 text-sky-300">• {x.notes}</span>}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => approvePendingStock(x.id, Number(x.qty_requested))}
+                    disabled={busy}
+                  >
+                    <CheckCircle2 className="mr-1 h-4 w-4" /> Setujui {fmt(Number(x.qty_requested))}
+                  </Button>
+                </div>
+              ))}
           </CardContent>
         </Card>
       )}
