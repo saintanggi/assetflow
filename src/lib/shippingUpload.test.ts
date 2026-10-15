@@ -49,7 +49,8 @@ describe("QTY baris lanjutan (bug 23 jadi 45)", () => {
     const printer = lines.find((l) => l.itemKey === "PRINTER TSC");
     expect(kursi?.qty).toBe(23); // sebelum diperbaiki: 23 + 22 = 45
     expect(kursi?.blankQtyRows).toBe(22);
-    expect(kursi?.qtyFromRowCount).toBe(false);
+    expect(kursi?.qtyFile).toBe(23);
+    expect(kursi?.qtySource).toBe("qty-kolom");
     // 23 resi tetap tercatat (tidak ada data yang hilang).
     expect(kursi?.rows.map((r) => r.resi)).toHaveLength(23);
     expect(new Set(kursi?.rows.map((r) => r.resi)).size).toBe(23);
@@ -85,7 +86,8 @@ describe("QTY baris lanjutan (bug 23 jadi 45)", () => {
     const { rows: parsed } = readSheet(rows);
     const lines = aggregateGroup(parsed, NAME_KEY);
     expect(lines[0].qty).toBe(4);
-    expect(lines[0].qtyFromRowCount).toBe(true);
+    expect(lines[0].qtyFile).toBe(0);
+    expect(lines[0].qtySource).toBe("jumlah-baris");
   });
 
   it("baris ASSET BARU dan ASSET RETUR tidak digabung", () => {
@@ -159,7 +161,7 @@ describe("pola file lapangan (screenshot 13/14-Okt-26)", () => {
     const line = aggregateGroup(parsed, NAME_KEY)[0];
     expect(line.qty).toBe(4); // dulu 4 + 3 baris kosong = 7
     expect(line.qtySource).toBe("qty-kolom");
-    expect(line.qtyExplicit).toBe(4);
+    expect(line.qtyFile).toBe(4);
     expect(line.qtyBarcode).toBe(4);
   });
 
@@ -205,9 +207,38 @@ describe("pola file lapangan (screenshot 13/14-Okt-26)", () => {
     const scanner = lines.find((l) => l.itemName === "SCANNER WIRELESS")!;
     expect(scanner.qty).toBe(2);
     expect(scanner.qtySource).toBe("barcode");
-    expect(scanner.qtyExplicit).toBe(1);
+    expect(scanner.qtyFile).toBe(1);
     const printer = lines.find((l) => l.itemName === "PRINTER CANON LASERJET")!;
     expect(printer.qty).toBe(1);
+  });
+
+  it("blok 15 baris dengan 1 baris ASSET BARU di dalamnya: QTY file 15 dibagi 14 + 1", () => {
+    // Kasus nyata A2610120823 (Bogor Citeureup): QTY 15 di-merge, 14 baris
+    // ASSET RETUR + 1 baris ASSET BARU, jadi tidak boleh 15 + 1.
+    const rows: (string | number)[][] = [
+      ["13-Oct-26", "A2610120823", "SiCepat Ekspres Bogor Citeureup FM", "1223009", "SCANNER KABEL 2D", 15, "CS21060913342", "", "", "", "PERGANTIAN", "ASSET RETUR", "TERKIRIM"],
+      ...Array.from({ length: 13 }, (_, i) => [
+        "13-Oct-26", "A2610120823", "SiCepat Ekspres Bogor Citeureup FM", "1223009", "SCANNER KABEL 2D",
+        "", i === 7 || i === 9 ? "TANPA SN" : `CS21040${905970 + i}`, "", "", "", "PERGANTIAN", "ASSET RETUR", "TERKIRIM",
+      ] as (string | number)[]),
+      ["13-Oct-26", "A2610120823", "SiCepat Ekspres Bogor Citeureup FM", "1223009", "SCANNER KABEL 2D", "", "5J202009104", "", "", "", "PERGANTIAN", "ASSET BARU", "TERKIRIM"],
+    ];
+    const { rows: parsed } = readSheet(rows);
+    const lines = aggregateGroup(parsed, NAME_KEY);
+    const byKondisi = Object.fromEntries(lines.map((l) => [l.kodeKondisi, l.qty]));
+    expect(byKondisi).toEqual({ "STOK-RETUR": 14, "STOK-BARU": 1 });
+    expect(lines.reduce((s, l) => s + l.qty, 0)).toBe(15);
+  });
+
+  it("QTY 3 yang hanya ditulis 1 baris tetap 3 unit (kasus oSD Ezviz)", () => {
+    const rows = [
+      ["13-Oct-26", "A2610130910", "SiCepat Ekspres Deli Serdang Tanjung Morawa", "T0216002", "oSD Ezviz Smart Micro SD Card 64 Gb", 3, "SUDAH", "", "", "", "PENAMBAHAN", "ASSET BARU", "TERKIRIM"],
+    ];
+    const { rows: parsed } = readSheet(rows);
+    const line = aggregateGroup(parsed, NAME_KEY)[0];
+    expect(line.qty).toBe(3);
+    expect(line.qtyFile).toBe(3);
+    expect(line.rowCount).toBe(1);
   });
 
   it("satu tiket berisi banyak barang: qty tiap barang dihitung terpisah", () => {

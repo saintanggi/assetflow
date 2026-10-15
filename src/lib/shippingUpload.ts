@@ -75,16 +75,14 @@ export interface AggLine {
   /** Jumlah unit final yang dipakai sistem. */
   qty: number;
   /** Sumber angka qty — ditampilkan di pratinjau supaya bisa dicek. */
-  qtySource: "qty-kolom" | "barcode" | "jumlah-baris";
-  /** Total angka pada kolom QTY (angka eksplisit di file). */
-  qtyExplicit: number;
+  qtySource: "qty-kolom" | "barcode" | "jumlah-baris" | "alokasi";
+  /** Bagian angka QTY file yang jatuh ke baris-baris ini (0 bila kolom QTY kosong). */
+  qtyFile: number;
   /** Jumlah barcode/unit unik pada baris-baris ini (tiap barcode = 1 unit). */
   qtyBarcode: number;
   /** Jumlah baris data pada blok ini. */
   rowCount: number;
-  /** true bila kolom QTY kosong di semua baris -> qty diambil dari jumlah baris. */
-  qtyFromRowCount: boolean;
-  /** Jumlah baris tanpa QTY & tanpa BARCODE (tidak menambah qty). */
+  /** Jumlah baris tanpa QTY & tanpa BARCODE (baris lanjutan blok ber-QTY). */
   blankQtyRows: number;
   rows: ParsedShippingRow[];
 }
@@ -287,21 +285,75 @@ export function groupKeyOf(row: ParsedShippingRow): string {
 }
 
 /**
- * Gabungkan baris-baris satu permintaan menjadi baris item
+ * Gabungkan baris-baris satu permintaan (satu tiket/gerai/tanggal) menjadi baris item
  * (barang + kondisi aset + status terkirim).
  *
- * Aturan qty (mengikuti cara file pengiriman diisi):
- *  - Kolom QTY biasanya di-merge: angkanya = total untuk seluruh blok barang
- *    tersebut, bukan per baris (mis. QTY 4 dengan 4 baris = 4 unit).
- *  - Angka QTY dijumlahkan lintas baris; baris tanpa QTY tidak menambah.
- *  - Tiap barcode = 1 unit fisik, jadi qty tidak akan lebih kecil dari jumlah
- *    barcode unik (menangkap kasus QTY 1 tapi ada 2 baris/barcode).
- *  - Bila kolom QTY kosong di semua baris: qty = jumlah baris.
+ * Cara file pengiriman diisi (terverifikasi pada file lapangan):
+ *  - Satu blok barang = beberapa baris berurutan dengan nama barang sama.
+ *  - Kolom QTY di-merge dan ditulis sekali di baris pertama blok = **total unit blok
+ *    itu**, bukan qty baris tersebut (mis. QTY 23 untuk 23 baris KURSI TRAINING).
+ *  - Umumnya 1 baris = 1 unit fisik (punya resi/SN sendiri), tetapi ada blok seperti
+ *    "oSD Ezviz ... QTY 3" yang hanya ditulis 1 baris.
+ *
+ * Aturan qty: total blok = angka tertinggi antara QTY yang tertulis, jumlah
+ * barcode/unit unik, dan jumlah baris; lalu dibagikan rata ke baris-baris blok
+ * (tiap baris minimal 1 unit, sisanya ke baris awal). Hasil akhirnya dijumlahkan
+ * per barang + kondisi aset + status terkirim.
  */
+export interface RowAllocation {
+  /** Unit yang dibebankan ke baris ini (hasil pembagian total blok). */
+  qty: number;
+  /** Bagian angka QTY file untuk baris ini (0 bila kolom QTY kosong). */
+  fileShare: number;
+}
+
+/**
+ * Tentukan unit per baris untuk seluruh baris satu permintaan.
+ * Blok dimulai ketika nama barang berubah ATAU muncul angka QTY baru (satu angka
+ * QTY hasil merge selalu memulai blok berikutnya, walau nama barangnya sama).
+ */
+export function allocateBlockUnits(
+  rows: ParsedShippingRow[],
+): Map<ParsedShippingRow, RowAllocation> {
+  const blocks: ParsedShippingRow[][] = [];
+  for (const r of rows) {
+    const last = blocks[blocks.length - 1];
+    const continues =
+      Boolean(last) &&
+      !r.qtyExplicit &&
+      last[0].itemName.trim().toUpperCase() === r.itemName.trim().toUpperCase();
+    if (continues) last.push(r);
+    else blocks.push([r]);
+  }
+
+  const alloc = new Map<ParsedShippingRow, RowAllocation>();
+  for (const block of blocks) {
+    const explicit = round3(block.reduce((s, r) => s + (r.qtyExplicit ? r.qty : 0), 0));
+    const barcodes = new Set<string>();
+    for (const r of block) for (const b of splitText(r.barcode)) barcodes.add(b);
+    const n = block.length;
+    // Total unit blok = angka QTY yang tertulis, jumlah barcode unik, dan jumlah
+    // baris (tiap baris = satu unit fisik dengan resi/SN sendiri).
+    const total = round3(Math.max(explicit, barcodes.size, n));
+    const base = Math.floor(total / n);
+    const remainder = Math.round(total - base * n);
+    block.forEach((r, i) => {
+      alloc.set(r, {
+        qty: round3(base + (i < remainder ? 1 : 0)),
+        fileShare: explicit > 0 ? explicit / n : 0,
+      });
+    });
+  }
+  return alloc;
+}
+
 export function aggregateGroup(
   rows: ParsedShippingRow[],
   itemKeyOf: (row: ParsedShippingRow) => string,
 ): AggLine[] {
+  const alloc = allocateBlockUnits(rows);
+
+  // Kumpulkan per barang + kondisi aset + status terkirim.
   const byKey = new Map<string, AggLine>();
   for (const r of rows) {
     const itemKey = itemKeyOf(r);
@@ -312,27 +364,33 @@ export function aggregateGroup(
     if (!line) {
       line = {
         itemKey, itemName: r.itemName, kodeKondisi, isPending,
-        qty: 0, qtySource: "jumlah-baris", qtyExplicit: 0, qtyBarcode: 0, rowCount: 0,
-        qtyFromRowCount: false, blankQtyRows: 0, rows: [],
+        qty: 0, qtySource: "qty-kolom", qtyFile: 0, qtyBarcode: 0, rowCount: 0,
+        blankQtyRows: 0, rows: [],
       };
       byKey.set(key, line);
     }
     line.rows.push(r);
-    if (r.qtyExplicit) line.qtyExplicit = round3(line.qtyExplicit + r.qty);
+    const a = alloc.get(r);
+    if (a) {
+      line.qty += a.qty;
+      line.qtyFile += a.fileShare;
+    }
     if (!r.qtyExplicit && !r.hasBarcode) line.blankQtyRows++;
   }
+
   for (const line of byKey.values()) {
+    line.qty = round3(line.qty);
+    line.qtyFile = round3(line.qtyFile);
     const barcodes = new Set<string>();
     for (const r of line.rows) for (const b of splitText(r.barcode)) barcodes.add(b);
     line.rowCount = line.rows.length;
     line.qtyBarcode = barcodes.size;
-    if (line.qtyExplicit > 0) {
-      line.qtySource = line.qtyBarcode > line.qtyExplicit ? "barcode" : "qty-kolom";
-      line.qty = round3(Math.max(line.qtyExplicit, line.qtyBarcode));
-    } else {
+    if (line.qtyFile === 0) {
       line.qtySource = "jumlah-baris";
-      line.qtyFromRowCount = true;
-      line.qty = Math.max(line.rowCount, line.qtyBarcode);
+    } else if (line.qty > line.qtyFile) {
+      line.qtySource = line.qtyBarcode > line.qtyFile ? "barcode" : "alokasi";
+    } else {
+      line.qtySource = "qty-kolom";
     }
   }
   return [...byKey.values()];

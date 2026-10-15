@@ -557,12 +557,12 @@ export function RequestUploadPage() {
                           <td className="tnum px-2 py-1.5 text-right font-semibold text-white">{l.qty}</td>
                           <td className="tnum px-2 py-1.5 text-right text-slate-400">{l.rows.length}</td>
                           <td className="px-2 py-1.5 text-amber-200">
-                            {l.qtySource === "barcode"
-                              ? `Kolom QTY: ${l.qtyExplicit} — dipakai ${l.qty} unit dari ${l.qtyBarcode} barcode/unit`
-                              : l.qtySource === "jumlah-baris"
-                                ? `Kolom QTY kosong di semua baris → dihitung ${l.qty} dari jumlah baris`
-                                : l.blankQtyRows > 0
-                                  ? `QTY ${l.qtyExplicit} dari kolom QTY; ${l.blankQtyRows} baris lanjutan tanpa QTY tidak menambah qty`
+                            {l.qtyFile === 0
+                              ? `QTY kosong di file → dihitung ${l.qty} dari ${l.rowCount} baris/barcode`
+                              : l.qty > l.qtyFile
+                                ? `QTY file ${l.qtyFile} untuk ${l.rowCount} baris → dipakai ${l.qty} unit${l.qtySource === "barcode" ? " (mengikuti jumlah barcode)" : ""}`
+                                : l.qty < l.rowCount
+                                  ? `QTY file ${l.qtyFile} dibagi ke ${l.rowCount} baris (blok di-merge)` 
                                   : ""}
                           </td>
                         </tr>
@@ -592,19 +592,18 @@ export function RequestUploadPage() {
                     </div>
                   </div>
                 )}
-                {preview.lines.some((l) => l.qtySource === "barcode") && (
+                {preview.lines.some((l) => l.qtyFile > 0 && l.qty > l.qtyFile) && (
                   <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
-                      Beberapa barang punya barcode/unit lebih banyak daripada angka QTY di file — sistem memakai
-                      jumlah unit (tiap barcode = 1 unit):
-                      {" "}
+                      Ada barang yang jumlah baris/barcode-nya lebih banyak dari angka QTY di file, jadi qty
+                      dinaikkan (tiap baris/barcode = 1 unit fisik):{" "}
                       {preview.lines
-                        .filter((l) => l.qtySource === "barcode")
+                        .filter((l) => l.qtyFile > 0 && l.qty > l.qtyFile)
                         .slice(0, 4)
-                        .map((l) => `${l.itemName} (QTY ${l.qtyExplicit} → ${l.qty})`)
+                        .map((l) => `${l.itemName} (QTY file ${l.qtyFile} → ${l.qty})`)
                         .join(", ")}
-                      . Samakan lagi dengan file bila perlu.
+                      . Cek kembali file bila memang tidak sesuai.
                     </div>
                   </div>
                 )}
