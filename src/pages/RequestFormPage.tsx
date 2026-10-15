@@ -10,7 +10,16 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
-import { EXCEL_STATUS_ASET, type ExcelStatusAset } from "../types/database";
+import { Select } from "../components/ui/select";
+import {
+  EXCEL_STATUS_ASET_LABELS,
+  EXCEL_STATUS_ASET_LOKASI,
+  STATUS_REQUEST_LABELS,
+  STATUS_REQUEST_OPTIONS,
+  type ExcelStatusAset,
+  type StatusRequest,
+} from "../types/database";
+import { formatRequestStatus } from "../lib/requestStatus";
 
 interface ItemSearchResult {
   id: string;
@@ -28,6 +37,9 @@ interface FormRow {
   qty: string;
   itemType: string;
   statusAset: ExcelStatusAset;
+  statusRequest: StatusRequest;
+  /** Diisi hanya bila statusRequest = PINJAM, mis. "1 MINGGU". */
+  durasiPinjam: string;
   serialNumber: string;
   notes: string;
 }
@@ -42,6 +54,8 @@ const newRow = (): FormRow => ({
   qty: "",
   itemType: "",
   statusAset: "ASSET BARU",
+  statusRequest: "PENAMBAHAN",
+  durasiPinjam: "",
   serialNumber: "",
   notes: "",
 });
@@ -150,7 +164,11 @@ export function RequestFormPage() {
           item_type: r.itemType.trim() || null,
           status_aset: r.statusAset,
           serial_number: r.serialNumber.trim() || null,
-          notes: r.notes.trim() || null,
+          notes:
+            [
+              ...(r.notes.trim() ? r.notes.trim().split("\n").map((x) => x.trim()).filter(Boolean) : []),
+              `Status request: ${formatRequestStatus({ status: r.statusRequest, durasi: r.durasiPinjam })}`,
+            ].join("\n") || null,
         }));
       const { error: itemsErr } = await supabase.from("request_items").insert(items);
       if (itemsErr) throw new Error(itemsErr.message);
@@ -227,7 +245,7 @@ export function RequestFormPage() {
           {rows.map((r, i) => (
             <div
               key={r.key}
-              className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 lg:grid-cols-12"
+              className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 lg:grid-cols-[repeat(16,minmax(0,1fr))]"
             >
               <div className="relative lg:col-span-4">
                 <Label>Barang #{i + 1}</Label>
@@ -272,18 +290,42 @@ export function RequestFormPage() {
                 />
               </div>
               <div className="lg:col-span-2">
-                <Label>Status Aset</Label>
-                <select
+                <Label htmlFor={`sr-${r.key}`}>Status Request</Label>
+                <Select
+                  id={`sr-${r.key}`}
+                  value={r.statusRequest}
+                  onValueChange={(v) => updateRow(r.key, { statusRequest: v as StatusRequest })}
+                  options={STATUS_REQUEST_OPTIONS.map((o) => ({
+                    value: o,
+                    label: STATUS_REQUEST_LABELS[o],
+                  }))}
+                />
+              </div>
+              {r.statusRequest === "PINJAM" && (
+                <div className="lg:col-span-2">
+                  <Label htmlFor={`dur-${r.key}`}>Durasi Pinjam</Label>
+                  <Input
+                    id={`dur-${r.key}`}
+                    value={r.durasiPinjam}
+                    onChange={(e) => updateRow(r.key, { durasiPinjam: e.target.value })}
+                    placeholder="cth: 1 MINGGU"
+                  />
+                </div>
+              )}
+              <div className="lg:col-span-2">
+                <Label htmlFor={`sa-${r.key}`}>Status Asset</Label>
+                <Select
+                  id={`sa-${r.key}`}
                   value={r.statusAset}
-                  onChange={(e) => updateRow(r.key, { statusAset: e.target.value as ExcelStatusAset })}
-                  className="w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800"
-                >
-                  {EXCEL_STATUS_ASET.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(v) => updateRow(r.key, { statusAset: v as ExcelStatusAset })}
+                  options={(Object.keys(EXCEL_STATUS_ASET_LABELS) as ExcelStatusAset[]).map((o) => ({
+                    value: o,
+                    label: EXCEL_STATUS_ASET_LABELS[o],
+                  }))}
+                />
+                <p className="mt-1 text-xs text-ink-500">
+                  Stok dipotong dari <b>{EXCEL_STATUS_ASET_LOKASI[r.statusAset]}</b>
+                </p>
               </div>
               <div className="lg:col-span-2">
                 <Label>Serial Number (opsional)</Label>
@@ -307,7 +349,7 @@ export function RequestFormPage() {
                   <Trash2 className="h-4 w-4 text-brand-600" />
                 </Button>
               </div>
-              <div className="lg:col-span-12">
+              <div className="lg:col-span-16">
                 <Label>Keterangan baris (opsional)</Label>
                 <Input
                   value={r.notes}

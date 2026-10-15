@@ -13,6 +13,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
+import { Select } from "../components/ui/select";
 import {
   Dialog,
   DialogDescription,
@@ -21,12 +22,23 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import {
+  EXCEL_STATUS_ASET_LABELS,
+  EXCEL_STATUS_ASET_LOKASI,
   REQUEST_STATUS_LABELS,
   REQUEST_ITEM_STATUS_LABELS,
+  STATUS_REQUEST_LABELS,
+  STATUS_REQUEST_OPTIONS,
+  type ExcelStatusAset,
   type Request,
   type RequestItem,
   type RequestStatus,
+  type StatusRequest,
 } from "../types/database";
+import {
+  formatRequestStatus,
+  parseRequestStatus,
+  parseStatusAset,
+} from "../lib/requestStatus";
 
 const STATUS_VARIANT: Record<RequestStatus, "default" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   diajukan: "info",
@@ -87,8 +99,9 @@ export function RequestDetailPage() {
   const [eBarcode, setEBarcode] = useState("");
   const [eSn, setESn] = useState("");
   const [eResi, setEResi] = useState("");
-  const [eStatusReq, setEStatusReq] = useState("");
-  const [eStatusAset, setEStatusAset] = useState("");
+  const [eStatusReq, setEStatusReq] = useState<StatusRequest>("PENAMBAHAN");
+  const [eDurasiPinjam, setEDurasiPinjam] = useState("");
+  const [eStatusAset, setEStatusAset] = useState<ExcelStatusAset>("ASSET BARU");
   const [eKet, setEKet] = useState("");
   const [eSaving, setESaving] = useState(false);
 
@@ -484,8 +497,10 @@ export function RequestDetailPage() {
     setEBarcode(x.barcode ?? "");
     setESn(snList.join("\n"));
     setEResi(x.resi ?? "");
-    setEStatusReq([...new Set(srList)].join(", "));
-    setEStatusAset(x.status_aset ?? "");
+    const parsedReq = parseRequestStatus([...new Set(srList)].join(", "));
+    setEStatusReq(parsedReq.status);
+    setEDurasiPinjam(parsedReq.durasi);
+    setEStatusAset(parseStatusAset(x.status_aset));
     setEKet(ketList.join("\n"));
   };
 
@@ -499,7 +514,9 @@ export function RequestDetailPage() {
       for (const s of snValues) {
         notesLines.push(`Ket: ${s}`);
       }
-      if (eStatusReq.trim()) notesLines.push(`Status request: ${eStatusReq.trim()}`);
+      notesLines.push(
+        `Status request: ${formatRequestStatus({ status: eStatusReq, durasi: eDurasiPinjam })}`
+      );
       for (const k of eKet.split("\n").map((v) => v.trim()).filter(Boolean)) {
         notesLines.push(k);
       }
@@ -510,7 +527,7 @@ export function RequestDetailPage() {
           barcode: eBarcode.trim() || null,
           serial_number: snValues.join("\n") || null,
           resi: eResi.trim() || null,
-          status_aset: eStatusAset.trim() || null,
+          status_aset: eStatusAset,
           notes: notesLines.join("\n") || null,
           updated_at: new Date().toISOString(),
         })
@@ -1137,12 +1154,42 @@ export function RequestDetailPage() {
             <Textarea rows={3} value={eKet} onChange={(e) => setEKet(e.target.value)} className="font-mono text-xs" />
           </div>
           <div className="space-y-1.5">
-            <Label>Status Request</Label>
-            <Input value={eStatusReq} onChange={(e) => setEStatusReq(e.target.value)} placeholder="cth: PENAMBAHAN" />
+            <Label htmlFor="edit-status-request">Status Request</Label>
+            <Select
+              id="edit-status-request"
+              value={eStatusReq}
+              onValueChange={(v) => setEStatusReq(v as StatusRequest)}
+              options={STATUS_REQUEST_OPTIONS.map((o) => ({
+                value: o,
+                label: STATUS_REQUEST_LABELS[o],
+              }))}
+            />
           </div>
+          {eStatusReq === "PINJAM" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-durasi-pinjam">Durasi Pinjam</Label>
+              <Input
+                id="edit-durasi-pinjam"
+                value={eDurasiPinjam}
+                onChange={(e) => setEDurasiPinjam(e.target.value)}
+                placeholder="cth: 1 MINGGU"
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
-            <Label>Status Asset</Label>
-            <Input value={eStatusAset} onChange={(e) => setEStatusAset(e.target.value)} placeholder="cth: ASSET RETUR" />
+            <Label htmlFor="edit-status-asset">Status Asset</Label>
+            <Select
+              id="edit-status-asset"
+              value={eStatusAset}
+              onValueChange={(v) => setEStatusAset(v as ExcelStatusAset)}
+              options={(Object.keys(EXCEL_STATUS_ASET_LABELS) as ExcelStatusAset[]).map((o) => ({
+                value: o,
+                label: EXCEL_STATUS_ASET_LABELS[o],
+              }))}
+            />
+            <p className="mt-1 text-xs text-ink-500">
+              Stok dipotong dari <b>{EXCEL_STATUS_ASET_LOKASI[eStatusAset]}</b> saat barang terkirim.
+            </p>
           </div>
         </div>
         <DialogFooter>
