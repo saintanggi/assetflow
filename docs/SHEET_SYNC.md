@@ -29,15 +29,23 @@ Aturan yang dipakai (sama dengan template dokumen pengiriman):
 
 ## 2. Deploy Edge Function
 
+**Cara paling mudah (tanpa install)** — Supabase Dashboard → **Edge Functions** →
+**Create a new function** → Name: `sync-sheets` → hapus isi editor → copas seluruh isi
+**`docs/sync-sheets-standalone.ts`** → **Deploy** (biarkan *Enforce JWT Verification* ON).
+
+**Atau dengan CLI:**
+
 ```bash
-# sekali saja (butuh Supabase CLI + login)
 supabase link --project-ref <PROJECT-REF>
-supabase functions deploy sync-sheets --no-verify-jwt
+supabase functions deploy sync-sheets      # JWT verification tetap aktif (default)
 ```
 
-`--no-verify-jwt` diperlukan agar **cron** bisa memanggil fungsi ini dengan
-service-role key. Fungsi tetap memeriksa izin sendiri: panggilan dari pengguna
-harus lolos `has_permission('settings.manage')` / super admin.
+JWT verification tetap boleh aktif karena cron mengirim **service-role key** (itu JWT
+yang valid). Untuk panggilan dari aplikasi, fungsi memeriksa sendiri: harus lolos
+`has_permission('settings.manage')` / super admin.
+
+> Panduan klik-per-klik untuk pengguna non-teknis ada di **`PANDUAN-SETUP-SINKRON.md`**
+> (termasuk file SQL siap copas di `docs/sql/`).
 
 ## 3. Atur sumber di aplikasi
 
@@ -51,8 +59,8 @@ kanan:
 
 ## 4. Jadwalkan tiap 15 menit (pg_cron)
 
-Jalankan di **SQL Editor** Supabase. Ganti `<PROJECT-REF>` dan `<SERVICE-ROLE-KEY>`
-(ada di *Project Settings → API*). **Jangan** commit kunci ini ke repo.
+File siap copas: **`docs/sql/setup_cron.sql`** (ganti 2 placeholder di dalamnya).
+Jalankan di **SQL Editor** Supabase. **Jangan** commit kunci ini ke repo.
 
 ```sql
 -- sekali saja
@@ -113,7 +121,17 @@ FROM public.sheet_sync_runs ORDER BY started_at DESC LIMIT 20;
 | Qty terlihat aneh | Buka **Pratinjau**: kolom Catatan menunjukkan asal angka (`QTY file 23 untuk 23 baris`, `dihitung 6 dari 6 baris`, dst). |
 | Ingin kembali ke upload manual | Matikan jadwal cron (`cron.unschedule`) — panel tetap bisa dipakai manual. |
 
-## 7. Catatan teknis
+## 7. Berkas terkait
+
+| Berkas | Isi |
+|---|---|
+| `PANDUAN-SETUP-SINKRON.md` | Panduan klik-per-klik (untuk non-teknis) |
+| `docs/sql/setup_sheet_sync.sql` | Dua migrasi (20261015000029 + 20261015000030) digabung, 1x copas |
+| `docs/sql/setup_cron.sql` | Jadwal `pg_cron` tiap 15 menit, tinggal ganti 2 placeholder |
+| `docs/sync-sheets-standalone.ts` | Edge Function versi satu file untuk di-paste di Dashboard |
+| `scripts/sync-parser.mjs` / `scripts/bundle-sync-fn.mjs` | Regenerasi salinan parser & bundle (`npm run sync:parser`, `npm run bundle:sync-fn`) |
+
+## 8. Catatan teknis
 
 - Parser di Edge Function adalah **salinan** `src/lib/shippingUpload.ts`
   (`supabase/functions/sync-sheets/shippingUpload.ts`). Setelah mengubah parser,

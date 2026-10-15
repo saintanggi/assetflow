@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "sync:parser": "node scripts/sync-parser.mjs"
+    "sync:parser": "node scripts/sync-parser.mjs",
+    "bundle:sync-fn": "node scripts/bundle-sync-fn.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

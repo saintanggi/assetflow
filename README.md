@@ -54,7 +54,10 @@ menentukan stok Baru/Retur/Unready), dan idempoten sehingga aman dijadwalkan tia
 - Tabel konfigurasi & riwayat: `supabase/migrations/20261015000029_sheet_sync.sql`
 - Fungsi service-role: `supabase/migrations/20261015000030_sheet_sync_functions.sql`
 - Edge Function: `supabase/functions/sync-sheets/`
-- Panduan lengkap (deploy + jadwal `pg_cron` + troubleshooting): **`docs/SHEET_SYNC.md`**
+- Panduan klik-per-klik (non-teknis): **`PANDUAN-SETUP-SINKRON.md`**
+- Panduan teknis (deploy + jadwal `pg_cron` + troubleshooting): **`docs/SHEET_SYNC.md`**
+- SQL siap copas: `docs/sql/setup_sheet_sync.sql`, `docs/sql/setup_cron.sql`
+- Edge Function versi 1 file (untuk Dashboard): `docs/sync-sheets-standalone.ts`
 - Panelnya ada di menu **Permintaan → Upload Dokumen Pengiriman**.
 
 Setelah mengubah parser (`src/lib/shippingUpload.ts`), jalankan `npm run sync:parser`

@@ -24,3 +24,22 @@ describe("parser Edge Function", () => {
     expect(migrasi).toContain("sync_ship_request_items");
   });
 });
+
+describe("versi satu file (untuk di-paste di Supabase Dashboard)", () => {
+  const bundle = readFileSync("docs/sync-sheets-standalone.ts", "utf8");
+  it("berisi handler + parser + helper tanpa import lokal", () => {
+    expect(bundle).toContain("Deno.serve");
+    expect(bundle).toContain("export function pickNewestSheet");
+    expect(bundle).toContain("sync_ship_request_items");
+    expect(bundle).toContain("downloadWorkbook");
+    expect(bundle).not.toMatch(/from "\.\//);
+    // hanya boleh punya 2 import npm (xlsx + supabase-js)
+    expect(bundle.match(/^import /gm)?.length).toBe(2);
+  });
+  it("ikut memakai aturan qty terbaru dari parser", () => {
+    const src = readFileSync(SRC, "utf8");
+    const ciri = "const total = round3(Math.max(explicit, barcodes.size, n));";
+    expect(src).toContain(ciri);
+    expect(bundle).toContain(ciri);
+  });
+});
