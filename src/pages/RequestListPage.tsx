@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import * as XLSX from "xlsx";
+import { Download, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
@@ -50,6 +52,12 @@ export function RequestListPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("semua");
 
+  // Filter tanggal & pencarian database (tiket, gerai, resi, barcode, SN).
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [serverQuery, setServerQuery] = useState("");
+  const [exporting, setExporting] = useState(false);
+
   // Edit & hapus (superadmin).
   const [editReq, setEditReq] = useState<Request | null>(null);
   const [eTicket, setETicket] = useState("");
@@ -61,15 +69,65 @@ export function RequestListPage() {
   const [delReq, setDelReq] = useState<Request | null>(null);
   const [delBusy, setDelBusy] = useState(false);
 
-  const load = async () => {
-    const { data, error } = await supabase
-      .from("requests")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (error) toast.error(error.message);
-    else setRows((data ?? []) as Request[]);
-    setLoading(false);
+  const load = async (opts?: { q?: string; from?: string; to?: string }) => {
+    setLoading(true);
+    const q = (opts?.q ?? serverQuery).trim();
+    const from = opts?.from ?? dateFrom;
+    const to = opts?.to ?? dateTo;
+    try {
+      if (q) {
+        const clean = q.replace(/[%_,]/g, "");
+        const pat = `%${clean}%`;
+        const [reqMatch, itemMatch] = await Promise.all([
+          supabase
+            .from("requests")
+            .select("id")
+            .or(
+              `ticket_no.ilike.${pat},request_number.ilike.${pat},branch_name.ilike.${pat},branch_code.ilike.${pat}`
+            )
+            .limit(300),
+          supabase
+            .from("request_items")
+            .select("request_id")
+            .or(
+              `barcode.ilike.${pat},serial_number.ilike.${pat},resi.ilike.${pat},notes.ilike.${pat}`
+            )
+            .limit(300),
+        ]);
+        const idSet = new Set<string>();
+        for (const r of (reqMatch.data ?? []) as { id: string }[]) idSet.add(r.id);
+        for (const i of (itemMatch.data ?? []) as { request_id: string }[]) idSet.add(i.request_id);
+        if (idSet.size === 0) {
+          setRows([]);
+          setLoading(false);
+          return;
+        }
+        let qBuilder = supabase
+          .from("requests")
+          .select("*")
+          .in("id", [...idSet].slice(0, 300))
+          .order("request_date", { ascending: false })
+          .order("created_at", { ascending: false });
+        if (from) qBuilder = qBuilder.gte("request_date", from);
+        if (to) qBuilder = qBuilder.lte("request_date", to);
+        const { data, error } = await qBuilder;
+        if (error) toast.error(error.message);
+        else setRows((data ?? []) as Request[]);
+      } else {
+        let qBuilder = supabase
+          .from("requests")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(500);
+        if (from) qBuilder = qBuilder.gte("request_date", from);
+        if (to) qBuilder = qBuilder.lte("request_date", to);
+        const { data, error } = await qBuilder;
+        if (error) toast.error(error.message);
+        else setRows((data ?? []) as Request[]);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -82,7 +140,119 @@ export function RequestListPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dateFrom, dateTo]);
+
+  const exportRekapExcel = async () => {
+    if (filtered.length === 0) {
+      toast.error("Tidak ada data permintaan untuk diekspor.");
+      return;
+    }
+    setExporting(true);
+    try {
+      const reqIds = filtered.map((r) => r.id);
+      const reqById = new Map(filtered.map((r) => [r.id, r]));
+      const allItems: {
+        request_id: string;
+        qty_requested: number | string;
+        qty_approved: number | string | null;
+        qty_shipped: number | string;
+        barcode: string | null;
+        serial_number: string | null;
+        item_type: string | null;
+        status_aset: string | null;
+        resi: string | null;
+        item_status: string;
+        notes: string | null;
+        inventory_items: { sku: string; name: string } | { sku: string; name: string }[] | null;
+      }[] = [];
+
+      for (let i = 0; i < reqIds.length; i += 100) {
+        const { data, error } = await supabase
+          .from("request_items")
+          .select(
+            "request_id, qty_requested, qty_approved, qty_shipped, barcode, serial_number, item_type, status_aset, resi, item_status, notes, inventory_items(sku, name)"
+          )
+          .in("request_id", reqIds.slice(i, i + 100))
+          .order("created_at", { ascending: true });
+        if (error) throw new Error(error.message);
+        allItems.push(...((data ?? []) as unknown as typeof allItems));
+      }
+
+      const headers = [
+        "In Progress Date",
+        "NO. PERMINTAAN",
+        "NO TICKET",
+        "CABANG/GERAI",
+        "KODE GERAI",
+        "NAMA BARANG",
+        "QTY",
+        "DISETUJUI",
+        "TERKIRIM",
+        "KETERANGAN",
+        "RESI",
+        "BARCODE",
+        "TYPE BARANG",
+        "STATUS REQUEST",
+        "STATUS ASSET",
+        "STATUS TERKIRIM",
+      ];
+
+      const sheetRows: (string | number)[][] = [headers];
+      for (const it of allItems) {
+        const req = reqById.get(it.request_id);
+        if (!req) continue;
+        const inv = Array.isArray(it.inventory_items) ? it.inventory_items[0] : it.inventory_items;
+        const snList: string[] = [];
+        const srList: string[] = [];
+        for (const n of (it.notes ?? "").split("\n")) {
+          for (const p of n.split("|").map((s) => s.trim())) {
+            const ketM = p.match(/^Ket:\s*(.+)$/i);
+            const srM = p.match(/^Status request:\s*(.+)$/i);
+            if (ketM) snList.push(ketM[1].trim());
+            else if (srM) srList.push(srM[1].trim());
+          }
+        }
+        if (snList.length === 0 && it.serial_number) {
+          snList.push(it.serial_number);
+        }
+        const statusTerkirim =
+          it.item_status === "terkirim"
+            ? "TERKIRIM"
+            : ["pending_sebagian", "menunggu_stok"].includes(it.item_status)
+              ? "PENDING"
+              : it.item_status.toUpperCase();
+
+        sheetRows.push([
+          req.request_date ?? "",
+          req.request_number ?? "",
+          req.ticket_no ?? "",
+          req.branch_name ?? "",
+          req.branch_code ?? "",
+          inv?.name ?? "—",
+          Number(it.qty_requested ?? 0),
+          it.qty_approved != null ? Number(it.qty_approved) : 0,
+          Number(it.qty_shipped ?? 0),
+          snList.join(", "),
+          (it.resi ?? "").replace(/\n/g, ", "),
+          (it.barcode ?? "").replace(/\n/g, ", "),
+          it.item_type ?? "",
+          [...new Set(srList)].join(", "),
+          it.status_aset ?? "ASSET BARU",
+          statusTerkirim,
+        ]);
+      }
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sheetRows), "REKAP_PENGIRIMAN");
+      const today = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `Rekap_Pengiriman_${today}.xlsx`);
+      toast.success(`Rekap Excel berhasil diunduh (${sheetRows.length - 1} baris barang).`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal mengekspor Excel.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const openEdit = (r: Request) => {
     setEditReq(r);
@@ -238,15 +408,84 @@ export function RequestListPage() {
         title="Permintaan Barang"
         description="Alur permintaan: Kantor input → Gudang review → Helper proses → Kirim."
         actions={
-          hasPermission("requests.create") ? (
-            <Link to="/permintaan/baru">
-              <Button>
-                <Plus className="mr-1 h-4 w-4" /> Buat Permintaan
-              </Button>
-            </Link>
-          ) : undefined
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={exportRekapExcel}
+              disabled={exporting || loading}
+            >
+              <Download className="mr-1 h-4 w-4" />
+              {exporting ? "Mengekspor…" : "Export Rekap Excel"}
+            </Button>
+            {hasPermission("requests.create") && (
+              <Link to="/permintaan/baru">
+                <Button>
+                  <Plus className="mr-1 h-4 w-4" /> Buat Permintaan
+                </Button>
+              </Link>
+            )}
+          </div>
         }
       />
+
+      {/* Filter tanggal & pencarian penuh ke database (Resi / Barcode / SN / Tiket / Gerai) */}
+      <Card className="mb-4">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-12 sm:items-end">
+          <form
+            className="sm:col-span-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void load();
+            }}
+          >
+            <Label className="mb-1 block text-xs text-slate-400">
+              Lacak Database (No Tiket, Gerai, No Resi, Barcode, atau Serial Number)
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                value={serverQuery}
+                onChange={(e) => setServerQuery(e.target.value)}
+                placeholder="Ketik resi, barcode, SN, no tiket, atau nama gerai…"
+              />
+              <Button type="submit" variant="outline" disabled={loading}>
+                <Search className="mr-1 h-4 w-4" /> Cari
+              </Button>
+            </div>
+          </form>
+          <div className="sm:col-span-2">
+            <Label className="mb-1 block text-xs text-slate-400">Dari Tanggal</Label>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Label className="mb-1 block text-xs text-slate-400">Sampai Tanggal</Label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            {(serverQuery || dateFrom || dateTo) && (
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setServerQuery("");
+                  setDateFrom("");
+                  setDateTo("");
+                  void load({ q: "", from: "", to: "" });
+                }}
+              >
+                <X className="mr-1 h-4 w-4" /> Reset Filter
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map((t) => (

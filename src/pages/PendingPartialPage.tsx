@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Hourglass } from "lucide-react";
+import * as XLSX from "xlsx";
+import { Download, Hourglass } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { PageHeader } from "../components/PageHeader";
@@ -167,11 +168,57 @@ export function PendingPartialPage() {
     };
   }, []);
 
+  const exportExcel = () => {
+    if (rows.length === 0) {
+      toast.error("Tidak ada data sisa pending untuk diekspor.");
+      return;
+    }
+    const headers = [
+      "NO. PERMINTAAN",
+      "CABANG / GERAI",
+      "KODE BARANG",
+      "NAMA BARANG",
+      "JENIS PENDING",
+      "SISA BELUM TERKIRIM",
+      "QTY DIMINTA",
+      "QTY DISETUJUI",
+      "QTY TERKIRIM",
+      "RESI",
+      "KETERANGAN GUDANG",
+    ];
+    const sheetRows = [
+      headers,
+      ...rows.map((r) => [
+        r.request_number,
+        r.branch_name,
+        r.sku,
+        r.name,
+        r.jenis,
+        r.sisa,
+        r.qty_requested,
+        r.qty_approved,
+        r.qty_shipped,
+        r.resi ?? "",
+        r.keterangan ?? "",
+      ]),
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sheetRows), "SISA_PENDING");
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Sisa_Belum_Terkirim_${today}.xlsx`);
+    toast.success("File Excel Sisa Belum Terkirim berhasil diunduh.");
+  };
+
   return (
     <div>
       <PageHeader
         title="Sisa Belum Terkirim"
         description="Barang yang disetujui sebagian — kirim susulan begitu stok restock."
+        actions={
+          <Button variant="outline" onClick={exportExcel} disabled={loading || rows.length === 0}>
+            <Download className="mr-1 h-4 w-4" /> Export Excel
+          </Button>
+        }
       />
 
       <Card className="mb-4">

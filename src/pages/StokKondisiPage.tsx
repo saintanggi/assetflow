@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
+import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { Download, Pencil } from "lucide-react";
+import { ArrowRightLeft, Download, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { formatQty } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
@@ -62,7 +63,8 @@ interface StokRow {
 
 export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   const cfg = KONDISI_CONFIG[kondisi];
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, hasPermission } = useAuth();
+  const canTransfer = isSuperAdmin || hasPermission("inventory.transfer");
   const [rows, setRows] = useState<StokRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [locationId, setLocationId] = useState<string | null>(null);
@@ -76,6 +78,12 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   const [editQty, setEditQty] = useState("");
   const [editBuffer, setEditBuffer] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+
+  // Pindah stok UNREADY -> RETURN (selesai servis).
+  const [moveRow, setMoveRow] = useState<StokRow | null>(null);
+  const [moveQty, setMoveQty] = useState("");
+  const [moveNotes, setMoveNotes] = useState("");
+  const [moving, setMoving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -248,6 +256,63 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
     }
   };
 
+  const openMoveToReturn = (row: StokRow) => {
+    setMoveRow(row);
+    setMoveQty(String(Math.max(1, row.stokAkhir)));
+    setMoveNotes("Selesai servis / siap pakai (Unready -> Return)");
+  };
+
+  const submitMoveToReturn = async () => {
+    if (!moveRow || !locationId) return;
+    const qty = Number(moveQty);
+    if (!(qty > 0) || qty > moveRow.stokAkhir) {
+      toast.error(`Qty pindah harus 1 s/d ${formatQty(moveRow.stokAkhir)}.`);
+      return;
+    }
+    setMoving(true);
+    try {
+      const { data: returLoc, error: locErr } = await supabase
+        .from("locations")
+        .select("id")
+        .eq("code", "STOK-RETUR")
+        .maybeSingle();
+      if (locErr) throw new Error(locErr.message);
+      const returLocId = (returLoc as { id: string } | null)?.id;
+      if (!returLocId) throw new Error("Lokasi STOK-RETUR belum ada di database.");
+
+      const { data: docNo, error: txErr } = await supabase.rpc(
+        "post_inventory_transaction",
+        {
+          p_idempotency_key: `unready-retur-${moveRow.id}-${Date.now()}`,
+          p_type: "transfer",
+          p_transaction_date: new Date().toISOString().slice(0, 10),
+          p_source_location_id: locationId,
+          p_dest_location_id: returLocId,
+          p_reference: "SERVIS-SELESAI",
+          p_notes: moveNotes.trim() || "Selesai servis (Unready -> Return)",
+          p_items: [
+            {
+              item_id: moveRow.id,
+              qty,
+              status_aset: "ASSET RETUR",
+              notes: moveNotes.trim() || "Selesai servis",
+            },
+          ],
+        }
+      );
+      if (txErr) throw new Error(txErr.message);
+      toast.success(
+        `${formatQty(qty)} unit "${moveRow.itemName}" dipindahkan ke Asset Return (${String(docNo)}).`
+      );
+      setMoveRow(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal memindahkan stok.");
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const columns: ColumnDef<StokRow, unknown>[] = [
     { header: "NO", accessorKey: "no", cell: ({ row }) => row.original.no },
     {
@@ -292,15 +357,29 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       accessorKey: "status",
       cell: ({ row }) => statusBadge(row.original.status),
     },
-    ...(isSuperAdmin
+    ...(isSuperAdmin || (kondisi === "unready" && canTransfer)
       ? [
           {
             header: "",
             id: "edit",
             cell: ({ row }: { row: { original: StokRow } }) => (
-              <Button variant="outline" size="sm" onClick={() => openEdit(row.original)}>
-                <Pencil className="mr-1 h-3 w-3" /> Ubah
-              </Button>
+              <div className="flex gap-1">
+                {kondisi === "unready" && canTransfer && row.original.stokAkhir > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openMoveToReturn(row.original)}
+                    title="Barang selesai servis — pindahkan ke Asset Return"
+                  >
+                    <ArrowRightLeft className="mr-1 h-3 w-3" /> Ke Return
+                  </Button>
+                )}
+                {isSuperAdmin && (
+                  <Button variant="outline" size="sm" onClick={() => openEdit(row.original)}>
+                    <Pencil className="mr-1 h-3 w-3" /> Ubah
+                  </Button>
+                )}
+              </div>
             ),
           } as ColumnDef<StokRow, unknown>,
         ]
@@ -328,15 +407,57 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
     );
   };
 
+  const handleExportExcel = () => {
+    if (rows.length === 0) {
+      toast.error("Tidak ada data untuk diekspor.");
+      return;
+    }
+    const headers = [
+      "NO",
+      "ITEM",
+      "SATUAN",
+      "STOK AWAL",
+      "TOTAL IN",
+      "TOTAL OUT",
+      "STOK AKHIR",
+      "BUFFER MINIMUM",
+      "STATUS",
+    ];
+    const sheetRows = [
+      headers,
+      ...rows.map((r) => [
+        r.no,
+        r.itemName,
+        r.satuan,
+        r.stokAwal,
+        r.totalIn,
+        r.totalOut,
+        r.stokAkhir,
+        r.buffer,
+        r.status,
+      ]),
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sheetRows), `STOK_${cfg.badge}`);
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Stok_${cfg.badge}_${today}.xlsx`);
+    toast.success(`File Excel Stok ${cfg.badge} berhasil diunduh.`);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={cfg.title}
         description={cfg.description}
         actions={
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="mr-1 h-4 w-4" /> Export CSV
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportExcel}>
+              <Download className="mr-1 h-4 w-4" /> Export Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExport}>
+              <Download className="mr-1 h-4 w-4" /> Export CSV
+            </Button>
+          </div>
         }
       />
 
@@ -444,6 +565,44 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
           </Button>
           <Button onClick={saveEdit} disabled={editSaving}>
             {editSaving ? "Menyimpan…" : "Simpan"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={!!moveRow} onOpenChange={(o) => !o && setMoveRow(null)}>
+        <DialogHeader>
+          <DialogTitle>Selesai Servis — Pindah ke Asset Return</DialogTitle>
+          <DialogDescription>
+            Pindahkan stok <b>{moveRow?.itemName}</b> dari Asset Unready ke Asset Return (tersedia:{" "}
+            {formatQty(moveRow?.stokAkhir ?? 0)}).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 px-1 py-2">
+          <div className="space-y-1.5">
+            <Label>Jumlah Unit Selesai Servis</Label>
+            <Input
+              type="number"
+              min="1"
+              max={moveRow?.stokAkhir ?? 1}
+              value={moveQty}
+              onChange={(e) => setMoveQty(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Keterangan</Label>
+            <Input
+              value={moveNotes}
+              onChange={(e) => setMoveNotes(e.target.value)}
+              placeholder="cth: Selesai perbaikan teknisi"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setMoveRow(null)} disabled={moving}>
+            Batal
+          </Button>
+          <Button onClick={submitMoveToReturn} disabled={moving}>
+            {moving ? "Memindahkan…" : "Pindahkan ke Return"}
           </Button>
         </DialogFooter>
       </Dialog>

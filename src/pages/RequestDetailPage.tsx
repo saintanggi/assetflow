@@ -98,6 +98,7 @@ export function RequestDetailPage() {
 
   // Process state (helper)
   const [proc, setProc] = useState<Record<string, { barcode: string; sn: string; type: string }>>({});
+  const [printMode, setPrintMode] = useState<"picklist" | "surat_jalan">("picklist");
 
   // Ship state (admin gudang)
   const [shipQty, setShipQty] = useState<Record<string, string>>({});
@@ -370,6 +371,44 @@ export function RequestDetailPage() {
     }
   };
 
+  // Simpan semua baris yang sudah terisi barcode sekaligus (mode cepat Helper).
+  const saveAllProcessItems = async () => {
+    const processable = items.filter((x) =>
+      ["disetujui", "diproses", "siap", "pending_sebagian"].includes(x.item_status)
+    );
+    const filled = processable.filter((x) => (proc[x.id]?.barcode ?? "").trim().length > 0);
+    if (filled.length === 0) {
+      toast.error("Isi minimal satu barcode terlebih dahulu.");
+      return;
+    }
+    setBusy(true);
+    try {
+      for (const x of filled) {
+        const p = proc[x.id];
+        const { error } = await supabase
+          .from("request_items")
+          .update({
+            barcode: p.barcode.trim(),
+            serial_number: p.sn.trim() || null,
+            item_type: p.type.trim() || null,
+            item_status: "siap",
+            processed_by: user?.id ?? null,
+          })
+          .eq("id", x.id);
+        if (error) throw new Error(error.message);
+      }
+      if (req && ["disetujui", "disetujui_sebagian"].includes(req.status)) {
+        await supabase.from("requests").update({ status: "diproses" }).eq("id", req.id);
+      }
+      toast.success(`${filled.length} item berhasil disimpan & ditandai Siap Kirim.`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menyimpan semua item.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // ---------- KIRIM (admin gudang) ----------
   const submitShip = async () => {
     if (!req || !id) return;
@@ -414,7 +453,10 @@ export function RequestDetailPage() {
     }
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = (mode: "picklist" | "surat_jalan") => {
+    setPrintMode(mode);
+    setTimeout(() => window.print(), 50);
+  };
 
   // Buka dialog edit item (superadmin).
   const openItemEdit = (x: RequestItem) => {
@@ -583,9 +625,12 @@ export function RequestDetailPage() {
         title={req.ticket_no || req.request_number}
         description={`${req.request_number} • ${req.branch_name}${req.branch_code ? ` (${req.branch_code})` : ""} • ${req.request_date}`}
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handlePrint}>
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <Button variant="outline" size="sm" onClick={() => handlePrint("picklist")}>
               <Printer className="mr-1 h-4 w-4" /> Pick List
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handlePrint("surat_jalan")}>
+              <Printer className="mr-1 h-4 w-4" /> Cetak Surat Jalan
             </Button>
             <Button variant="outline" size="sm" onClick={() => navigate("/permintaan")}>
               Kembali
@@ -721,17 +766,26 @@ export function RequestDetailPage() {
 
       {/* ===== PANEL PROSES (Helper) ===== */}
       {isProcessable && (
-        <Card className="mb-4 border-amber-400/20">
-          <CardHeader>
-            <CardTitle className="font-display text-base text-white">
-              Proses Helper — isi barcode/SN lalu tandai siap
-            </CardTitle>
+        <Card className="mb-4 border-amber-400/20 print:hidden">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="font-display text-base text-white">
+                Proses Helper — isi barcode/SN lalu tandai siap
+              </CardTitle>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Tips scanner USB: tekan Enter setelah scan Barcode untuk otomatis pindah ke kolom SN / baris berikutnya.
+              </p>
+            </div>
+            <Button size="sm" onClick={saveAllProcessItems} disabled={busy}>
+              <CheckCircle2 className="mr-1 h-4 w-4" /> Simpan Semua & Siap Kirim
+            </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {items
               .filter((x) => ["disetujui", "diproses", "siap", "pending_sebagian"].includes(x.item_status))
-              .map((x) => {
+              .map((x, idx, arr) => {
                 const p = proc[x.id] ?? { barcode: "", sn: "", type: "" };
+                const nextId = arr[idx + 1]?.id;
                 return (
                   <div
                     key={x.id}
@@ -741,25 +795,43 @@ export function RequestDetailPage() {
                       <div className="font-medium">{x.inventory_items?.name}</div>
                       <div className="text-xs text-slate-500">
                         Qty disetujui: {fmt(Number(x.qty_approved ?? 0))}
+                        {x.status_aset && <span className="ml-2 text-sky-300">• {x.status_aset}</span>}
                       </div>
                     </div>
                     <div className="sm:col-span-3">
                       <Label>Barcode (wajib)</Label>
                       <Input
+                        id={`proc-bc-${x.id}`}
                         value={p.barcode}
                         onChange={(e) =>
                           setProc((prev) => ({ ...prev, [x.id]: { ...p, barcode: e.target.value } }))
                         }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const snEl = document.getElementById(`proc-sn-${x.id}`);
+                            snEl?.focus();
+                          }
+                        }}
                         placeholder="Scan / ketik barcode"
                       />
                     </div>
                     <div className="sm:col-span-2">
                       <Label>SN (opsional)</Label>
                       <Input
+                        id={`proc-sn-${x.id}`}
                         value={p.sn}
                         onChange={(e) =>
                           setProc((prev) => ({ ...prev, [x.id]: { ...p, sn: e.target.value } }))
                         }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (nextId) {
+                              document.getElementById(`proc-bc-${nextId}`)?.focus();
+                            }
+                          }
+                        }}
                         placeholder="Serial number"
                       />
                     </div>
@@ -1062,6 +1134,47 @@ export function RequestDetailPage() {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      {/* ===== CETAK SURAT JALAN / PICK LIST (Hanya muncul saat Print) ===== */}
+      <div className="mt-8 hidden border-t border-slate-700 pt-6 text-xs text-slate-300 print:block">
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h2 className="text-base font-bold uppercase tracking-wide">
+              {printMode === "surat_jalan" ? "SURAT JALAN PENGIRIMAN BARANG" : "PICK LIST GUDANG"}
+            </h2>
+            <p className="mt-1">
+              No. Permintaan: <b>{req.request_number}</b> • No. Tiket: <b>{req.ticket_no || "—"}</b>
+            </p>
+            <p>
+              Tujuan Cabang/Gerai: <b>{req.branch_name}</b>
+              {req.branch_code ? ` (${req.branch_code})` : ""}
+            </p>
+          </div>
+          <div className="text-right">
+            <p>Tanggal Permintaan: {req.request_date}</p>
+            <p>Tanggal Cetak: {new Date().toISOString().slice(0, 10)}</p>
+          </div>
+        </div>
+        <div className="mt-10 grid grid-cols-3 gap-6 text-center">
+          <div className="rounded border border-slate-700 p-3">
+            <p className="font-semibold">Disiapkan Oleh (Helper Gudang)</p>
+            <div className="h-16" />
+            <p className="border-t border-slate-700 pt-1">( ........................................ )</p>
+          </div>
+          <div className="rounded border border-slate-700 p-3">
+            <p className="font-semibold">Disetujui Oleh (Admin Gudang)</p>
+            <div className="h-16" />
+            <p className="border-t border-slate-700 pt-1">( ........................................ )</p>
+          </div>
+          <div className="rounded border border-slate-700 p-3">
+            <p className="font-semibold">
+              {printMode === "surat_jalan" ? "Diterima Oleh (Ekspedisi / Gerai)" : "Pemeriksa Gudang"}
+            </p>
+            <div className="h-16" />
+            <p className="border-t border-slate-700 pt-1">( ........................................ )</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

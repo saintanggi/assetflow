@@ -18,7 +18,7 @@ export type StockCountStatus = "draft" | "posted";
 
 export interface Role {
   id: string;
-  name: "super_admin" | "admin";
+  name: "super_admin" | "admin" | "admin_ho" | "admin_gudang" | "helper";
   created_at: string;
   updated_at: string;
 }

@@ -27,9 +27,11 @@
 
 -- ---------- 1. Longgarkan CHECK constraint saldo & ledger untuk upload minus ----------
 ALTER TABLE public.inventory_balances
+  DROP CONSTRAINT IF EXISTS balances_qty_check,
   DROP CONSTRAINT IF EXISTS inventory_balances_qty_check;
 
 ALTER TABLE public.inventory_ledger
+  DROP CONSTRAINT IF EXISTS ledger_qty_after_check,
   DROP CONSTRAINT IF EXISTS inventory_ledger_qty_after_check;
 
 -- ---------- 2. Lengkapi katalog permissions & role_permissions ----------
