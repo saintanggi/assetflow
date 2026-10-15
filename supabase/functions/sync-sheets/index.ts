@@ -29,6 +29,7 @@ import {
   parseSheetLabel,
   parseWorkbook,
   pickNewestSheet,
+  applySheetDate,
   type AggLine,
   type DupIndex,
   type KodeKondisi,
@@ -163,7 +164,9 @@ async function syncSource(
     }
     dipakai = dicari;
   }
-  const semuaBaris = dipakai.rows;
+  // Baris tanpa tanggal memakai tanggal sheet (bukan tanggal hari ini) supaya sinkron
+  // berulang di hari berbeda tidak menganggapnya data baru (stok terpotong dua kali).
+  const semuaBaris = applySheetDate(dipakai.rows, dipakai.name);
 
   // Cocokkan nama barang dengan master.
   const { data: items, error: itemsErr } = await db

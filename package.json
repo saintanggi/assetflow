@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "sync:parser": "node scripts/sync-parser.mjs",
-    "bundle:sync-fn": "node scripts/bundle-sync-fn.mjs"
+    "bundle:sync-fn": "node scripts/bundle-sync-fn.mjs",
+    "copas": "node scripts/make-copas.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

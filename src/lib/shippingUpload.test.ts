@@ -16,6 +16,7 @@ import {
   parseWorkbook,
   pickNewestSheet,
   type ParsedShippingRow,
+  applySheetDate,
 } from "./shippingUpload";
 
 /** Bangun sheet seperti file "Dokumen Pengiriman" lalu baca dengan parser produksi. */
@@ -464,5 +465,36 @@ describe("pilih sheet terbaru", () => {
 
   it("bulan yang belum lewat dianggap tahun sebelumnya", () => {
     expect(parseSheetLabel("31 DES", new Date(2026, 0, 5)).date).toBe("2025-12-31");
+  });
+});
+
+describe("tanggal baris tanpa tanggal memakai tanggal sheet", () => {
+  const row = (over: Partial<ParsedShippingRow>) =>
+    ({
+      rowNo: 3,
+      date: "1999-01-01",
+      dateExplicit: false,
+      ticket: "T1",
+      branch: "G",
+      branchCode: "",
+      itemName: "KURSI TRAINING",
+      qty: 2,
+      ...over,
+    }) as ParsedShippingRow;
+
+  it("baris tanpa tanggal dapat tanggal dari nama sheet", () => {
+    const out = applySheetDate([row({})], "15 OKT", "2026-10-20");
+    expect(out[0].date).toBe(parseSheetLabel("15 OKT").date);
+    expect(out[0].dateExplicit).toBe(false);
+  });
+
+  it("baris yang tanggalnya sudah ada di file tidak diubah", () => {
+    const out = applySheetDate([row({ date: "2026-09-30", dateExplicit: true })], "15 OKT", "2026-10-20");
+    expect(out[0].date).toBe("2026-09-30");
+  });
+
+  it("nama sheet tanpa tanggal memakai fallback", () => {
+    const out = applySheetDate([row({})], "TERBARU", "2026-10-20");
+    expect(out[0].date).toBe("2026-10-20");
   });
 });

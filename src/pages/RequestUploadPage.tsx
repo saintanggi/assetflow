@@ -21,6 +21,7 @@ import {
   parseSheetLabel,
   parseWorkbook,
   pickNewestSheet,
+  applySheetDate,
   type AggLine,
   type DupIndex,
   type KodeKondisi,
@@ -196,7 +197,10 @@ export function RequestUploadPage() {
    * Bangun pratinjau dari baris satu sheet: cocokkan barang, buang baris yang sudah
    * pernah masuk, lalu agregasi qty per barang + kondisi aset.
    */
-  const buildPreview = async (rows: ParsedShippingRow[], sheetName: string) => {
+  const buildPreview = async (rowsIn: ParsedShippingRow[], sheetName: string) => {
+    // Baris tanpa tanggal memakai tanggal sheet (bukan tanggal hari ini) supaya tidak dobel
+    // saat file yang sama diproses ulang di hari lain.
+    const rows = applySheetDate(rowsIn, sheetName);
     // Cocokkan nama barang dengan master.
       const { data: items, error: itemsErr } = await supabase
         .from("inventory_items")
@@ -691,7 +695,8 @@ export function RequestUploadPage() {
                       {preview.rows.filter((r) => !r.dateExplicit).length} baris tanpa tanggal di file (baris{" "}
                       {preview.rows.filter((r) => !r.dateExplicit).slice(0, 8).map((r) => r.rowNo).join(", ")}
                       {preview.rows.filter((r) => !r.dateExplicit).length > 8 ? ", …" : ""}) — sistem memakai
-                      tanggal hari ini untuk baris tersebut. Lengkapi kolom In Progress Date bila tanggalnya beda.
+                      tanggal sheet \"{(preview.sheetName ?? "").trim()}\" untuk baris tersebut. Lengkapi kolom In
+                      Progress Date bila tanggalnya beda.
                     </div>
                   </div>
                 )}

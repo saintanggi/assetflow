@@ -660,6 +660,23 @@ export function parseSheetLabel(name: string, refDate: Date = new Date()): Sheet
  * - saat tanggal sama, sheet dengan baris terbanyak menang,
  * - bila tidak ada nama sheet bertanggal: pakai sheet dengan baris terbanyak.
  */
+/**
+ * Isi tanggal untuk baris yang kolom tanggalnya kosong di file: pakai **tanggal dari nama
+ * sheet** (mis. "15 OKT" → 2026-10-15), bukan tanggal hari ini.
+ *
+ * Alasan: baris tanpa tanggal harus selalu dapat tanggal yang sama walau sinkron dijalankan
+ * berulang (tiap 15 menit) atau dijalankan besok. Kalau memakai "tanggal hari ini", baris yang
+ * sama akan dianggap data baru esok hari → stok terpotong dua kali.
+ */
+export function applySheetDate<T extends { date: string; dateExplicit: boolean }>(
+  rows: T[],
+  sheetName: string,
+  fallback: string = todayIso(),
+): T[] {
+  const sheetDate = parseSheetLabel(sheetName).date ?? fallback;
+  return rows.map((r) => (r.dateExplicit ? r : { ...r, date: sheetDate }));
+}
+
 export function pickNewestSheet<T extends { name: string; rows: unknown[] }>(
   sheets: T[],
   refDate: Date = new Date(),
@@ -830,7 +847,9 @@ async function syncSource(
     }
     dipakai = dicari;
   }
-  const semuaBaris = dipakai.rows;
+  // Baris tanpa tanggal memakai tanggal sheet (bukan tanggal hari ini) supaya sinkron
+  // berulang di hari berbeda tidak menganggapnya data baru (stok terpotong dua kali).
+  const semuaBaris = applySheetDate(dipakai.rows, dipakai.name);
 
   // Cocokkan nama barang dengan master.
   const { data: items, error: itemsErr } = await db

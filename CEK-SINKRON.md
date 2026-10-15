@@ -4,6 +4,10 @@
 > jadwal `*/15 * * * *`, `active = true`). Itu artinya **Langkah 4 selesai** ✅
 > Tapi jadwal aktif **belum tentu** datanya sudah masuk — bisa jadi "mesin"-nya belum ada
 > atau belum disambungkan. Jalankan 2 cek di bawah untuk memastikan.
+>
+> **Info terbaru dari file Sheet Anda (saya cek 15 Okt):** sekarang sudah ada sheet **`15 OKT`**
+> (102 baris) → jadi sheet terbaru = **`15 OKT`** (bukan `14 OKT` lagi). Patokan angka yang benar
+> untuk sheet `15 OKT`: **± 16 permintaan**, **105 unit**, pesan `102/102 baris baru`.
 
 **Cara pakai:** Supabase → **SQL Editor** → **New query** → copas satu blok → **Run**.
 (Lihat hasilnya di bagian **Results** bawah.)
@@ -61,10 +65,28 @@ SELECT started_at, sheet_name, status, requests_created, qty_imported,
 
 ### Cara membaca
 - **sheet_name** harus `14 OKT` (sheet terbaru), **bukan** `Copy of 14 OKT` dan bukan `02 JUN`.
-- **requests_created** = jumlah permintaan/berita acara yang dibuat. Untuk sheet `14 OKT` nilai yang benar **± 21**.
-- **qty_imported** = total unit. Untuk sheet `14 OKT` nilai yang benar **152** (angka jauh lebih besar, mis. > 200, = tanda masih pakai aturan qty lama).
+- **requests_created** = jumlah permintaan/berita acara yang dibuat.
+  Patokan: sheet `15 OKT` → **± 16**; sheet `14 OKT` → **± 21**.
+- **qty_imported** = total unit. Patokan: sheet `15 OKT` → **105**; sheet `14 OKT` → **152**.
+  (angka jauh lebih besar, mis. > 200, = tanda masih pakai aturan qty lama)
 - **rows_skipped_dup** = baris yang dilewati karena sudah pernah masuk → normal (bukti tidak dobel).
 - Jalan berikutnya (15 menit lagi) seharusnya menulis `0/150 baris baru, 150 duplikat dilewati` dan **tidak** membuat permintaan baru.
+
+---
+
+## ⚠️ Perbaikan penting tanggal (kalau Langkah 2 sudah Anda kerjakan)
+
+Saya menemukan dan **sudah memperbaiki**: baris yang kolom tanggalnya **kosong** di file dulu memakai
+"tanggal hari ini". Akibatnya, kalau sheet yang sama ikut tersinkron lagi **besok**, baris-baris itu
+dianggap data baru → **stok terpotong dua kali**.
+
+Sekarang baris tanpa tanggal memakai **tanggal sheet-nya** (sheet `15 OKT` → tanggal `15 Okt 2026`),
+jadi aman dijalankan berulang di hari mana pun.
+
+**Yang perlu Anda lakukan:** kalau Langkah 2 (Edge Function) sudah pernah Anda Deploy, **ulangi sekali lagi**:
+Supabase → **Edge Functions → `sync-sheets` → Edit** → hapus semua isi → paste ulang **BLOK B** dari
+`COPAS-KE-SUPABASE.md` (versi terbaru) → **Deploy**. Kalau belum pernah deploy, cukup pakai yang terbaru
+saat mengerjakan Langkah 2.
 
 ---
 
@@ -72,7 +94,10 @@ SELECT started_at, sheet_name, status, requests_created, qty_imported,
 - Menu **Permintaan** → cari catatan dengan keterangan **"Sinkron Google Sheet otomatis (14 OKT)"**.
 - Detailnya: **Stok / Kartu Stok** → ada pergerakan `REQ-KIRIM/…` sesuai jenis (ASSET BARU → STOK-BARU,
   RETUR → STOK-RETUR, UNREADY → STOK-UNREADY).
-- Barang contoh untuk dicek: **KURSI TRAINING** harus **23**, bukan 45.
+- Barang contoh untuk dicek (dari sheet `14 OKT`, yang sudah diverifikasi vs file asli): **KURSI TRAINING**
+  di Batch 2 harus **23**, bukan 45.
+- Kalau setelah sinkron jumlah permintaan/stok **bertambah dua kali** untuk sheet yang sama, berarti
+  mesin masih versi lama → ulangi Langkah 2 dengan BLOK B terbaru (lihat bagian ⚠️ di atas).
 
 ---
 

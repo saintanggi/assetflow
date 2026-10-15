@@ -2,18 +2,19 @@
 
 > File ini dibuat supaya Anda **tidak perlu mencari-cari lagi**. Isinya **3 script**:
 > **BLOK A** (Langkah 1), **BLOK B** (Langkah 2), dan **BLOK C** (Langkah 4).
-> Cara pakai: pilih script yang sesuai langkah → **Ctrl+A lalu Ctrl+C di dalam blok itu saja**
+> Cara pakai: pilih script yang sesuai langkah → **Ctrl+A lalu Ctrl+C di dalam kotak itu saja**
 > (dari kata `COPAS MULAI` sampai `COPAS SELESAI`) → paste ke Supabase → klik Run/Deploy.
 >
 > Panduan klik-per-klik lengkapnya: **`PANDUAN-SETUP-SINKRON.md`**.
+> Cara memastikan sinkron benar-benar jalan: **`CEK-SINKRON.md`**.
 
 | Blok | Dipakai di langkah | Ditempel di | Ukuran |
 |---|---|---|---|
 | **BLOK A** — tabel & fungsi database | Langkah 1 | Supabase → **SQL Editor** → New query → Run | 307 baris |
-| **BLOK B** — mesin sinkron (Edge Function) | Langkah 2 | Supabase → **Edge Functions** → Create function `sync-sheets` → Deploy | 1254 baris |
+| **BLOK B** — mesin sinkron (Edge Function) | Langkah 2 | Supabase → **Edge Functions** → Create function `sync-sheets` → Deploy | 1272 baris |
 | **BLOK C** — jadwal otomatis tiap 15 menit | Langkah 4 | Supabase → **SQL Editor** → New query → Run (ganti 2 tulisan dulu) | 46 baris |
 
-**Alur singkat:** A dulu → B → (buka aplikasi: Tes koneksi, Simpan, Pratinjau, Sinkron sekarang) → C → Merge PR #4.
+**Alur singkat:** A dulu → B → (buka aplikasi: Tes koneksi, Simpan, Pratinjau, Sinkron sekarang) → C → Merge PR #4 → cek di `CEK-SINKRON.md`.
 
 ---
 ---
@@ -333,7 +334,6 @@ GRANT EXECUTE ON FUNCTION public.sync_ship_request_items(uuid, uuid, jsonb, text
   TO service_role;
 REVOKE ALL ON FUNCTION public.sync_ship_request_items(uuid, uuid, jsonb, text, boolean) FROM PUBLIC, anon, authenticated;
 ```
-
 <!-- COPAS SELESAI (BLOK A) -->
 
 ---
@@ -342,7 +342,8 @@ REVOKE ALL ON FUNCTION public.sync_ship_request_items(uuid, uuid, jsonb, text, b
 # 🟩 BLOK B — untuk LANGKAH 2 (Supabase → Edge Functions)
 
 **Cara:** Supabase Dashboard → menu kiri **`Edge Functions`** → **`Create a new function`** → Name: **`sync-sheets`** → hapus semua contoh kode yang muncul → copas semua di bawah ini → biarkan **Enforce JWT Verification tetap ON** → klik **`Deploy`** → tunggu status **Deployed**.
-**Catatan:** kalau di editor muncul peringatan garis merah/kuning, **abaikan saja** — itu normal untuk file besar; yang penting Deploy berhasil.
+**Catatan:** kalau di editor muncul garis merah/kuning, **abaikan saja** — itu normal untuk file besar; yang penting Deploy berhasil.
+**Kalau Langkah 2 sudah pernah Anda kerjakan sebelumnya:** klik fungsi `sync-sheets` → **Edit** → hapus semua → paste ulang isi terbaru di bawah → **Deploy** (supaya perbaikan tanggal baris tanpa tanggal ikut terpakai).
 
 <!-- COPAS MULAI (BLOK B) -->
 ```ts
@@ -1008,6 +1009,23 @@ export function parseSheetLabel(name: string, refDate: Date = new Date()): Sheet
  * - saat tanggal sama, sheet dengan baris terbanyak menang,
  * - bila tidak ada nama sheet bertanggal: pakai sheet dengan baris terbanyak.
  */
+/**
+ * Isi tanggal untuk baris yang kolom tanggalnya kosong di file: pakai **tanggal dari nama
+ * sheet** (mis. "15 OKT" → 2026-10-15), bukan tanggal hari ini.
+ *
+ * Alasan: baris tanpa tanggal harus selalu dapat tanggal yang sama walau sinkron dijalankan
+ * berulang (tiap 15 menit) atau dijalankan besok. Kalau memakai "tanggal hari ini", baris yang
+ * sama akan dianggap data baru esok hari → stok terpotong dua kali.
+ */
+export function applySheetDate<T extends { date: string; dateExplicit: boolean }>(
+  rows: T[],
+  sheetName: string,
+  fallback: string = todayIso(),
+): T[] {
+  const sheetDate = parseSheetLabel(sheetName).date ?? fallback;
+  return rows.map((r) => (r.dateExplicit ? r : { ...r, date: sheetDate }));
+}
+
 export function pickNewestSheet<T extends { name: string; rows: unknown[] }>(
   sheets: T[],
   refDate: Date = new Date(),
@@ -1178,7 +1196,9 @@ async function syncSource(
     }
     dipakai = dicari;
   }
-  const semuaBaris = dipakai.rows;
+  // Baris tanpa tanggal memakai tanggal sheet (bukan tanggal hari ini) supaya sinkron
+  // berulang di hari berbeda tidak menganggapnya data baru (stok terpotong dua kali).
+  const semuaBaris = applySheetDate(dipakai.rows, dipakai.name);
 
   // Cocokkan nama barang dengan master.
   const { data: items, error: itemsErr } = await db
@@ -1600,7 +1620,6 @@ async function finishRun(
 // Dipakai test lokal (npm run test) agar logika bisa diuji tanpa Deno.
 export { syncSource };
 ```
-
 <!-- COPAS SELESAI (BLOK B) -->
 
 ---
@@ -1668,7 +1687,6 @@ LIMIT 10;
 -- 5) Cara MATIKAN jadwal (kalau ingin berhenti):
 -- SELECT cron.unschedule('sync-google-sheet-pengiriman');
 ```
-
 <!-- COPAS SELESAI (BLOK C) -->
 
 ---
@@ -1678,9 +1696,9 @@ LIMIT 10;
 
 - [ ] **Langkah 1** — BLOK A di Run → muncul `Success. No rows returned`
 - [ ] **Langkah 2** — BLOK B di Deploy → status *Deployed* di `sync-sheets`
-- [ ] **Langkah 3** — Di aplikasi, panel **Sinkron Google Sheet**: Tes koneksi **hijau** → Simpan → Pratinjau (**KURSI TRAINING = 23**) → Sinkron sekarang
-- [ ] **Langkah 4** — BLOK C (sudah diganti 2 tulisan) di Run → muncul `Success`
+- [ ] **Langkah 3** — Di aplikasi, panel **Sinkron Google Sheet**: Tes koneksi **hijau** → Simpan → Pratinjau (barang contoh **KURSI TRAINING = 23**) → Sinkron sekarang
+- [ ] **Langkah 4** — BLOK C (sudah diganti 2 tulisan) di Run → muncul `Success` + `cron.job` → `active = true`
+- [ ] **Cek** — query di `CEK-SINKRON.md`: konfigurasi ≥ 1, status `sukses`, kode HTTP `200`
 - [ ] **Langkah 5** — Merge PR #4 di GitHub
-- [ ] Tunggu 15 menit → cek: `SELECT started_at, sheet_name, status, requests_created, qty_imported, message FROM public.sheet_sync_runs ORDER BY started_at DESC LIMIT 20;`
 
 Kalau ada tulisan merah / error di salah satu langkah → screenshot lalu kirim. Tulis juga langkah berapa.

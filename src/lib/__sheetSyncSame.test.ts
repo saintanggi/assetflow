@@ -30,6 +30,7 @@ describe("versi satu file (untuk di-paste di Supabase Dashboard)", () => {
   it("berisi handler + parser + helper tanpa import lokal", () => {
     expect(bundle).toContain("Deno.serve");
     expect(bundle).toContain("export function pickNewestSheet");
+    expect(bundle).toContain("export function applySheetDate");
     expect(bundle).toContain("sync_ship_request_items");
     expect(bundle).toContain("downloadWorkbook");
     expect(bundle).not.toMatch(/from "\.\//);
