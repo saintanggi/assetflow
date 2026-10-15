@@ -328,9 +328,37 @@ export interface TransactionItemInput {
   status_aset?: "ASSET BARU" | "ASSET RETUR" | "UNREADY" | null;
 }
 
-/** Status aset ala Excel KARTU STOK. */
+/** Status aset ala Excel KARTU STOK. Nilai ini menentukan lokasi stok yang dipotong. */
 export const EXCEL_STATUS_ASET = ["ASSET BARU", "ASSET RETUR", "UNREADY"] as const;
 export type ExcelStatusAset = (typeof EXCEL_STATUS_ASET)[number];
+
+/** Label tampilan untuk Status Asset. */
+export const EXCEL_STATUS_ASET_LABELS: Record<ExcelStatusAset, string> = {
+  "ASSET BARU": "Asset Baru",
+  "ASSET RETUR": "Asset Return",
+  UNREADY: "Unready",
+};
+
+/** Lokasi stok yang dipotong untuk tiap Status Asset. */
+export const EXCEL_STATUS_ASET_LOKASI: Record<ExcelStatusAset, string> = {
+  "ASSET BARU": "STOK-BARU",
+  "ASSET RETUR": "STOK-RETUR",
+  UNREADY: "STOK-UNREADY",
+};
+
+/**
+ * Status Request yang diizinkan — hanya tiga pilihan, supaya aturan
+ * pergantian / penambahan / pinjam konsisten di seluruh sistem.
+ */
+export const STATUS_REQUEST_OPTIONS = ["PENAMBAHAN", "PERGANTIAN", "PINJAM"] as const;
+export type StatusRequest = (typeof STATUS_REQUEST_OPTIONS)[number];
+
+/** Label tampilan untuk Status Request. */
+export const STATUS_REQUEST_LABELS: Record<StatusRequest, string> = {
+  PENAMBAHAN: "Penambahan",
+  PERGANTIAN: "Pergantian",
+  PINJAM: "Pinjam",
+};
 
 export const ASSET_STATUS_LABELS: Record<AssetStatus, string> = {
   tersedia: "Tersedia",
