@@ -12,7 +12,9 @@ import {
   parseQtyCell,
   parseSheetDate,
   parseShippingSheet,
+  parseSheetLabel,
   parseWorkbook,
+  pickNewestSheet,
   type ParsedShippingRow,
 } from "./shippingUpload";
 
@@ -418,5 +420,49 @@ describe("pilih sheet dari file dengan banyak sheet", () => {
     expect(parsed.skipped).toEqual([{ name: "02 JUN", reason: "bukan tabel pengiriman" }]);
     // qty tetap benar per sheet
     expect(aggregateGroup(parsed.sheets[1].rows, (r) => r.itemName)[0].qty).toBe(6);
+  });
+});
+
+describe("pilih sheet terbaru", () => {
+  const mk = (n: number) => [...Array(n)].map(() => ({}));
+  const sheets = [
+    { name: "13 OKT", rows: mk(120) },
+    { name: "14 OKT", rows: mk(150) },
+    { name: "Copy of 14 OKT", rows: mk(9) },
+    { name: "01 SEP", rows: mk(80) },
+    { name: "ASSET BESI 2026", rows: mk(500) },
+    { name: "SCANER", rows: mk(50) },
+  ];
+  const ref = new Date(2026, 9, 15); // 15 Okt 2026
+
+  it("memilih sheet dengan tanggal terbaru, bukan sheet pertama/paling besar", () => {
+    expect(pickNewestSheet(sheets, ref)?.name).toBe("14 OKT");
+  });
+
+  it("mengabaikan 'Copy of' selama ada sheet asli lain", () => {
+    const tanpaAsli = sheets.map((s) => (s.name === "14 OKT" ? { ...s, name: "00 XYZ" } : s));
+    // "Copy of 14 OKT" tidak dipakai walau tanggalnya paling baru, karena ada sheet asli.
+    expect(pickNewestSheet(tanpaAsli, ref)?.name).toBe("13 OKT");
+    // kalau semua sheet adalah copy, baru copy dipakai
+    const semuaCopy = sheets.map((s) => ({ ...s, name: `Copy of ${s.name}` }));
+    expect(pickNewestSheet(semuaCopy, ref)?.name).toBe("Copy of 14 OKT");
+  });
+
+  it("membaca nama sheet berbagai format", () => {
+    expect(parseSheetLabel("13 OKT", ref).date).toBe("2026-10-13");
+    expect(parseSheetLabel("04 JULI", ref).date).toBe("2026-07-04");
+    expect(parseSheetLabel("Copy of 14 OKT", ref)).toEqual({ date: "2026-10-14", isCopy: true });
+    // Desember belum lewat? dianggap tab sisa tahun lalu, bukan sheet terbaru
+    expect(parseSheetLabel("31 DES", ref).date).toBe("2025-12-31");
+    expect(parseSheetLabel("02 JAN", ref).date).toBe("2026-01-02");
+    expect(parseSheetLabel("ASSET BESI 2026", ref).date).toBeNull();
+  });
+
+  it("fallback ke sheet terbesar bila tidak ada nama bertanggal", () => {
+    expect(pickNewestSheet([{ name: "DATA", rows: [1, 2] }, { name: "TERBARU", rows: [1, 2, 3] }], ref)?.name).toBe("TERBARU");
+  });
+
+  it("bulan yang belum lewat dianggap tahun sebelumnya", () => {
+    expect(parseSheetLabel("31 DES", new Date(2026, 0, 5)).date).toBe("2025-12-31");
   });
 });

@@ -3,6 +3,8 @@ import * as XLSX from "xlsx";
 import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { formatDate } from "../lib/format";
+import { SheetSyncPanel } from "../features/sync/SheetSyncPanel";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -16,7 +18,9 @@ import {
   filterDuplicateRows,
   findDuplicateRowsInFile,
   groupKeyOf,
+  parseSheetLabel,
   parseWorkbook,
+  pickNewestSheet,
   type AggLine,
   type DupIndex,
   type KodeKondisi,
@@ -254,12 +258,18 @@ export function RequestUploadPage() {
       }
       // File gabungan (mis. satu sheet per tanggal): pilih sheet dengan data terbanyak,
       // sisanya bisa dipilih lewat dropdown.
-      const urut = [...parsed.sheets].sort((a, b) => b.rows.length - a.rows.length);
+      // Sistem selalu mulai dari sheet terbaru (nama sheet bertanggal, mis. "14 OKT").
+      const terbaru = pickNewestSheet(parsed.sheets) ?? parsed.sheets[0];
+      const tanggalSheet = parseSheetLabel(terbaru.name).date;
       sheetCache.current = new Map(parsed.sheets.map((sh) => [sh.name, sh]));
       setSheetOptions(parsed.sheets.map((sh) => ({ name: sh.name, count: sh.rows.length })));
-      if (parsed.sheets.length > 1)
-        toast.info(`File punya ${parsed.sheets.length} sheet data — dipilih "${urut[0].name}".`);
-      await buildPreview(urut[0].rows, urut[0].name);
+      if (parsed.sheets.length > 1) {
+        toast.info(
+          `File punya ${parsed.sheets.length} sheet data — diproses sheet terbaru: "${terbaru.name}"` +
+            (tanggalSheet ? ` (${formatDate(tanggalSheet)})` : "") + "."
+        );
+      }
+      await buildPreview(terbaru.rows, terbaru.name);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal membaca file.");
     }
@@ -557,7 +567,8 @@ export function RequestUploadPage() {
                     )}
                     {sheetOptions.length > 1 && (
                       <span className="text-amber-200">
-                        File punya {sheetOptions.length} sheet berisi data — pilih sheet yang benar sebelum import.
+                        File punya {sheetOptions.length} sheet berisi data — sistem memakai sheet terbaru; ganti
+                        lewat dropdown bila perlu.
                       </span>
                     )}
                   </div>
@@ -744,6 +755,7 @@ export function RequestUploadPage() {
           </CardContent>
         </Card>
 
+        <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-base text-white">Opsi Import</CardTitle>
@@ -786,7 +798,7 @@ export function RequestUploadPage() {
               <Label className="mb-1 block">Cara pakai</Label>
               1. Download template, isi datanya.
               <br />
-              2. Upload file yang sudah terisi.
+              2. Upload file yang sudah terisi (sheet terbaru otomatis dipakai).
               <br />
               3. Cek tabel pratinjau — pastikan QTY per barang sudah sama dengan file.
               <br />
@@ -794,6 +806,8 @@ export function RequestUploadPage() {
             </div>
           </CardContent>
         </Card>
+        <SheetSyncPanel />
+        </div>
       </div>
     </div>
   );

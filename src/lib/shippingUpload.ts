@@ -573,3 +573,57 @@ export function findDuplicateRowsInFile(
   }
   return dups;
 }
+
+// ---------------------------------------------------------------- pilih sheet
+
+export interface SheetLabel {
+  /** Tanggal yang terbaca dari nama sheet (YYYY-MM-DD), null bila nama bukan tanggal. */
+  date: string | null;
+  /** true bila nama diawali "Copy of ". */
+  isCopy: boolean;
+}
+
+/**
+ * Baca nama sheet gaya "13 OKT" / "07 SEP" / "Copy of 14 OKT" / "04 JULI".
+ * Tahun disimpulkan relatif terhadap tanggal acuan: bulan yang lebih besar dari
+ * bulan berjalan dianggap tahun sebelumnya (file berjalan dari tengah tahun).
+ */
+export function parseSheetLabel(name: string, refDate: Date = new Date()): SheetLabel {
+  const raw = toText(name);
+  const isCopy = /^copy of\s+/i.test(raw);
+  const clean = raw.replace(/^copy of\s+/i, "").replace(/\s+/g, " ").trim();
+  const m = clean.match(/^(\d{1,2})\s*[-/.\s]?\s*([A-Za-z]{3,})/);
+  if (!m) return { date: null, isCopy };
+  const day = Number(m[1]);
+  const mo = MONTHS[m[2].slice(0, 3).toLowerCase()];
+  if (!mo) return { date: null, isCopy };
+  let year = refDate.getFullYear();
+  if (mo > refDate.getMonth() + 1) year -= 1;
+  return { date: isoOf(year, mo, day), isCopy };
+}
+
+/**
+ * Pilih sheet yang dipakai sistem: **sheet terbaru** (tanggal pada nama sheet).
+ * - "Copy of ..." diabaikan bila ada sheet asli,
+ * - saat tanggal sama, sheet dengan baris terbanyak menang,
+ * - bila tidak ada nama sheet bertanggal: pakai sheet dengan baris terbanyak.
+ */
+export function pickNewestSheet<T extends { name: string; rows: unknown[] }>(
+  sheets: T[],
+  refDate: Date = new Date(),
+): T | null {
+  const nonCopy = sheets.filter((s) => !parseSheetLabel(s.name, refDate).isCopy);
+  const pool = nonCopy.length > 0 ? nonCopy : sheets;
+  const dated = pool
+    .map((s) => ({ s, label: parseSheetLabel(s.name, refDate) }))
+    .filter((x) => x.label.date !== null);
+  if (dated.length > 0) {
+    dated.sort((a, b) => {
+      if (a.label.date !== b.label.date) return a.label.date! < b.label.date! ? 1 : -1;
+      return b.s.rows.length - a.s.rows.length;
+    });
+    return dated[0].s;
+  }
+  if (pool.length === 0) return null;
+  return [...pool].sort((a, b) => b.rows.length - a.rows.length)[0];
+}

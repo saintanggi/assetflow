@@ -44,6 +44,24 @@ npm run dev
 
 ---
 
+## 1b. Sinkronisasi otomatis dari Google Sheet
+
+Dokumen pengiriman yang diisi tim di Google Sheet (satu sheet per tanggal) bisa masuk
+ke sistem **otomatis** tanpa upload manual: sistem selalu membaca **sheet terbaru**,
+mengikuti aturan template dokumen pengiriman (QTY merge = total blok, STATUS ASSET
+menentukan stok Baru/Retur/Unready), dan idempoten sehingga aman dijadwalkan tiap 15 menit.
+
+- Tabel konfigurasi & riwayat: `supabase/migrations/20261015000029_sheet_sync.sql`
+- Fungsi service-role: `supabase/migrations/20261015000030_sheet_sync_functions.sql`
+- Edge Function: `supabase/functions/sync-sheets/`
+- Panduan lengkap (deploy + jadwal `pg_cron` + troubleshooting): **`docs/SHEET_SYNC.md`**
+- Panelnya ada di menu **Permintaan → Upload Dokumen Pengiriman**.
+
+Setelah mengubah parser (`src/lib/shippingUpload.ts`), jalankan `npm run sync:parser`
+agar salinan di Edge Function ikut ter-update (dijaga tes `src/lib/__sheetSyncSame.test.ts`).
+
+---
+
 ## 2. Database (Supabase)
 
 Skema lengkap + RLS + fungsi RPC ada di `supabase/migrations/` (dikerjakan bertahap
