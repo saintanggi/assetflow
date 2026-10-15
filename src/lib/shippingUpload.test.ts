@@ -12,6 +12,7 @@ import {
   parseQtyCell,
   parseSheetDate,
   parseShippingSheet,
+  parseWorkbook,
   type ParsedShippingRow,
 } from "./shippingUpload";
 
@@ -293,6 +294,20 @@ describe("tanggal", () => {
   });
 });
 
+describe("tanggal kosong di file", () => {
+  it("menandai baris tanpa tanggal (dipakai tanggal hari ini)", () => {
+    const rows = [
+      ["", "", "Semarang Sortation (HLDP Batch 2)", "1401007", "KURSI TRAINING", 23, "SUDAH", "R-1", "", "", "PINJAM 1 MINGGU", "ASSET RETUR", "TERKIRIM"],
+      ["2026-10-14", "T1", "Gerai A", "1", "MEJA", 6, "", "R-2", "", "", "", "ASSET BARU", "TERKIRIM"],
+    ].map((r) => r.map((c) => (c === null ? "" : c))) as (string | number)[][];
+    const { rows: parsed } = readSheet(rows as (string | number)[][]);
+    expect(parsed[0].dateExplicit).toBe(false);
+    expect(parsed[0].ticket).toBe("");
+    expect(parsed[1].dateExplicit).toBe(true);
+    expect(parsed[1].date).toBe("2026-10-14");
+  });
+});
+
 describe("deteksi duplikat", () => {
   const storedFromAggregated = [
     {
@@ -386,5 +401,22 @@ describe("util lain", () => {
 
   it("menolak file tanpa kolom NAMA BARANG", () => {
     expect(() => parseShippingSheet([["A", "B"], ["1", "2"]])).toThrow(/NAMA BARANG/);
+  });
+});
+
+describe("pilih sheet dari file dengan banyak sheet", () => {
+  it("melewati sheet kosong / bukan tabel pengiriman dan menemukan sheet valid", async () => {
+    const XLSX2 = await import("xlsx");
+    const wb = XLSX2.utils.book_new();
+    XLSX2.utils.book_append_sheet(wb, XLSX2.utils.aoa_to_sheet([["LAPORAN"]]), "02 JUN");
+    XLSX2.utils.book_append_sheet(wb, XLSX2.utils.aoa_to_sheet([[...SHIPPING_HEADERS], ["2026-10-13", "T1", "G", "", "KURSI", 23, "", "R1", "", "", "", "ASSET RETUR", "TERKIRIM"]]), "13 OKT");
+    XLSX2.utils.book_append_sheet(wb, XLSX2.utils.aoa_to_sheet([[...SHIPPING_HEADERS], ["2026-10-14", "T2", "G", "", "MEJA", 6, "", "R2", "", "", "", "ASSET BARU", "TERKIRIM"], ["2026-10-14", "T2", "G", "", "MEJA", "", "", "R3", "", "", "", "ASSET BARU", "TERKIRIM"]]), "14 OKT");
+    const raw = XLSX2.write(wb, { type: "array", bookType: "xlsx" });
+    const parsed = parseWorkbook(XLSX2.read(raw, { cellDates: true }));
+    expect(parsed.sheets.map((s) => s.name)).toEqual(["13 OKT", "14 OKT"]);
+    expect(parsed.sheets.map((s) => s.rows.length)).toEqual([1, 2]);
+    expect(parsed.skipped).toEqual([{ name: "02 JUN", reason: "bukan tabel pengiriman" }]);
+    // qty tetap benar per sheet
+    expect(aggregateGroup(parsed.sheets[1].rows, (r) => r.itemName)[0].qty).toBe(6);
   });
 });

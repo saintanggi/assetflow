@@ -16,11 +16,12 @@ import {
   filterDuplicateRows,
   findDuplicateRowsInFile,
   groupKeyOf,
-  parseShippingSheet,
+  parseWorkbook,
   type AggLine,
   type DupIndex,
   type KodeKondisi,
   type ParsedShippingRow,
+  type SheetCandidate,
   type StoredItemRow,
 } from "../lib/shippingUpload";
 
@@ -54,6 +55,10 @@ interface Preview {
   lines: AggLine[];
   idByName: Map<string, string>;
   nameById: Map<string, string>;
+  /** Sheet yang sedang dipratinjau (nama sheet di file Excel). */
+  sheetName: string;
+  /** Semua sheet yang bisa dipilih dari file yang di-upload. */
+  sheetOptions: { name: string; count: number }[];
   groups: number;
   unmatched: string[];
   existingTickets: string[];
@@ -86,6 +91,8 @@ export function RequestUploadPage() {
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [failList, setFailList] = useState<{ ticket: string; detail: string }[]>([]);
+  const [sheetOptions, setSheetOptions] = useState<{ name: string; count: number }[]>([]);
+  const sheetCache = useRef<Map<string, SheetCandidate>>(new Map());
 
   const canShip = hasPermission("requests.review");
 
@@ -181,27 +188,12 @@ export function RequestUploadPage() {
     return { index: buildDupIndex(stored), existingTickets: [...existingTickets] };
   };
 
-  const handleFile = async (f: File) => {
-    setPreview(null);
-    setResult(null);
-    setFailList([]);
-    setFileName(f.name);
-    try {
-      const buf = await f.arrayBuffer();
-      const wb = XLSX.read(buf, { cellDates: true });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
-      if (aoa.length < 2) {
-        toast.error("File kosong atau tidak ada data.");
-        return;
-      }
-      const { rows } = parseShippingSheet(aoa);
-      if (rows.length === 0) {
-        toast.error("Tidak ada baris data valid.");
-        return;
-      }
-
-      // Cocokkan nama barang dengan master.
+  /**
+   * Bangun pratinjau dari baris satu sheet: cocokkan barang, buang baris yang sudah
+   * pernah masuk, lalu agregasi qty per barang + kondisi aset.
+   */
+  const buildPreview = async (rows: ParsedShippingRow[], sheetName: string) => {
+    // Cocokkan nama barang dengan master.
       const { data: items, error: itemsErr } = await supabase
         .from("inventory_items")
         .select("id, name")
@@ -227,22 +219,60 @@ export function RequestUploadPage() {
       const lines = aggregateGroup(kept, keyOf);
       const groups = new Set(kept.map(groupKeyOf));
 
-      setPreview({
-        rows,
-        kept,
-        skipped,
-        dupsInFile,
-        lines,
-        idByName,
-        nameById,
-        groups: groups.size,
-        unmatched,
-        existingTickets,
-      });
-      if (skipped.length > 0)
-        toast.warning(`${skipped.length} baris sudah ada di sistem — akan dilewati.`);
+    setPreview({
+      rows,
+      kept,
+      skipped,
+      dupsInFile,
+      lines,
+      idByName,
+      nameById,
+      sheetName,
+      sheetOptions: [...sheetCache.current.entries()].map(([name, c]) => ({ name, count: c.rows.length })),
+      groups: groups.size,
+      unmatched,
+      existingTickets,
+    });
+    if (skipped.length > 0)
+      toast.warning(`${skipped.length} baris sudah ada di sistem — akan dilewati.`);
+  };
+
+  const handleFile = async (f: File) => {
+    setPreview(null);
+    setResult(null);
+    setFailList([]);
+    setFileName(f.name);
+    try {
+      const buf = await f.arrayBuffer();
+      const wb = XLSX.read(buf, { cellDates: true });
+      const parsed = parseWorkbook(wb);
+      if (parsed.sheets.length === 0) {
+        toast.error(
+          "Tidak ada sheet berisi tabel pengiriman (kolom NAMA BARANG). Pastikan memakai template yang disediakan."
+        );
+        return;
+      }
+      // File gabungan (mis. satu sheet per tanggal): pilih sheet dengan data terbanyak,
+      // sisanya bisa dipilih lewat dropdown.
+      const urut = [...parsed.sheets].sort((a, b) => b.rows.length - a.rows.length);
+      sheetCache.current = new Map(parsed.sheets.map((sh) => [sh.name, sh]));
+      setSheetOptions(parsed.sheets.map((sh) => ({ name: sh.name, count: sh.rows.length })));
+      if (parsed.sheets.length > 1)
+        toast.info(`File punya ${parsed.sheets.length} sheet data — dipilih "${urut[0].name}".`);
+      await buildPreview(urut[0].rows, urut[0].name);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal membaca file.");
+    }
+  };
+
+  const changeSheet = async (name: string) => {
+    if (!sheetCache.current.has(name)) return;
+    setPreview(null);
+    setResult(null);
+    try {
+      await buildPreview(sheetCache.current.get(name)!.rows, name);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal membaca sheet.");
     }
   };
 
@@ -507,6 +537,31 @@ export function RequestUploadPage() {
 
             {preview && (
               <div className="space-y-3 rounded-lg border border-white/10 p-4">
+                {(sheetOptions.length > 1 || preview.sheetName) && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-slate-400">Sheet diproses:</span>
+                    {sheetOptions.length > 1 ? (
+                      <select
+                        value={preview.sheetName}
+                        onChange={(e) => void changeSheet(e.target.value)}
+                        className="rounded-md border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-200"
+                      >
+                        {sheetOptions.map((sh) => (
+                          <option key={sh.name} value={sh.name}>
+                            {sh.name} — {sh.count} baris
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="font-medium text-slate-200">{preview.sheetName}</span>
+                    )}
+                    {sheetOptions.length > 1 && (
+                      <span className="text-amber-200">
+                        File punya {sheetOptions.length} sheet berisi data — pilih sheet yang benar sebelum import.
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="grid grid-cols-4 gap-3 text-center">
                   <div>
                     <p className="tnum font-display text-xl font-bold text-white">{preview.kept.length}</p>
@@ -604,6 +659,28 @@ export function RequestUploadPage() {
                         .map((l) => `${l.itemName} (QTY file ${l.qtyFile} → ${l.qty})`)
                         .join(", ")}
                       . Cek kembali file bila memang tidak sesuai.
+                    </div>
+                  </div>
+                )}
+                {preview.rows.some((r) => !r.ticket) && (
+                  <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>
+                      {preview.rows.filter((r) => !r.ticket).length} baris tidak punya NO TICKET (baris{" "}
+                      {preview.rows.filter((r) => !r.ticket).slice(0, 8).map((r) => r.rowNo).join(", ")}
+                      {preview.rows.filter((r) => !r.ticket).length > 8 ? ", …" : ""}) → akan dibuat jadi permintaan
+                      terpisah per barang (nomor tiket otomatis). Isi NO TICKET di file bila ingin digabung.
+                    </div>
+                  </div>
+                )}
+                {preview.rows.some((r) => !r.dateExplicit) && (
+                  <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>
+                      {preview.rows.filter((r) => !r.dateExplicit).length} baris tanpa tanggal di file (baris{" "}
+                      {preview.rows.filter((r) => !r.dateExplicit).slice(0, 8).map((r) => r.rowNo).join(", ")}
+                      {preview.rows.filter((r) => !r.dateExplicit).length > 8 ? ", …" : ""}) — sistem memakai
+                      tanggal hari ini untuk baris tersebut. Lengkapi kolom In Progress Date bila tanggalnya beda.
                     </div>
                   </div>
                 )}

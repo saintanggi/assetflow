@@ -46,6 +46,8 @@ export interface ParsedShippingRow {
   /** Nomor baris asli di Excel (1-based) — dipakai untuk pesan peringatan. */
   rowNo: number;
   date: string;
+  /** false bila kolom In Progress Date kosong (dipakai tanggal hari ini). */
+  dateExplicit: boolean;
   ticket: string;
   branch: string;
   branchCode: string;
@@ -157,15 +159,18 @@ export function parseDateText(s: string): string | null {
  * Tanggal dari sel Excel. PENTING: jangan pakai toISOString() — untuk pengguna
  * WIB (UTC+7) tanggal 14-10 lokal jadi 13-10 UTC sehingga request_date bergeser.
  */
-export function parseSheetDate(v: unknown, fallback: string = todayIso()): string {
-  if (v instanceof Date && !isNaN(v.getTime())) {
-    return isoOf(v.getFullYear(), v.getMonth() + 1, v.getDate()) ?? fallback;
-  }
+/** Sama seperti parseSheetDate, tetapi null bila sel tanggalnya kosong/tidak valid. */
+export function parseSheetDateOrNull(v: unknown): string | null {
+  if (v instanceof Date && !isNaN(v.getTime())) return isoOf(v.getFullYear(), v.getMonth() + 1, v.getDate());
   if (typeof v === "number" && v > 20000 && v < 80000) {
     const d = XLSX.SSF.parse_date_code(v);
-    if (d) return isoOf(d.y, d.m, d.d) ?? fallback;
+    if (d) return isoOf(d.y, d.m, d.d);
   }
-  return parseDateText(toText(v)) ?? fallback;
+  return parseDateText(toText(v));
+}
+
+export function parseSheetDate(v: unknown, fallback: string = todayIso()): string {
+  return parseSheetDateOrNull(v) ?? fallback;
 }
 
 /** Angka dari sel: 23 / "23" / "23 unit" / "1.234" (ribuan) / "23,5". */
@@ -206,6 +211,61 @@ export function findHeaderRow(aoa: unknown[][]): number {
   return idx >= 0 ? idx : 0;
 }
 
+/** Apakah sheet ini berisi tabel dokumen pengiriman (punya kolom NAMA BARANG)? */
+export function hasShippingHeader(aoa: unknown[][]): boolean {
+  return aoa.some((r) => Array.isArray(r) && r.some((c) => toText(c).toUpperCase() === "NAMA BARANG"));
+}
+
+export interface SheetCandidate {
+  name: string;
+  rows: ParsedShippingRow[];
+}
+
+export interface WorkbookParse {
+  /** Sheet yang berisi tabel pengiriman + minimal 1 baris data. */
+  sheets: SheetCandidate[];
+  /** Sheet lain (kosong / bukan tabel pengiriman). */
+  skipped: { name: string; reason: string }[];
+}
+
+/**
+ * Baca semua sheet di workbook dan kembalikan yang berisi data pengiriman.
+ * Penting untuk file gabungan (mis. "DOKUMEN PENGIRIMAN 2026" yang punya satu
+ * sheet per tanggal): sheet pertama belum tentu berisi data yang mau di-upload.
+ */
+export function parseWorkbook(wb: {
+  SheetNames: string[];
+  Sheets: Record<string, unknown>;
+}): WorkbookParse {
+  const sheets: SheetCandidate[] = [];
+  const skipped: { name: string; reason: string }[] = [];
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets?.[name];
+    if (!ws) {
+      skipped.push({ name, reason: "sheet kosong" });
+      continue;
+    }
+    let aoa: unknown[][];
+    try {
+      aoa = XLSX.utils.sheet_to_json<unknown[]>(ws as XLSX.WorkSheet, { header: 1, defval: "" });
+    } catch {
+      skipped.push({ name, reason: "gagal dibaca" });
+      continue;
+    }
+    if (aoa.length < 2 || !hasShippingHeader(aoa)) {
+      skipped.push({ name, reason: "bukan tabel pengiriman" });
+      continue;
+    }
+    const rows = parseShippingSheet(aoa).rows;
+    if (rows.length === 0) {
+      skipped.push({ name, reason: "tidak ada baris data" });
+      continue;
+    }
+    sheets.push({ name, rows });
+  }
+  return { sheets, skipped };
+}
+
 export function parseShippingSheet(aoa: unknown[][]): ParsedSheet {
   const headerIndex = findHeaderRow(aoa);
   const headers = (aoa[headerIndex] ?? []).map((c) => toText(c).toUpperCase());
@@ -243,9 +303,11 @@ export function parseShippingSheet(aoa: unknown[][]): ParsedSheet {
     if (!itemName || itemName.toUpperCase() === "NAMA BARANG") continue;
     const barcode = toCode(cell(r, cBarcode));
     const qtyParsed = parseQtyCell(cell(r, cQty), Boolean(barcode));
+    const tanggal = cDate >= 0 ? parseSheetDateOrNull(cell(r, cDate)) : null;
     rows.push({
       rowNo: i + 1,
-      date: cDate >= 0 ? parseSheetDate(cell(r, cDate)) : todayIso(),
+      date: tanggal ?? todayIso(),
+      dateExplicit: tanggal !== null,
       ticket: toText(cell(r, cTicket)),
       branch: toText(cell(r, cBranch)) || "TANPA GERAI",
       branchCode: toCode(cell(r, cBranchCode)),
