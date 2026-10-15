@@ -23,7 +23,7 @@ import { Label } from "../components/ui/label";
 import { cn } from "../lib/utils";
 
 const SELECT_CLASS =
-  "flex h-10 w-full rounded-lg border border-white/15 bg-ink-850 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50";
+  "flex h-10 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50";
 
 interface PermRow {
   id: string;
@@ -287,7 +287,7 @@ export function UsersPage() {
           <DialogDescription>
             Buat akun admin baru. Pengguna harus mengonfirmasi email sebelum bisa masuk — atau
             nonaktifkan konfirmasi email di dashboard Supabase (Authentication → Providers → Email).
-            <span className="mt-1 block font-medium text-amber-300">
+            <span className="mt-1 block font-medium text-warn-600">
               Catatan: jika konfirmasi email dimatikan, akun baru akan langsung masuk dan sesi Anda
               bisa terganggu.
             </span>
@@ -305,7 +305,7 @@ export function UsersPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="adm-email">
-              Email <span className="text-rose-400">*</span>
+              Email <span className="text-brand-600">*</span>
             </Label>
             <Input
               id="adm-email"
@@ -317,7 +317,7 @@ export function UsersPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="adm-pass">
-              Password <span className="text-rose-400">*</span>
+              Password <span className="text-brand-600">*</span>
             </Label>
             <Input
               id="adm-pass"
@@ -349,7 +349,7 @@ export function UsersPage() {
           </DialogDescription>
         </DialogHeader>
         {permLoading ? (
-          <p className="py-6 text-center text-sm text-slate-500">Memuat izin…</p>
+          <p className="py-6 text-center text-sm text-ink-500">Memuat izin…</p>
         ) : (
           <div className="max-h-[50vh] space-y-1 overflow-y-auto pr-1">
             {PERMISSIONS.map((p) => {
@@ -357,7 +357,7 @@ export function UsersPage() {
               return (
                 <label
                   key={p.code}
-                  className={`flex cursor-pointer items-start gap-3 rounded-lg border border-white/10 p-3 hover:bg-white/[0.03] ${
+                  className={`flex cursor-pointer items-start gap-3 rounded-lg border border-ink-200 p-3 hover:bg-ink-50 ${
                     locked ? "opacity-70" : ""
                   }`}
                 >
@@ -370,12 +370,12 @@ export function UsersPage() {
                     }
                   />
                   <span>
-                    <span className="block font-mono text-xs font-semibold text-white">
+                    <span className="block font-mono text-xs font-semibold text-ink-800">
                       {p.code}
                     </span>
-                    <span className="block text-xs text-slate-500">{p.description}</span>
+                    <span className="block text-xs text-ink-500">{p.description}</span>
                     {locked && (
-                      <span className="mt-1 block text-xs font-medium text-amber-300">
+                      <span className="mt-1 block text-xs font-medium text-warn-600">
                         Hanya Super Admin — ditegakkan juga di database.
                       </span>
                     )}

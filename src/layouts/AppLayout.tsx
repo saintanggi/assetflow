@@ -21,6 +21,7 @@ import {
   Warehouse,
   X,
   ChevronDown,
+  ChevronRight,
   LayoutDashboard,
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -158,19 +159,19 @@ function NavEntry({
           type="button"
           onClick={() => setOpen((v) => !v)}
           className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-white",
+            "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-800",
             collapsed && "justify-center px-2"
           )}
           title={collapsed ? item.label : undefined}
         >
-          <item.icon className="h-5 w-5 shrink-0" />
+          <item.icon className="h-[18px] w-[18px] shrink-0" />
           {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
           {!collapsed && (
-            <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
+            <ChevronDown className={cn("h-4 w-4 text-ink-500 transition-transform", open && "rotate-180")} />
           )}
         </button>
         {open && !collapsed && (
-          <div className="ml-6 mt-1 space-y-1 border-l border-white/10 pl-2">
+          <div className="ml-5 mt-1 space-y-0.5 border-l border-ink-200 pl-2">
             {item.children.map((c) => (
               <NavLink
                 key={c.to}
@@ -178,8 +179,8 @@ function NavEntry({
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-white",
-                    isActive && "bg-brand-400/10 text-brand-300"
+                    "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800",
+                    isActive && "bg-brand-50 font-medium text-brand-700 hover:bg-brand-50 hover:text-brand-700"
                   )
                 }
               >
@@ -198,8 +199,8 @@ function NavEntry({
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-white",
-          isActive && "bg-brand-400/10 text-brand-300 hover:bg-brand-400/10 hover:text-brand-300",
+          "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-800",
+          isActive && "bg-brand-50 text-brand-700 hover:bg-brand-50 hover:text-brand-700",
           collapsed && "justify-center px-2"
         )
       }
@@ -208,12 +209,12 @@ function NavEntry({
       {({ isActive }) => (
         <>
           {isActive && (
-            <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-brand-400" />
+            <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-brand-600" />
           )}
-          <item.icon className="h-5 w-5 shrink-0" />
+          <item.icon className="h-[18px] w-[18px] shrink-0" />
           {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
           {!collapsed && badgeCount !== undefined && badgeCount > 0 && (
-            <span className="tnum rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+            <span className="tnum rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white">
               {badgeCount > 99 ? "99+" : badgeCount}
             </span>
           )}
@@ -235,6 +236,39 @@ function getRoleLabel(roleName: string | undefined, isSuperAdmin: boolean): stri
   if (isSuperAdmin) return "Super Admin";
   if (roleName && ROLE_DISPLAY_NAMES[roleName]) return ROLE_DISPLAY_NAMES[roleName];
   return "Admin";
+}
+
+const BREADCRUMB_EXTRA: { prefix: string; group: string; label: string }[] = [
+  { prefix: "/aset/tambah", group: "Aset Tetap", label: "Tambah Aset" },
+  { prefix: "/aset/", group: "Aset Tetap", label: "Detail Aset" },
+  { prefix: "/persediaan/baru", group: "Persediaan", label: "Asset Baru" },
+  { prefix: "/persediaan/return", group: "Persediaan", label: "Asset Return" },
+  { prefix: "/persediaan/unready", group: "Persediaan", label: "Asset Unready" },
+  { prefix: "/persediaan/peringatan-stok", group: "Persediaan", label: "Peringatan Stok" },
+  { prefix: "/permintaan/baru", group: "Permintaan", label: "Buat Permintaan" },
+  { prefix: "/permintaan/upload", group: "Permintaan", label: "Upload Dokumen" },
+  { prefix: "/permintaan/sisa", group: "Permintaan", label: "Sisa Belum Terkirim" },
+  { prefix: "/pengaturan/akun", group: "Pengaturan", label: "Kelola Akun" },
+  { prefix: "/laporan/live-stok", group: "Laporan", label: "Live Stok" },
+];
+
+function buildCrumbs(pathname: string): string[] {
+  const items = NAV.flatMap((i) =>
+    i.children ? i.children.map((c) => ({ to: c.to, label: c.label, group: i.label })) : [{ to: i.to, label: i.label }]
+  );
+  let best: { to: string; label: string; group?: string } | null = null;
+  for (const it of items) {
+    if (it.to.startsWith("#")) continue;
+    if (pathname === it.to || pathname.startsWith(it.to + "/")) {
+      if (!best || it.to.length > best.to.length) best = it;
+    }
+  }
+  const extra = BREADCRUMB_EXTRA.filter((e) => pathname.startsWith(e.prefix)).sort(
+    (a, b) => b.prefix.length - a.prefix.length
+  )[0];
+  if (extra) return [extra.group, extra.label];
+  if (!best) return [];
+  return best.group ? [best.group, best.label] : [best.label];
 }
 
 function SidebarContent({
@@ -261,28 +295,28 @@ function SidebarContent({
         to="/dashboard"
         onClick={onNavigate}
         className={cn(
-          "flex items-center gap-3 border-b border-white/5 px-4 py-5",
+          "flex items-center gap-3 border-b border-ink-200 px-4 py-[18px]",
           collapsed && "justify-center px-2"
         )}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
-          <span className="font-display text-sm font-extrabold tracking-tight text-ink-950">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 shadow-soft">
+          <span className="font-display text-sm font-extrabold tracking-tight text-white">
             IW
           </span>
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate font-display text-[15px] font-bold leading-tight text-white">
+            <p className="truncate font-display text-[15px] font-bold leading-tight text-ink-800">
               Inventory Warehouse
             </p>
-            <p className="text-[11px] uppercase tracking-widest text-brand-400/80">
+            <p className="text-xs uppercase tracking-widest text-ink-500">
               Command Center
             </p>
           </div>
         )}
       </Link>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {items.map((item) => (
           <NavEntry
             key={item.to + item.label}
@@ -294,18 +328,18 @@ function SidebarContent({
         ))}
       </nav>
 
-      <div className="border-t border-white/5 p-3">
+      <div className="border-t border-ink-200 p-3">
         {!collapsed && (
           <div className="mb-2 flex items-center gap-2.5 px-2">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-400" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok-500 opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-ok-500" />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-white">
+              <p className="truncate text-sm font-medium text-ink-800">
                 {displayName}
               </p>
-              <p className="truncate text-xs text-slate-500">
+              <p className="truncate text-xs text-ink-500">
                 {roleLabel} • Online
               </p>
             </div>
@@ -314,7 +348,7 @@ function SidebarContent({
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start text-slate-400 hover:bg-white/5 hover:text-white"
+          className="w-full justify-start text-ink-600 hover:bg-ink-100 hover:text-ink-800"
           onClick={async () => {
             await signOut();
             navigate("/login");
@@ -366,13 +400,13 @@ function GlobalSearch() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Cari barang, permintaan, SKU…"
-        className="h-9 w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-16 text-sm text-slate-200 placeholder:text-slate-500 focus:border-brand-400/50 focus:outline-none focus:ring-2 focus:ring-brand-400/20"
+        className="h-9 w-full rounded-lg border border-ink-200 bg-white pl-9 pr-16 text-sm text-ink-800 placeholder:text-ink-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/25"
       />
-      <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />
       </svg>
-      <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 lg:inline-flex">
+      <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 font-mono text-xs text-ink-500 lg:inline-flex">
         Ctrl K
       </kbd>
     </form>
@@ -383,13 +417,33 @@ export function AppLayout(): ReactNode {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const accountRef = useRef<HTMLDivElement>(null);
   const [queueCounts, setQueueCounts] = useState<{
     diajukan: number;
     aktif: number;
     sisa: number;
   }>({ diajukan: 0, aktif: 0, sisa: 0 });
-  const { profile, user, isSuperAdmin, hasPermission } = useAuth();
+  const { profile, user, isSuperAdmin, hasPermission, signOut } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    setNotifOpen(false);
+    setAccountOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!notifOpen && !accountOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (notifOpen && notifRef.current && !notifRef.current.contains(t)) setNotifOpen(false);
+      if (accountOpen && accountRef.current && !accountRef.current.contains(t)) setAccountOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [notifOpen, accountOpen]);
   const roleLabel = getRoleLabel(profile?.roles?.name, isSuperAdmin);
   const displayName =
     profile?.full_name ??
@@ -426,6 +480,7 @@ export function AppLayout(): ReactNode {
     };
   }, [user, hasPermission, location.pathname]);
 
+  const crumbs = buildCrumbs(location.pathname);
   const roleName = profile?.roles?.name;
   const permintaanBadge =
     roleName === "helper"
@@ -438,12 +493,12 @@ export function AppLayout(): ReactNode {
   const totalNotif = queueCounts.diajukan + queueCounts.aktif + queueCounts.sisa;
 
   return (
-    <div className="flex min-h-screen bg-ink-950">
+    <div className="flex min-h-screen bg-ink-50">
       {/* Sidebar desktop */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 border-r border-white/5 bg-ink-900 transition-all duration-200 lg:block print:hidden",
-          collapsed ? "w-20" : "w-64"
+          "sticky top-0 hidden h-screen shrink-0 border-r border-ink-200 bg-white transition-all duration-200 lg:block print:hidden",
+          collapsed ? "w-[76px]" : "w-[252px]"
         )}
       >
         <SidebarContent collapsed={collapsed} onNavigate={() => {}} badges={badges} />
@@ -452,12 +507,12 @@ export function AppLayout(): ReactNode {
       {/* Sidebar mobile */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden print:hidden">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-72 border-r border-white/5 bg-ink-900">
+          <div className="absolute inset-0 bg-ink-950/40 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-[272px] border-r border-ink-200 bg-white shadow-pop">
             <button
               type="button"
               aria-label="Tutup menu"
-              className="absolute right-3 top-5 text-slate-400 hover:text-white"
+              className="absolute right-3 top-4 rounded-md p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-800"
               onClick={() => setMobileOpen(false)}
             >
               <X className="h-5 w-5" />
@@ -472,11 +527,11 @@ export function AppLayout(): ReactNode {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/5 bg-ink-950/85 px-4 backdrop-blur-xl print:hidden">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-ink-200 bg-white px-4 md:px-6 print:hidden">
           <button
             type="button"
             aria-label="Menu"
-            className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:hidden"
+            className="rounded-lg p-2 text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-800 lg:hidden"
             onClick={() => setMobileOpen(true)}
           >
             <Menu className="h-5 w-5" />
@@ -484,42 +539,60 @@ export function AppLayout(): ReactNode {
           <button
             type="button"
             aria-label="Ciutkan sidebar"
-            className="hidden rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:block"
+            className="hidden rounded-lg p-2 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 lg:block"
             onClick={() => setCollapsed((v) => !v)}
           >
             <Menu className="h-5 w-5" />
           </button>
+          <nav
+            aria-label="Breadcrumb"
+            className="ml-1 hidden min-w-0 items-center gap-1.5 text-sm xl:flex"
+          >
+            {crumbs.map((c, i) => (
+              <span key={c} className="flex min-w-0 items-center gap-1.5">
+                {i > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-400" />}
+                <span
+                  className={cn(
+                    "truncate",
+                    i === crumbs.length - 1 ? "font-medium text-ink-800" : "text-ink-500"
+                  )}
+                >
+                  {c}
+                </span>
+              </span>
+            ))}
+          </nav>
           <GlobalSearch />
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1.5">
             <Link
               to="/publik"
               target="_blank"
-              className="hidden rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-brand-300 sm:block"
+              className="hidden rounded-lg px-3 py-2 text-sm text-ink-500 transition-colors hover:bg-ink-100 hover:text-brand-700 sm:block"
             >
               Lihat situs publik
             </Link>
-            <div className="relative">
+            <div className="relative" ref={notifRef}>
               <button
                 type="button"
                 aria-label="Notifikasi"
                 onClick={() => setNotifOpen((v) => !v)}
-                className="relative rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+                className="relative rounded-lg p-2 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800"
               >
                 <Bell className="h-5 w-5" />
                 {totalNotif > 0 && (
-                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-ink-950" />
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-600 ring-2 ring-white" />
                 )}
               </button>
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-72 rounded-xl border border-white/10 bg-ink-900 p-3 shadow-xl">
+                <div className="absolute right-0 mt-2 w-72 rounded-xl border border-ink-200 bg-white p-3 shadow-pop">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">
                       Antrean Operasional
                     </span>
                     <button
                       type="button"
                       onClick={() => setNotifOpen(false)}
-                      className="text-xs text-slate-500 hover:text-white"
+                      className="text-xs text-ink-500 hover:text-ink-700"
                     >
                       Tutup
                     </button>
@@ -528,30 +601,30 @@ export function AppLayout(): ReactNode {
                     <Link
                       to="/permintaan"
                       onClick={() => setNotifOpen(false)}
-                      className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2 hover:bg-white/10"
+                      className="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 hover:bg-ink-100"
                     >
-                      <span className="text-slate-300">Perlu Direview</span>
-                      <span className="tnum font-semibold text-sky-300">
+                      <span className="text-ink-700">Perlu Direview</span>
+                      <span className="tnum font-semibold text-info-700">
                         {queueCounts.diajukan}
                       </span>
                     </Link>
                     <Link
                       to="/permintaan"
                       onClick={() => setNotifOpen(false)}
-                      className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2 hover:bg-white/10"
+                      className="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 hover:bg-ink-100"
                     >
-                      <span className="text-slate-300">Aktif (Proses/Kirim)</span>
-                      <span className="tnum font-semibold text-amber-300">
+                      <span className="text-ink-700">Aktif (Proses/Kirim)</span>
+                      <span className="tnum font-semibold text-warn-700">
                         {queueCounts.aktif}
                       </span>
                     </Link>
                     <Link
                       to="/permintaan/sisa"
                       onClick={() => setNotifOpen(false)}
-                      className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2 hover:bg-white/10"
+                      className="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 hover:bg-ink-100"
                     >
-                      <span className="text-slate-300">Sisa Belum Terkirim</span>
-                      <span className="tnum font-semibold text-rose-300">
+                      <span className="text-ink-700">Sisa Belum Terkirim</span>
+                      <span className="tnum font-semibold text-brand-700">
                         {queueCounts.sisa}
                       </span>
                     </Link>
@@ -559,21 +632,58 @@ export function AppLayout(): ReactNode {
                 </div>
               )}
             </div>
-            <div className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-sm font-bold text-ink-950 ring-2 ring-brand-400/20">
-              {(displayName ?? "?").charAt(0).toUpperCase()}
-            </div>
-            <div className="hidden sm:block">
-              <p className="max-w-40 truncate text-sm font-medium text-white">
-                {displayName}
-              </p>
-              <p className="text-xs text-slate-500">{roleLabel}</p>
+            <div className="mx-1 hidden h-8 w-px bg-ink-200 sm:block" />
+            <div className="relative" ref={accountRef}>
+              <button
+                type="button"
+                onClick={() => setAccountOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={accountOpen}
+                className="flex items-center gap-2 rounded-lg py-1.5 pl-1.5 pr-2 transition-colors hover:bg-ink-100"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
+                  {(displayName ?? "?").charAt(0).toUpperCase()}
+                </span>
+                <span className="hidden text-left sm:block">
+                  <span className="block max-w-40 truncate text-sm font-medium leading-tight text-ink-800">
+                    {displayName}
+                  </span>
+                  <span className="block text-xs leading-tight text-ink-500">{roleLabel}</span>
+                </span>
+                <ChevronDown className={cn("hidden h-4 w-4 text-ink-500 transition-transform sm:block", accountOpen && "rotate-180")} />
+              </button>
+              {accountOpen && (
+                <div className="absolute right-0 mt-2 w-56 rounded-xl border border-ink-200 bg-white p-1.5 shadow-pop">
+                  <div className="border-b border-ink-200 px-3 py-2">
+                    <p className="truncate text-sm font-medium text-ink-800">{displayName}</p>
+                    <p className="truncate text-xs text-ink-500">{user?.email}</p>
+                  </div>
+                  <Link
+                    to="/pengaturan"
+                    onClick={() => setAccountOpen(false)}
+                    className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-700 transition-colors hover:bg-ink-100"
+                  >
+                    <Settings className="h-4 w-4 text-ink-500" /> Pengaturan
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setAccountOpen(false);
+                      await signOut();
+                      navigate("/login");
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-brand-700 transition-colors hover:bg-brand-50"
+                  >
+                    <LogOut className="h-4 w-4" /> Keluar
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-6">
-          <div className="mx-auto max-w-7xl">
+        <main className="flex-1 p-4 md:p-6 lg:p-8">
+          <div className="mx-auto max-w-[1400px]">
             <Outlet />
           </div>
         </main>

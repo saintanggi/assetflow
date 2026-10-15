@@ -125,7 +125,7 @@ export function SettingsPage() {
       id: "value",
       header: "Value (JSON)",
       cell: ({ row }) => (
-        <pre className="max-w-md overflow-hidden text-ellipsis whitespace-pre-wrap break-all font-mono text-xs text-slate-400">
+        <pre className="max-w-md overflow-hidden text-ellipsis whitespace-pre-wrap break-all font-mono text-xs text-ink-500">
           {JSON.stringify(row.original.value, null, 2)}
         </pre>
       ),
@@ -160,8 +160,8 @@ export function SettingsPage() {
         }
       />
 
-      <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200">
-        <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+      <div className="mb-6 flex items-start gap-3 rounded-xl border border-warn-100 bg-warn-50 p-4 text-sm text-warn-700">
+        <Info className="mt-0.5 h-5 w-5 shrink-0 text-warn-600" />
         <p>
           Hanya Super Admin &amp; pemegang izin <span className="font-mono font-semibold">settings.manage</span>{" "}
           yang dapat mengubah pengaturan ini. Nilai harus berupa JSON yang valid.
@@ -171,7 +171,7 @@ export function SettingsPage() {
       <Card className="mb-6">
         <CardHeader className="space-y-1">
           <div className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-brand-300" />
+            <KeyRound className="h-5 w-5 text-brand-700" />
             <CardTitle className="text-lg">Keamanan Akun</CardTitle>
           </div>
           <CardDescription>
@@ -230,7 +230,7 @@ export function SettingsPage() {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="set-key">
-              Key <span className="text-rose-400">*</span>
+              Key <span className="text-brand-600">*</span>
             </Label>
             <Input
               id="set-key"

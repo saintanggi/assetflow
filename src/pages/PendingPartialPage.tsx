@@ -35,7 +35,7 @@ const columns: ColumnDef<PendingRow, unknown>[] = [
     cell: ({ row }) => (
       <Link
         to={`/permintaan/${row.original.request_id}`}
-        className="font-mono text-sm text-brand-300 hover:underline"
+        className="font-mono text-sm text-brand-700 hover:underline"
       >
         {row.original.request_number}
       </Link>
@@ -48,7 +48,7 @@ const columns: ColumnDef<PendingRow, unknown>[] = [
     cell: ({ row }) => (
       <div>
         <div className="font-medium">{row.original.name}</div>
-        <div className="font-mono text-xs text-slate-500">{row.original.sku}</div>
+        <div className="font-mono text-xs text-ink-500">{row.original.sku}</div>
       </div>
     ),
   },
@@ -59,8 +59,8 @@ const columns: ColumnDef<PendingRow, unknown>[] = [
       <span
         className={`rounded-full px-2 py-0.5 text-xs ${
           row.original.jenis === "Menunggu Stok"
-            ? "bg-sky-400/15 text-sky-300"
-            : "bg-amber-400/15 text-amber-300"
+            ? "bg-info-100 text-info-600"
+            : "bg-warn-100 text-warn-600"
         }`}
       >
         {row.original.jenis}
@@ -71,21 +71,21 @@ const columns: ColumnDef<PendingRow, unknown>[] = [
     header: "Sisa Belum Terkirim",
     accessorKey: "sisa",
     cell: ({ row }) => (
-      <span className="tnum font-semibold text-amber-300">{fmt(row.original.sisa)}</span>
+      <span className="tnum font-semibold text-warn-600">{fmt(row.original.sisa)}</span>
     ),
   },
   {
     header: "Keterangan Gudang",
     accessorKey: "keterangan",
     cell: ({ row }) => (
-      <span className="text-xs text-slate-400">{row.original.keterangan ?? "—"}</span>
+      <span className="text-xs text-ink-500">{row.original.keterangan ?? "—"}</span>
     ),
   },
   {
     header: "Minta / Setuju / Kirim",
     accessorKey: "qty_requested",
     cell: ({ row }) => (
-      <span className="tnum text-xs text-slate-400">
+      <span className="tnum text-xs text-ink-500">
         {fmt(row.original.qty_requested)} / {fmt(row.original.qty_approved)} /{" "}
         {fmt(row.original.qty_shipped)}
       </span>
@@ -223,14 +223,14 @@ export function PendingPartialPage() {
 
       <Card className="mb-4">
         <CardContent className="flex items-center gap-4 p-5">
-          <div className="rounded-xl bg-amber-400/10 p-2.5 text-amber-300 ring-1 ring-amber-400/20">
+          <div className="rounded-xl bg-warn-50 p-2.5 text-warn-600 ring-1 ring-warn-100">
             <Hourglass className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-500">
               Item menunggu kiriman susulan
             </p>
-            <p className="tnum font-display text-2xl font-bold text-white">
+            <p className="tnum font-display text-2xl font-bold text-ink-800">
               {rows.length.toLocaleString("id-ID")}
             </p>
           </div>

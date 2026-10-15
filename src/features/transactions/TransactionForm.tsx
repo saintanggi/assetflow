@@ -286,7 +286,7 @@ export function TransactionForm({
         {rows.map((row, idx) => (
           <div
             key={row.key}
-            className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_140px_44px]"
+            className="grid gap-2 rounded-lg border border-ink-200 p-3 sm:grid-cols-[1fr_140px_44px]"
           >
             <div className="relative">
               <Input
@@ -297,11 +297,11 @@ export function TransactionForm({
                 onFocus={() => row.results.length > 0 && updateRow(row.key, { open: true })}
               />
               {row.open && (
-                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-ink-200 bg-white shadow-lg">
                   {row.searching ? (
-                    <div className="px-3 py-2 text-sm text-slate-500">Mencari…</div>
+                    <div className="px-3 py-2 text-sm text-ink-500">Mencari…</div>
                   ) : row.results.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-slate-500">
+                    <div className="px-3 py-2 text-sm text-ink-500">
                       Tidak ada barang yang cocok.
                     </div>
                   ) : (
@@ -309,14 +309,14 @@ export function TransactionForm({
                       <button
                         key={r.id}
                         type="button"
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100"
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-ink-100"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           pickItem(row.key, r);
                         }}
                       >
                         <span className="font-medium">{r.sku}</span>
-                        <span className="text-slate-500"> — {r.name}</span>
+                        <span className="text-ink-500"> — {r.name}</span>
                       </button>
                     ))
                   )}

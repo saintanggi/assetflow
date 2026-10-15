@@ -4,7 +4,7 @@ import { cn } from "../../lib/utils";
 
 export const Table = forwardRef<HTMLTableElement, HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="w-full overflow-x-auto rounded-lg border border-white/10 bg-ink-850">
+    <div className="w-full overflow-x-auto rounded-xl border border-ink-200 bg-white">
       <table
         ref={ref}
         className={cn("w-full caption-bottom text-sm", className)}
@@ -16,7 +16,7 @@ export const Table = forwardRef<HTMLTableElement, HTMLAttributes<HTMLTableElemen
 Table.displayName = "Table";
 
 export function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("bg-white/[0.03]", className)} {...props} />;
+  return <thead className={cn("bg-ink-50", className)} {...props} />;
 }
 
 export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
@@ -25,14 +25,14 @@ export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSecti
 
 export function TableFooter({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <tfoot className={cn("border-t border-white/10 bg-white/[0.03] font-medium", className)} {...props} />
+    <tfoot className={cn("border-t border-ink-200 bg-ink-50 font-medium", className)} {...props} />
   );
 }
 
 export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
-      className={cn("border-b border-white/5 transition-colors hover:bg-white/[0.03] text-slate-300", className)}
+      className={cn("border-b border-ink-200 transition-colors hover:bg-brand-50/40 text-ink-700", className)}
       {...props}
     />
   );
@@ -42,7 +42,8 @@ export function TableHead({ className, ...props }: ThHTMLAttributes<HTMLTableCel
   return (
     <th
       className={cn(
-        "h-10 px-4 text-left align-middle text-xs font-semibold uppercase tracking-wide text-slate-500",
+        "h-11 px-4 text-left align-middle text-xs font-semibold uppercase tracking-wide text-ink-500",
+        "whitespace-nowrap",
         className
       )}
       {...props}
@@ -51,9 +52,9 @@ export function TableHead({ className, ...props }: ThHTMLAttributes<HTMLTableCel
 }
 
 export function TableCell({ className, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("p-4 align-middle", className)} {...props} />;
+  return <td className={cn("px-4 py-3 align-middle", className)} {...props} />;
 }
 
 export function TableCaption({ className, ...props }: HTMLAttributes<HTMLTableCaptionElement>) {
-  return <caption className={cn("mt-4 text-sm text-slate-500", className)} {...props} />;
+  return <caption className={cn("mt-4 text-sm text-ink-500", className)} {...props} />;
 }

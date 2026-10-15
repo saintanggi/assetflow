@@ -85,7 +85,7 @@ export function AssetListPage() {
         cell: ({ row }) => (
           <Link
             to={`/aset/${row.original.id}`}
-            className="font-medium text-brand-300 hover:underline"
+            className="font-medium text-brand-700 hover:underline"
           >
             {row.original.asset_code}
           </Link>
@@ -97,7 +97,7 @@ export function AssetListPage() {
         cell: ({ row }) => (
           <div>
             <div className="font-medium">{row.original.name}</div>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-ink-500">
               {row.original.brand ?? ""}
               {row.original.brand && row.original.model ? " · " : ""}
               {row.original.model ?? ""}

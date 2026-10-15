@@ -206,9 +206,9 @@ export function TransactionLogPage() {
       id: "in",
       cell: ({ row }) =>
         row.original.qtyChange > 0 ? (
-          <span className="tnum font-semibold text-emerald-300">+{formatQty(row.original.qtyChange)}</span>
+          <span className="tnum font-semibold text-ok-600">+{formatQty(row.original.qtyChange)}</span>
         ) : (
-          <span className="text-slate-600">—</span>
+          <span className="text-ink-500">—</span>
         ),
     },
     {
@@ -216,9 +216,9 @@ export function TransactionLogPage() {
       id: "out",
       cell: ({ row }) =>
         row.original.qtyChange < 0 ? (
-          <span className="tnum font-semibold text-rose-300">-{formatQty(Math.abs(row.original.qtyChange))}</span>
+          <span className="tnum font-semibold text-brand-600">-{formatQty(Math.abs(row.original.qtyChange))}</span>
         ) : (
-          <span className="text-slate-600">—</span>
+          <span className="text-ink-500">—</span>
         ),
     },
     {
@@ -230,7 +230,7 @@ export function TransactionLogPage() {
       header: "Keterangan",
       accessorKey: "notes",
       cell: ({ row }) => (
-        <span className="block max-w-56 truncate text-slate-400" title={row.original.notes || row.original.docNumber}>
+        <span className="block max-w-56 truncate text-ink-500" title={row.original.notes || row.original.docNumber}>
           {row.original.notes || row.original.docNumber || "—"}
         </span>
       ),
@@ -281,20 +281,20 @@ export function TransactionLogPage() {
       <div className="grid grid-cols-3 gap-3">
         <Card>
           <CardContent className="pt-4">
-            <p className="text-xs text-slate-500">TOTAL IN</p>
-            <p className="tnum font-display text-xl font-bold text-emerald-300">+{formatQty(totalIn)}</p>
+            <p className="text-xs text-ink-500">TOTAL IN</p>
+            <p className="tnum font-display text-xl font-bold text-ok-600">+{formatQty(totalIn)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <p className="text-xs text-slate-500">TOTAL OUT</p>
-            <p className="tnum font-display text-xl font-bold text-rose-300">-{formatQty(totalOut)}</p>
+            <p className="text-xs text-ink-500">TOTAL OUT</p>
+            <p className="tnum font-display text-xl font-bold text-brand-600">-{formatQty(totalOut)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <p className="text-xs text-slate-500">SELISIH IN − OUT</p>
-            <p className={`tnum font-display text-xl font-bold ${totalIn - totalOut >= 0 ? "text-amber-300" : "text-rose-300"}`}>
+            <p className="text-xs text-ink-500">SELISIH IN − OUT</p>
+            <p className={`tnum font-display text-xl font-bold ${totalIn - totalOut >= 0 ? "text-warn-600" : "text-brand-600"}`}>
               {totalIn - totalOut >= 0 ? "+" : ""}{formatQty(totalIn - totalOut)}
             </p>
           </CardContent>
@@ -304,19 +304,19 @@ export function TransactionLogPage() {
       <Card>
         <CardContent className="space-y-4 pt-6">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm text-slate-400">Filter:</span>
+            <span className="text-sm text-ink-500">Filter:</span>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
+              className="h-9 rounded-lg border border-ink-200 bg-ink-100 px-3 text-sm text-ink-800"
             />
-            <span className="text-sm text-slate-500">s/d</span>
+            <span className="text-sm text-ink-500">s/d</span>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
+              className="h-9 rounded-lg border border-ink-200 bg-ink-100 px-3 text-sm text-ink-800"
             />
             {(dateFrom || dateTo || jenis) && (
               <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setJenis(""); }}>

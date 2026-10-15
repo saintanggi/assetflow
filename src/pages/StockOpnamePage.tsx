@@ -332,9 +332,9 @@ export function StockOpnamePage() {
         </CardHeader>
         <CardContent>
           {loadingCounts ? (
-            <p className="text-sm text-slate-500">Memuat daftar opname…</p>
+            <p className="text-sm text-ink-500">Memuat daftar opname…</p>
           ) : counts.length === 0 ? (
-            <p className="text-sm text-slate-500">Belum ada draft opname.</p>
+            <p className="text-sm text-ink-500">Belum ada draft opname.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -358,10 +358,10 @@ export function StockOpnamePage() {
                       <TableCell
                         className={`text-right font-medium ${
                           diff > 0
-                            ? "text-brand-300"
+                            ? "text-brand-700"
                             : diff < 0
-                              ? "text-rose-300"
-                              : "text-slate-500"
+                              ? "text-brand-600"
+                              : "text-ink-500"
                         }`}
                       >
                         {diff > 0 ? "+" : ""}

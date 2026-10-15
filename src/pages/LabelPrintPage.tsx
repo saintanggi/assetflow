@@ -162,7 +162,7 @@ export function LabelPrintPage() {
               <div>
                 <Label htmlFor="label-search-asset">Kode / nama aset</Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
                   <Input
                     id="label-search-asset"
                     className="pl-9"
@@ -181,7 +181,7 @@ export function LabelPrintPage() {
                     >
                       <span>
                         <strong>{a.asset_code}</strong>{" "}
-                        <span className="text-slate-500">{a.name}</span>
+                        <span className="text-ink-500">{a.name}</span>
                       </span>
                       <Button
                         size="sm"
@@ -216,7 +216,7 @@ export function LabelPrintPage() {
               <div>
                 <Label htmlFor="label-search-item">SKU / nama barang</Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
                   <Input
                     id="label-search-item"
                     className="pl-9"
@@ -235,7 +235,7 @@ export function LabelPrintPage() {
                     >
                       <span>
                         <strong>{it.sku}</strong>{" "}
-                        <span className="text-slate-500">{it.name}</span>
+                        <span className="text-ink-500">{it.name}</span>
                       </span>
                       <Button
                         size="sm"
@@ -268,7 +268,7 @@ export function LabelPrintPage() {
             </CardHeader>
             <CardContent>
               {labels.length === 0 ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-ink-500">
                   Belum ada label. Cari aset/barang di atas lalu tambahkan.
                 </p>
               ) : (
@@ -279,11 +279,11 @@ export function LabelPrintPage() {
                       className="flex items-center justify-between gap-2 rounded-lg border p-2 text-sm"
                     >
                       <span>
-                        <span className="mr-2 rounded bg-white/5 px-1.5 py-0.5 text-xs uppercase text-slate-500">
+                        <span className="mr-2 rounded bg-ink-100 px-1.5 py-0.5 text-xs uppercase text-ink-500">
                           {l.kind === "asset" ? "Aset" : "Barang"}
                         </span>
                         <strong>{l.code}</strong>{" "}
-                        <span className="text-slate-500">{l.title}</span>
+                        <span className="text-ink-500">{l.title}</span>
                       </span>
                       <Button
                         size="icon"
@@ -307,11 +307,11 @@ export function LabelPrintPage() {
             {labels.map((l) => (
               <div
                 key={`${l.kind}-${l.id}`}
-                className="flex flex-col items-center justify-between border border-slate-300 bg-white p-2 text-center text-slate-900"
+                className="flex flex-col items-center justify-between border border-ink-300 bg-white p-2 text-center text-ink-900"
                 style={{ width: "90mm", height: "60mm" }}
               >
                 <div
-                  className="w-full overflow-hidden text-[11px] font-bold leading-tight"
+                  className="w-full overflow-hidden text-xs font-bold leading-tight"
                   style={{
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
@@ -320,7 +320,7 @@ export function LabelPrintPage() {
                 >
                   {l.title}
                 </div>
-                <div className="text-[10px] text-slate-600">{l.code}</div>
+                <div className="text-xs text-ink-500">{l.code}</div>
                 {l.kind === "asset" ? (
                   <QrLabel value={l.qrValue} size={110} showDownload={false} />
                 ) : (
@@ -333,7 +333,7 @@ export function LabelPrintPage() {
               </div>
             ))}
             {labels.length === 0 && (
-              <p className="no-print text-sm text-slate-500">
+              <p className="no-print text-sm text-ink-500">
                 Pratinjau label akan muncul di sini.
               </p>
             )}

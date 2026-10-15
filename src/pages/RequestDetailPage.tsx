@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
+import { EmptyState } from "../components/EmptyState";
+import { Skeleton } from "../components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -605,8 +607,26 @@ export function RequestDetailPage() {
     }
   };
 
-  if (loading) return <div className="text-sm text-slate-500">Memuat…</div>;
-  if (!req) return <div className="text-sm text-slate-500">Permintaan tidak ditemukan.</div>;
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-72" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-72 w-full" />
+      </div>
+    );
+  }
+  if (!req) {
+    return (
+      <EmptyState
+        title="Permintaan tidak ditemukan"
+        description="Permintaan ini mungkin sudah dihapus atau Anda tidak memiliki akses."
+      />
+    );
+  }
 
   const hasProcessableItems = items.some((x) =>
     ["disetujui", "diproses", "siap", "pending_sebagian"].includes(x.item_status)
@@ -642,16 +662,16 @@ export function RequestDetailPage() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Badge variant={STATUS_VARIANT[req.status]}>{REQUEST_STATUS_LABELS[req.status]}</Badge>
         {req.status === "ditolak" && req.rejection_reason && (
-          <span className="text-sm text-rose-300">Alasan: {req.rejection_reason}</span>
+          <span className="text-sm text-brand-600">Alasan: {req.rejection_reason}</span>
         )}
-        {req.notes && <span className="text-sm text-slate-400">Catatan: {req.notes}</span>}
+        {req.notes && <span className="text-sm text-ink-500">Catatan: {req.notes}</span>}
       </div>
 
       {/* ===== PANEL REVIEW (Admin Gudang) ===== */}
       {isReviewable && (
-        <Card className="mb-4 border-sky-400/20">
+        <Card className="mb-4 border-info-100">
           <CardHeader>
-            <CardTitle className="font-display text-base text-white">
+            <CardTitle className="font-display text-base text-ink-800">
               Review Admin Gudang — cek stok & tentukan qty yang disetujui
             </CardTitle>
           </CardHeader>
@@ -662,15 +682,15 @@ export function RequestDetailPage() {
               return (
                 <div
                   key={x.id}
-                  className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3 sm:grid-cols-12 sm:items-end"
+                  className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
                 >
                   <div className="sm:col-span-5">
                     <div className="font-medium">{x.inventory_items?.name}</div>
-                    <div className="font-mono text-xs text-slate-500">{x.inventory_items?.sku}</div>
+                    <div className="font-mono text-xs text-ink-500">{x.inventory_items?.sku}</div>
                     <div className="mt-1 text-xs">
-                      <span className="text-slate-400">Minta: {fmt(minta)}</span>
+                      <span className="text-ink-500">Minta: {fmt(minta)}</span>
                       {" • "}
-                      <span className={tersedia >= minta ? "text-brand-300" : "text-amber-300"}>
+                      <span className={tersedia >= minta ? "text-brand-700" : "text-warn-600"}>
                         Stok tersedia: {fmt(tersedia)}
                       </span>
                     </div>
@@ -684,7 +704,7 @@ export function RequestDetailPage() {
                       onChange={(e) => setApproved((p) => ({ ...p, [x.id]: e.target.value }))}
                     />
                   </div>
-                  <div className="sm:col-span-4 text-xs text-slate-500">
+                  <div className="sm:col-span-4 text-xs text-ink-500">
                     {tersedia < minta
                       ? `Stok kurang ${fmt(minta - tersedia)} — setujui sebagian, sisa otomatis masuk Sisa Belum Terkirim.`
                       : "Stok cukup untuk permintaan penuh."}
@@ -693,7 +713,7 @@ export function RequestDetailPage() {
               );
             })}
             <div className="space-y-1.5 pt-2">
-              <Label>Keterangan Gudang <span className="text-slate-500">(wajib bila ada yang disetujui sebagian)</span></Label>
+              <Label>Keterangan Gudang <span className="text-ink-500">(wajib bila ada yang disetujui sebagian)</span></Label>
               <Textarea
                 rows={2}
                 value={warehouseNote}
@@ -711,7 +731,7 @@ export function RequestDetailPage() {
               </Button>
             </div>
             {showReject && (
-              <div className="space-y-2 rounded-lg border border-rose-400/20 p-3">
+              <div className="space-y-2 rounded-lg border border-brand-200 p-3">
                 <Label>Alasan penolakan</Label>
                 <Textarea
                   value={rejectReason}
@@ -730,9 +750,9 @@ export function RequestDetailPage() {
 
       {/* ===== PANEL SETUJUI MENUNGGU STOK ===== */}
       {canReview && items.some((x) => x.item_status === "menunggu_stok") && (
-        <Card className="mb-4 border-sky-400/20">
+        <Card className="mb-4 border-info-100">
           <CardHeader>
-            <CardTitle className="font-display text-base text-white">
+            <CardTitle className="font-display text-base text-ink-800">
               Menunggu Stok — setujui saat stok sudah datang
             </CardTitle>
           </CardHeader>
@@ -742,13 +762,13 @@ export function RequestDetailPage() {
               .map((x) => (
                 <div
                   key={x.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3"
                 >
                   <div>
                     <div className="font-medium">{x.inventory_items?.name}</div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-ink-500">
                       Qty: {fmt(Number(x.qty_requested))}
-                      {x.notes && <span className="ml-2 text-sky-300">• {x.notes}</span>}
+                      {x.notes && <span className="ml-2 text-info-600">• {x.notes}</span>}
                     </div>
                   </div>
                   <Button
@@ -766,13 +786,13 @@ export function RequestDetailPage() {
 
       {/* ===== PANEL PROSES (Helper) ===== */}
       {isProcessable && (
-        <Card className="mb-4 border-amber-400/20 print:hidden">
+        <Card className="mb-4 border-warn-100 print:hidden">
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle className="font-display text-base text-white">
+              <CardTitle className="font-display text-base text-ink-800">
                 Proses Helper — isi barcode/SN lalu tandai siap
               </CardTitle>
-              <p className="mt-0.5 text-xs text-slate-400">
+              <p className="mt-0.5 text-xs text-ink-500">
                 Tips scanner USB: tekan Enter setelah scan Barcode untuk otomatis pindah ke kolom SN / baris berikutnya.
               </p>
             </div>
@@ -789,13 +809,13 @@ export function RequestDetailPage() {
                 return (
                   <div
                     key={x.id}
-                    className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3 sm:grid-cols-12 sm:items-end"
+                    className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
                   >
                     <div className="sm:col-span-4">
                       <div className="font-medium">{x.inventory_items?.name}</div>
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs text-ink-500">
                         Qty disetujui: {fmt(Number(x.qty_approved ?? 0))}
-                        {x.status_aset && <span className="ml-2 text-sky-300">• {x.status_aset}</span>}
+                        {x.status_aset && <span className="ml-2 text-info-600">• {x.status_aset}</span>}
                       </div>
                     </div>
                     <div className="sm:col-span-3">
@@ -875,9 +895,9 @@ export function RequestDetailPage() {
 
       {/* ===== PANEL KIRIM (Admin Gudang) ===== */}
       {isShippable && pendingItems.length > 0 && (
-        <Card className="mb-4 border-brand-400/20">
+        <Card className="mb-4 border-brand-200">
           <CardHeader>
-            <CardTitle className="font-display text-base text-white">
+            <CardTitle className="font-display text-base text-ink-800">
               Kirim Barang — catat qty kirim & no resi
             </CardTitle>
           </CardHeader>
@@ -888,7 +908,7 @@ export function RequestDetailPage() {
                 <select
                   value={shipLocation}
                   onChange={(e) => setShipLocation(e.target.value)}
-                  className="w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-slate-200"
+                  className="w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800"
                 >
                   <option value="">— Pilih lokasi —</option>
                   {locations.map((l) => (
@@ -904,11 +924,11 @@ export function RequestDetailPage() {
               return (
                 <div
                   key={x.id}
-                  className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3 sm:grid-cols-12 sm:items-end"
+                  className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
                 >
                   <div className="sm:col-span-5">
                     <div className="font-medium">{x.inventory_items?.name}</div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-ink-500">
                       Sisa: {fmt(sisa)} • Terkirim: {fmt(Number(x.qty_shipped ?? 0))}
                       {x.barcode && <span className="font-mono"> • {x.barcode}</span>}
                     </div>
@@ -936,7 +956,7 @@ export function RequestDetailPage() {
             <Button onClick={submitShip} disabled={busy}>
               <Send className="mr-1 h-4 w-4" /> Kirim & Catat Transaksi
             </Button>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-500">
               Pengiriman otomatis mencatat transaksi barang keluar — stok berkurang dan tercatat di
               buku besar.
             </p>
@@ -947,13 +967,13 @@ export function RequestDetailPage() {
       {/* ===== DAFTAR ITEM ===== */}
       <Card>
         <CardHeader>
-          <CardTitle className="font-display text-base text-white">Item Permintaan</CardTitle>
+          <CardTitle className="font-display text-base text-ink-800">Item Permintaan</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-slate-500">
+              <thead className="bg-ink-50">
+                <tr className="border-b border-ink-200 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
                   <th className="pb-2 pr-3">Item</th>
                   <th className="pb-2 pr-3 text-right">Request</th>
                   <th className="pb-2 pr-3 text-right">Disetujui</th>
@@ -993,10 +1013,10 @@ export function RequestDetailPage() {
                     }
                   }
                   return (
-                  <tr key={x.id} className="border-b border-white/5">
+                  <tr key={x.id} className="border-b border-ink-200 transition-colors hover:bg-brand-50/40">
                     <td className="py-2 pr-3">
                       <div className="font-medium">{x.inventory_items?.name}</div>
-                      <div className="font-mono text-xs text-slate-500">{x.inventory_items?.sku}</div>
+                      <div className="font-mono text-xs text-ink-500">{x.inventory_items?.sku}</div>
                     </td>
                     <td className="tnum py-2 pr-3 text-right">{fmt(Number(x.qty_requested))}</td>
                     <td className="tnum py-2 pr-3 text-right">
@@ -1007,7 +1027,7 @@ export function RequestDetailPage() {
                       {x.barcode ? (
                         <div className="space-y-0.5">
                           {x.barcode.split("\n").map((b, i) => (
-                            <div key={i} className="text-slate-200">{b.trim()}</div>
+                            <div key={i} className="text-ink-800">{b.trim()}</div>
                           ))}
                         </div>
                       ) : "—"}
@@ -1015,7 +1035,7 @@ export function RequestDetailPage() {
                     <td className="py-2 pr-3 font-mono text-xs">
                       {snList.length > 0 ? (
                         <div className="space-y-0.5">
-                          {snList.map((s, i) => <div key={i} className="text-slate-200">{s}</div>)}
+                          {snList.map((s, i) => <div key={i} className="text-ink-800">{s}</div>)}
                         </div>
                       ) : "—"}
                     </td>
@@ -1023,7 +1043,7 @@ export function RequestDetailPage() {
                       {x.resi ? (
                         <div className="space-y-0.5">
                           {x.resi.split("\n").map((r, i) => (
-                            <div key={i} className="text-slate-200">{r.trim()}</div>
+                            <div key={i} className="text-ink-800">{r.trim()}</div>
                           ))}
                         </div>
                       ) : "—"}
@@ -1031,7 +1051,7 @@ export function RequestDetailPage() {
                     <td className="py-2 pr-3 font-mono text-xs">
                       {srList.length > 0 ? (
                         <div className="space-y-0.5">
-                          {[...new Set(srList)].map((s, i) => <div key={i} className="text-amber-200">{s}</div>)}
+                          {[...new Set(srList)].map((s, i) => <div key={i} className="text-warn-700">{s}</div>)}
                         </div>
                       ) : (
                         <Badge variant={ITEM_VARIANT[x.item_status] ?? "default"}>
@@ -1040,12 +1060,12 @@ export function RequestDetailPage() {
                       )}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">
-                      {x.status_aset ? <span className="text-sky-200">{x.status_aset}</span> : "—"}
+                      {x.status_aset ? <span className="text-info-700">{x.status_aset}</span> : "—"}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">
                       {ketList.length > 0 ? (
                         <div className="space-y-0.5">
-                          {ketList.map((k, i) => <div key={i} className="text-slate-400">{k}</div>)}
+                          {ketList.map((k, i) => <div key={i} className="text-ink-500">{k}</div>)}
                         </div>
                       ) : "—"}
                     </td>
@@ -1093,7 +1113,7 @@ export function RequestDetailPage() {
             <select
               value={eItemId}
               onChange={(e) => setEItemId(e.target.value)}
-              className="w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white"
+              className="w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800"
             >
               {masterItems.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
@@ -1136,7 +1156,7 @@ export function RequestDetailPage() {
       </Dialog>
 
       {/* ===== CETAK SURAT JALAN / PICK LIST (Hanya muncul saat Print) ===== */}
-      <div className="mt-8 hidden border-t border-slate-700 pt-6 text-xs text-slate-300 print:block">
+      <div className="mt-8 hidden border-t border-ink-200 pt-6 text-xs text-ink-700 print:block">
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h2 className="text-base font-bold uppercase tracking-wide">
@@ -1156,22 +1176,22 @@ export function RequestDetailPage() {
           </div>
         </div>
         <div className="mt-10 grid grid-cols-3 gap-6 text-center">
-          <div className="rounded border border-slate-700 p-3">
+          <div className="rounded border border-ink-200 p-3">
             <p className="font-semibold">Disiapkan Oleh (Helper Gudang)</p>
             <div className="h-16" />
-            <p className="border-t border-slate-700 pt-1">( ........................................ )</p>
+            <p className="border-t border-ink-200 pt-1">( ........................................ )</p>
           </div>
-          <div className="rounded border border-slate-700 p-3">
+          <div className="rounded border border-ink-200 p-3">
             <p className="font-semibold">Disetujui Oleh (Admin Gudang)</p>
             <div className="h-16" />
-            <p className="border-t border-slate-700 pt-1">( ........................................ )</p>
+            <p className="border-t border-ink-200 pt-1">( ........................................ )</p>
           </div>
-          <div className="rounded border border-slate-700 p-3">
+          <div className="rounded border border-ink-200 p-3">
             <p className="font-semibold">
               {printMode === "surat_jalan" ? "Diterima Oleh (Ekspedisi / Gerai)" : "Pemeriksa Gudang"}
             </p>
             <div className="h-16" />
-            <p className="border-t border-slate-700 pt-1">( ........................................ )</p>
+            <p className="border-t border-ink-200 pt-1">( ........................................ )</p>
           </div>
         </div>
       </div>

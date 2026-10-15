@@ -327,7 +327,7 @@ export function RequestListPage() {
       cell: ({ row }) => (
         <Link
           to={`/permintaan/${row.original.id}`}
-          className="font-mono text-sm text-brand-300 hover:underline"
+          className="font-mono text-sm text-brand-700 hover:underline"
         >
           {row.original.request_number}
         </Link>
@@ -342,7 +342,7 @@ export function RequestListPage() {
         <div>
           <div className="font-medium">{row.original.branch_name}</div>
           {row.original.branch_code && (
-            <div className="font-mono text-xs text-slate-500">{row.original.branch_code}</div>
+            <div className="font-mono text-xs text-ink-500">{row.original.branch_code}</div>
           )}
         </div>
       ),
@@ -369,7 +369,7 @@ export function RequestListPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="text-rose-300 hover:text-rose-200"
+                  className="text-brand-600 hover:text-brand-700"
                   onClick={() => setDelReq(row.original)}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -438,11 +438,12 @@ export function RequestListPage() {
               void load();
             }}
           >
-            <Label className="mb-1 block text-xs text-slate-400">
+            <Label htmlFor="req-track" className="mb-1 block text-xs text-ink-500">
               Lacak Database (No Tiket, Gerai, No Resi, Barcode, atau Serial Number)
             </Label>
             <div className="flex gap-2">
               <Input
+                id="req-track"
                 value={serverQuery}
                 onChange={(e) => setServerQuery(e.target.value)}
                 placeholder="Ketik resi, barcode, SN, no tiket, atau nama gerai…"
@@ -453,16 +454,18 @@ export function RequestListPage() {
             </div>
           </form>
           <div className="sm:col-span-2">
-            <Label className="mb-1 block text-xs text-slate-400">Dari Tanggal</Label>
+            <Label htmlFor="req-from" className="mb-1 block text-xs text-ink-500">Dari Tanggal</Label>
             <Input
+              id="req-from"
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
             />
           </div>
           <div className="sm:col-span-2">
-            <Label className="mb-1 block text-xs text-slate-400">Sampai Tanggal</Label>
+            <Label htmlFor="req-to" className="mb-1 block text-xs text-ink-500">Sampai Tanggal</Label>
             <Input
+              id="req-to"
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
@@ -492,10 +495,10 @@ export function RequestListPage() {
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`rounded-full px-3 py-1.5 text-sm transition ${
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
               tab === t.id
-                ? "bg-brand-400/15 text-brand-200 ring-1 ring-brand-400/30"
-                : "bg-white/5 text-slate-400 ring-1 ring-white/10 hover:bg-white/10"
+                ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
+                : "bg-white text-ink-600 ring-1 ring-ink-200 hover:bg-ink-50"
             }`}
           >
             {t.label}

@@ -4,6 +4,11 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: {
+    host: true,
+    // Izinkan preview melalui host tunnel (mis. preview sandbox / ngrok) di mode dev.
+    allowedHosts: true,
+  },
   build: {
     chunkSizeWarningLimit: 1200,
     rolldownOptions: {

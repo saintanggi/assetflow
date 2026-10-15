@@ -148,7 +148,7 @@ export function TransactionHistoryPage() {
       cell: ({ row }) => (
         <div>
           <div className="font-medium">{row.original.item?.name ?? "—"}</div>
-          <div className="font-mono text-xs text-slate-500">{row.original.item?.sku ?? ""}</div>
+          <div className="font-mono text-xs text-ink-500">{row.original.item?.sku ?? ""}</div>
         </div>
       ),
     },
@@ -180,7 +180,7 @@ export function TransactionHistoryPage() {
       header: "No Dokumen",
       id: "dok",
       cell: ({ row }) => (
-        <span className="font-mono text-xs text-slate-500">{row.original.tx?.doc_number ?? "—"}</span>
+        <span className="font-mono text-xs text-ink-500">{row.original.tx?.doc_number ?? "—"}</span>
       ),
     },
   ];
@@ -345,7 +345,7 @@ export function TransactionHistoryPage() {
           : "—";
         return (
           <span className="text-sm">
-            {src} <span className="text-slate-400">→</span> {dst}
+            {src} <span className="text-ink-500">→</span> {dst}
           </span>
         );
       },
@@ -380,20 +380,20 @@ export function TransactionHistoryPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => switchView("dokumen")}
-                className={`rounded-full px-3 py-1.5 text-sm transition ${
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                   view === "dokumen"
-                    ? "bg-brand-400/15 text-brand-200 ring-1 ring-brand-400/30"
-                    : "bg-white/5 text-slate-400 ring-1 ring-white/10 hover:bg-white/10"
+                    ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
+                    : "bg-white text-ink-600 ring-1 ring-ink-200 hover:bg-ink-50"
                 }`}
               >
                 Per Dokumen
               </button>
               <button
                 onClick={() => switchView("baris")}
-                className={`rounded-full px-3 py-1.5 text-sm transition ${
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                   view === "baris"
-                    ? "bg-brand-400/15 text-brand-200 ring-1 ring-brand-400/30"
-                    : "bg-white/5 text-slate-400 ring-1 ring-white/10 hover:bg-white/10"
+                    ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
+                    : "bg-white text-ink-600 ring-1 ring-ink-200 hover:bg-ink-50"
                 }`}
               >
                 Rincian per Barang
@@ -467,15 +467,15 @@ export function TransactionHistoryPage() {
             </DialogHeader>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               <div>
-                <dt className="text-slate-500">Tanggal Transaksi</dt>
+                <dt className="text-ink-500">Tanggal Transaksi</dt>
                 <dd className="font-medium">{formatDate(selected.transaction_date)}</dd>
               </div>
               <div>
-                <dt className="text-slate-500">Referensi</dt>
+                <dt className="text-ink-500">Referensi</dt>
                 <dd className="font-medium">{selected.reference || "—"}</dd>
               </div>
               <div>
-                <dt className="text-slate-500">Lokasi Asal</dt>
+                <dt className="text-ink-500">Lokasi Asal</dt>
                 <dd className="font-medium">
                   {selected.source_location_id
                     ? (locationMap[selected.source_location_id] ?? "—")
@@ -483,7 +483,7 @@ export function TransactionHistoryPage() {
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Lokasi Tujuan</dt>
+                <dt className="text-ink-500">Lokasi Tujuan</dt>
                 <dd className="font-medium">
                   {selected.dest_location_id
                     ? (locationMap[selected.dest_location_id] ?? "—")
@@ -492,7 +492,7 @@ export function TransactionHistoryPage() {
               </div>
               {selected.notes && (
                 <div className="col-span-2">
-                  <dt className="text-slate-500">Catatan</dt>
+                  <dt className="text-ink-500">Catatan</dt>
                   <dd className="font-medium">{selected.notes}</dd>
                 </div>
               )}
@@ -500,7 +500,7 @@ export function TransactionHistoryPage() {
             <div className="mt-4">
               <h3 className="mb-2 text-sm font-semibold">Rincian Barang</h3>
               {detailLoading ? (
-                <p className="text-sm text-slate-500">Memuat rincian…</p>
+                <p className="text-sm text-ink-500">Memuat rincian…</p>
               ) : (
                 <Table>
                   <TableHeader>

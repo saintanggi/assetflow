@@ -45,8 +45,8 @@ function statusVariant(status: AssetStatus | null): "success" | "info" | "warnin
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</p>
-      <div className="mt-1 text-sm text-slate-200">{children}</div>
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-500">{label}</p>
+      <div className="mt-1 text-sm text-ink-800">{children}</div>
     </div>
   );
 }
@@ -94,7 +94,7 @@ export function PublicAssetDetailPage() {
     <div className="mx-auto max-w-4xl px-4 py-8">
       <Link
         to="/publik"
-        className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-300 hover:underline"
+        className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline"
       >
         <ArrowLeft className="h-4 w-4" />
         Kembali ke katalog
@@ -123,7 +123,7 @@ export function PublicAssetDetailPage() {
               action={
                 <Link
                   to="/publik"
-                  className="inline-flex h-10 items-center justify-center rounded-lg bg-gradient-to-r from-brand-400 to-brand-500 px-4 py-2 text-sm font-semibold text-ink-950 shadow-glow transition-all hover:brightness-110"
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-soft transition-all hover:bg-brand-700"
                 >
                   Lihat katalog publik
                 </Link>
@@ -138,7 +138,7 @@ export function PublicAssetDetailPage() {
               title={asset.name}
               description={`Kode publik: ${asset.public_code}`}
             />
-            <div className="mb-6 overflow-hidden rounded-xl bg-white/5">
+            <div className="mb-6 overflow-hidden rounded-xl bg-ink-100">
               {asset.photo_url ? (
                 <img
                   src={asset.photo_url}
@@ -147,7 +147,7 @@ export function PublicAssetDetailPage() {
                 />
               ) : (
                 <div className="flex aspect-[16/9] w-full items-center justify-center">
-                  <ImageOff className="h-12 w-12 text-slate-300" />
+                  <ImageOff className="h-12 w-12 text-ink-700" />
                 </div>
               )}
             </div>

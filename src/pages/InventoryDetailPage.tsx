@@ -288,10 +288,10 @@ export function InventoryDetailPage() {
             <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
               {infoRows.map((r) => (
                 <div key={r.label} className="flex flex-col">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-500">
                     {r.label}
                   </dt>
-                  <dd className="mt-0.5 text-sm font-medium text-slate-100">{r.value}</dd>
+                  <dd className="mt-0.5 text-sm font-medium text-ink-800">{r.value}</dd>
                 </div>
               ))}
             </dl>
@@ -383,7 +383,7 @@ export function InventoryDetailPage() {
                     </TableCell>
                     <TableCell
                       className={`text-right font-medium ${
-                        Number(l.qty_change) >= 0 ? "text-emerald-600" : "text-rose-400"
+                        Number(l.qty_change) >= 0 ? "text-ok-600" : "text-brand-600"
                       }`}
                     >
                       {Number(l.qty_change) >= 0 ? "+" : ""}
@@ -497,7 +497,7 @@ export function InventoryDetailPage() {
                 }
               }}
             />
-            {uploading && <p className="text-xs text-slate-400">Mengupload…</p>}
+            {uploading && <p className="text-xs text-ink-500">Mengupload…</p>}
           </div>
           <label className="flex cursor-pointer items-center gap-2 sm:col-span-2">
             <input
@@ -505,7 +505,7 @@ export function InventoryDetailPage() {
               checked={form.is_active}
               onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
             />
-            <span className="text-sm text-slate-200">Aktif</span>
+            <span className="text-sm text-ink-800">Aktif</span>
           </label>
         </div>
         <DialogFooter>

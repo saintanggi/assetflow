@@ -263,10 +263,10 @@ export function AssetDetailPage() {
             <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
               {detailRows.map((r) => (
                 <div key={r.label} className="flex flex-col">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-500">
                     {r.label}
                   </dt>
-                  <dd className="mt-0.5 text-sm font-medium text-slate-100">{r.value}</dd>
+                  <dd className="mt-0.5 text-sm font-medium text-ink-800">{r.value}</dd>
                 </div>
               ))}
             </dl>
@@ -339,7 +339,7 @@ export function AssetDetailPage() {
                 size={160}
                 fileName={asset.asset_code}
               />
-              <p className="break-all text-center text-xs text-slate-500">
+              <p className="break-all text-center text-xs text-ink-500">
                 {publicAssetUrl(asset.public_code)}
               </p>
             </CardContent>

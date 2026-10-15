@@ -161,7 +161,7 @@ export function SuperAdminDashboardPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-8">
+      <div className="space-y-6">
         <PageHeader title="Panel Super Admin" description="Ringkasan sistem & peringatan" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -177,7 +177,7 @@ export function SuperAdminDashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="space-y-6">
       <PageHeader
         title="Panel Super Admin"
         description="Ringkasan sistem, aktivitas terakhir, dan peringatan stok"
@@ -224,22 +224,22 @@ export function SuperAdminDashboardPage() {
             {audit.length === 0 ? (
               <EmptyState title="Belum ada aktivitas" description="Audit log masih kosong." />
             ) : (
-              <ul className="divide-y divide-white/5">
+              <ul className="divide-y divide-ink-200">
                 {audit.map((row) => (
                   <li key={row.id} className="flex items-start justify-between gap-3 py-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-200">
+                      <p className="truncate text-sm font-medium text-ink-800">
                         {row.action}
-                        <span className="ml-2 font-normal text-slate-500">
+                        <span className="ml-2 font-normal text-ink-500">
                           {row.entity_type}
                           {row.entity_id ? ` • ${row.entity_id.slice(0, 8)}` : ""}
                         </span>
                       </p>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                      <p className="mt-0.5 truncate text-xs text-ink-500">
                         {auditActor(row)}
                       </p>
                     </div>
-                    <span className="shrink-0 text-xs text-slate-400" title={formatDateTime(row.created_at)}>
+                    <span className="shrink-0 text-xs text-ink-500" title={formatDateTime(row.created_at)}>
                       {timeAgo(row.created_at)}
                     </span>
                   </li>
@@ -258,19 +258,19 @@ export function SuperAdminDashboardPage() {
             {lowStock.length === 0 ? (
               <EmptyState title="Stok aman" description="Tidak ada SKU di bawah stok minimum." />
             ) : (
-              <ul className="divide-y divide-white/5">
+              <ul className="divide-y divide-ink-200">
                 {lowStock.map((item) => (
                   <li key={item.id} className="flex items-center justify-between gap-3 py-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className="rounded-lg bg-amber-400/10 p-2">
-                        <TriangleAlert className="h-4 w-4 text-amber-300" />
+                      <div className="rounded-lg bg-warn-50 p-2">
+                        <TriangleAlert className="h-4 w-4 text-warn-600" />
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-200">
+                        <p className="truncate text-sm font-medium text-ink-800">
                           {item.name}
-                          <span className="ml-2 font-mono text-xs text-slate-400">{item.sku}</span>
+                          <span className="ml-2 font-mono text-xs text-ink-500">{item.sku}</span>
                         </p>
-                        <p className="mt-0.5 text-xs text-slate-500">
+                        <p className="mt-0.5 text-xs text-ink-500">
                           Stok {formatQty(item.balance)} / Min {formatQty(item.minStock)}
                         </p>
                       </div>
@@ -296,14 +296,14 @@ export function SuperAdminDashboardPage() {
               <Link
                 key={to}
                 to={to}
-                className="flex items-center gap-3 rounded-xl border border-white/10 p-4 transition-colors hover:border-brand-400/30 hover:bg-brand-400/10"
+                className="flex items-center gap-3 rounded-xl border border-ink-200 p-4 transition-colors hover:border-brand-200 hover:bg-brand-50"
               >
-                <div className="rounded-lg bg-white/5 p-2.5 text-slate-300">
+                <div className="rounded-lg bg-ink-100 p-2.5 text-ink-700">
                   <Icon className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">{title}</p>
-                  <p className="text-xs text-slate-500">{description}</p>
+                  <p className="text-sm font-semibold text-ink-800">{title}</p>
+                  <p className="text-xs text-ink-500">{description}</p>
                 </div>
               </Link>
             ))}

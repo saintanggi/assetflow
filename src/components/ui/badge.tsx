@@ -11,13 +11,13 @@ type BadgeVariant =
   | "info";
 
 const variantClasses: Record<BadgeVariant, string> = {
-  default: "bg-white/10 text-slate-200 border border-white/10",
-  secondary: "bg-white/5 text-slate-400 border border-white/10",
-  destructive: "bg-rose-400/10 text-rose-300 border border-rose-400/20",
-  outline: "border border-white/15 text-slate-300",
-  success: "bg-brand-400/10 text-brand-300 border border-brand-400/20",
-  warning: "bg-amber-400/10 text-amber-300 border border-amber-400/20",
-  info: "bg-sky-400/10 text-sky-300 border border-sky-400/20",
+  default: "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100",
+  secondary: "bg-ink-100 text-ink-600 ring-1 ring-inset ring-ink-200",
+  destructive: "bg-rose-50 text-brand-700 ring-1 ring-inset ring-brand-200",
+  outline: "bg-white text-ink-600 ring-1 ring-inset ring-ink-200",
+  success: "bg-ok-50 text-ok-700 ring-1 ring-inset ring-ok-100",
+  warning: "bg-warn-50 text-warn-700 ring-1 ring-inset ring-warn-100",
+  info: "bg-info-50 text-info-700 ring-1 ring-inset ring-info-100",
 };
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {

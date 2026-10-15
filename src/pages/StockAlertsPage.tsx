@@ -34,7 +34,7 @@ const alertColumns: ColumnDef<AlertRow, unknown>[] = [
       <div>
         <div className="font-medium">{row.original.name}</div>
         {row.original.brand && (
-          <div className="text-xs text-slate-500">{row.original.brand}</div>
+          <div className="text-xs text-ink-500">{row.original.brand}</div>
         )}
       </div>
     ),
@@ -201,14 +201,14 @@ export function StockAlertsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="flex items-center gap-4 p-5">
-            <div className="rounded-xl bg-rose-400/10 p-2.5 text-rose-300 ring-1 ring-rose-400/20">
+            <div className="rounded-xl bg-brand-50 p-2.5 text-brand-600 ring-1 ring-brand-200">
               <Siren className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
+              <p className="text-xs font-medium uppercase tracking-widest text-ink-500">
                 Kritis
               </p>
-              <p className="tnum font-display text-2xl font-bold text-white">
+              <p className="tnum font-display text-2xl font-bold text-ink-800">
                 {counts.kritis.toLocaleString("id-ID")}
               </p>
             </div>
@@ -216,14 +216,14 @@ export function StockAlertsPage() {
         </Card>
         <Card>
           <CardContent className="flex items-center gap-4 p-5">
-            <div className="rounded-xl bg-amber-400/10 p-2.5 text-amber-300 ring-1 ring-amber-400/20">
+            <div className="rounded-xl bg-warn-50 p-2.5 text-warn-600 ring-1 ring-warn-100">
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
+              <p className="text-xs font-medium uppercase tracking-widest text-ink-500">
                 Waspada
               </p>
-              <p className="tnum font-display text-2xl font-bold text-white">
+              <p className="tnum font-display text-2xl font-bold text-ink-800">
                 {counts.waspada.toLocaleString("id-ID")}
               </p>
             </div>

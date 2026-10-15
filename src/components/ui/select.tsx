@@ -30,10 +30,10 @@ export function Select({
         onValueChange?.(e.target.value);
       }}
       className={cn(
-        "flex h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 [&>option]:bg-ink-900",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/60 focus-visible:border-brand-400",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        !value && "text-slate-500",
+        "flex h-10 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 focus-visible:border-brand-600",
+        "disabled:cursor-not-allowed disabled:bg-ink-50 disabled:opacity-60",
+        !value && "text-ink-500",
         className
       )}
       {...props}

@@ -308,7 +308,7 @@ export function InventoryListPage() {
         cell: ({ row }) => (
           <Link
             to={`/persediaan/${row.original.id}`}
-            className="font-medium text-brand-300 hover:underline"
+            className="font-medium text-brand-700 hover:underline"
           >
             {row.original.name}
           </Link>
@@ -331,14 +331,14 @@ export function InventoryListPage() {
         header: "Stok Baru",
         id: "stock_baru",
         cell: ({ row }) => (
-          <span className="tnum font-semibold text-emerald-300">{formatQty(row.original.stock_baru)}</span>
+          <span className="tnum font-semibold text-ok-600">{formatQty(row.original.stock_baru)}</span>
         ),
       },
       {
         header: "Stok Retur",
         id: "stock_retur",
         cell: ({ row }) => (
-          <span className="tnum font-semibold text-amber-300">{formatQty(row.original.stock_retur)}</span>
+          <span className="tnum font-semibold text-warn-600">{formatQty(row.original.stock_retur)}</span>
         ),
       },
       {
@@ -418,7 +418,7 @@ export function InventoryListPage() {
               <Label htmlFor="inv-name">Nama Barang *</Label>
               <Input id="inv-name" {...register("name")} placeholder="Kabel UTP Cat6" />
               {fieldError("name") && (
-                <p className="mt-1 text-xs text-rose-400">{fieldError("name")}</p>
+                <p className="mt-1 text-xs text-brand-600">{fieldError("name")}</p>
               )}
             </div>
             <div>
@@ -463,7 +463,7 @@ export function InventoryListPage() {
                 })}
               />
               {fieldError("min_stock") && (
-                <p className="mt-1 text-xs text-rose-400">{fieldError("min_stock")}</p>
+                <p className="mt-1 text-xs text-brand-600">{fieldError("min_stock")}</p>
               )}
             </div>
             <div>
@@ -478,7 +478,7 @@ export function InventoryListPage() {
                 })}
               />
               {fieldError("purchase_price") && (
-                <p className="mt-1 text-xs text-rose-400">{fieldError("purchase_price")}</p>
+                <p className="mt-1 text-xs text-brand-600">{fieldError("purchase_price")}</p>
               )}
             </div>
             <div>
@@ -521,7 +521,7 @@ export function InventoryListPage() {
                   setPhotoPreview(f ? URL.createObjectURL(f) : null);
                 }}
               />
-              <p className="mt-1 text-xs text-slate-500">JPG, PNG, WEBP, GIF — maks 5MB.</p>
+              <p className="mt-1 text-xs text-ink-500">JPG, PNG, WEBP, GIF — maks 5MB.</p>
             </div>
             <div className="flex items-center gap-2 sm:col-span-2">
               <Checkbox id="inv-active" {...register("is_active")} />
@@ -564,7 +564,7 @@ export function InventoryListPage() {
                 value={adjustBaru}
                 onChange={(e) => setAdjustBaru(e.target.value)}
               />
-              <p className="text-xs text-slate-500">Saat ini: {formatQty(adjustItem?.stock_baru ?? 0)}</p>
+              <p className="text-xs text-ink-500">Saat ini: {formatQty(adjustItem?.stock_baru ?? 0)}</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="adjust-retur">Stok Retur</Label>
@@ -575,7 +575,7 @@ export function InventoryListPage() {
                 value={adjustRetur}
                 onChange={(e) => setAdjustRetur(e.target.value)}
               />
-              <p className="text-xs text-slate-500">Saat ini: {formatQty(adjustItem?.stock_retur ?? 0)}</p>
+              <p className="text-xs text-ink-500">Saat ini: {formatQty(adjustItem?.stock_retur ?? 0)}</p>
             </div>
           </div>
         </div>

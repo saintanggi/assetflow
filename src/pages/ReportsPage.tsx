@@ -345,22 +345,29 @@ export function ReportsPage() {
       />
 
       {/* Tab */}
-      <div className="mb-6 flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <Button
-            key={t.id}
-            variant={tab === t.id ? "default" : "outline"}
-            size="sm"
-            onClick={() => setTab(t.id)}
-            className={cn(tab === t.id && "pointer-events-none")}
-          >
-            {t.label}
-          </Button>
-        ))}
+      <div className="mb-6 border-b border-ink-200">
+        <div className="-mb-px flex flex-wrap gap-1 overflow-x-auto">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              aria-current={tab === t.id ? "page" : undefined}
+              className={cn(
+                "whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600",
+                tab === t.id
+                  ? "border-brand-600 text-brand-700"
+                  : "border-transparent text-ink-500 hover:border-ink-300 hover:text-ink-800"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Filter bersama */}
-      <div className="mb-6 grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-ink-850 p-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-6 grid grid-cols-1 gap-3 rounded-xl border border-ink-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
         {(tab === "kartu" || tab === "transaksi") && (
           <>
             <div className="space-y-1.5">
@@ -537,7 +544,7 @@ export function ReportsPage() {
                     row.original.min_stock != null &&
                     Number(row.original.min_stock) > 0 &&
                     row.original.total < Number(row.original.min_stock)
-                      ? "font-semibold text-rose-400"
+                      ? "font-semibold text-brand-600"
                       : "font-semibold"
                   }
                 >
@@ -579,7 +586,7 @@ export function ReportsPage() {
               header: "Perubahan",
               cell: ({ row }) => (
                 <span
-                  className={row.original.qty_change >= 0 ? "text-emerald-600" : "text-rose-400"}
+                  className={row.original.qty_change >= 0 ? "text-ok-600" : "text-brand-600"}
                 >
                   {row.original.qty_change >= 0 ? "+" : ""}
                   {formatQty(row.original.qty_change)}
@@ -640,7 +647,7 @@ export function ReportsPage() {
         (isSuperAdmin ? (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div>
-              <h2 className="mb-3 text-sm font-semibold text-white">Per Kategori</h2>
+              <h2 className="mb-3 text-sm font-semibold text-ink-800">Per Kategori</h2>
               <DataTable
                 loading={loading}
                 searchPlaceholder="Cari kategori…"
@@ -656,7 +663,7 @@ export function ReportsPage() {
               />
             </div>
             <div>
-              <h2 className="mb-3 text-sm font-semibold text-white">Per Departemen</h2>
+              <h2 className="mb-3 text-sm font-semibold text-ink-800">Per Departemen</h2>
               <DataTable
                 loading={loading}
                 searchPlaceholder="Cari departemen…"
