@@ -3,27 +3,32 @@ import * as XLSX from "xlsx";
 import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { formatDate } from "../lib/format";
+import { SheetSyncPanel } from "../features/sync/SheetSyncPanel";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
-
-interface ParsedRow {
-  date: string;
-  ticket: string;
-  branch: string;
-  branchCode: string;
-  itemName: string;
-  qty: number;
-  ket: string;
-  resi: string;
-  barcode: string;
-  typeBarang: string;
-  statusRequest: string;
-  statusAset: string;
-  terkirim: string;
-}
+import {
+  SHIPPING_HEADERS,
+  aggregateGroup,
+  asetLabelOf,
+  buildDupIndex,
+  filterDuplicateRows,
+  findDuplicateRowsInFile,
+  groupKeyOf,
+  parseSheetLabel,
+  parseWorkbook,
+  pickNewestSheet,
+  applySheetDate,
+  type AggLine,
+  type DupIndex,
+  type KodeKondisi,
+  type ParsedShippingRow,
+  type SheetCandidate,
+  type StoredItemRow,
+} from "../lib/shippingUpload";
 
 // Ubah pesan error teknis (berisi UUID) menjadi bahasa yang mudah dipahami.
 function formatShipError(raw: string, itemNameById: Map<string, string>): string {
@@ -43,35 +48,42 @@ function formatShipError(raw: string, itemNameById: Map<string, string>): string
 }
 
 interface Preview {
-  rows: ParsedRow[];
+  /** Semua baris valid di file (belum difilter duplikat) — dipakai ulang saat import. */
+  rows: ParsedShippingRow[];
+  /** Baris yang akan diimpor (setelah baris duplikat dibuang). */
+  kept: ParsedShippingRow[];
+  /** Baris yang dilewati karena sudah ada di sistem. */
+  skipped: ParsedShippingRow[];
+  /** Baris dengan tiket+barang+barcode/resi sama di dalam file itu sendiri. */
+  dupsInFile: ParsedShippingRow[];
+  /** Total per barang + kondisi + status terkirim (yang akan masuk ke sistem). */
+  lines: AggLine[];
+  idByName: Map<string, string>;
+  nameById: Map<string, string>;
+  /** Sheet yang sedang dipratinjau (nama sheet di file Excel). */
+  sheetName: string;
+  /** Semua sheet yang bisa dipilih dari file yang di-upload. */
+  sheetOptions: { name: string; count: number }[];
   groups: number;
   unmatched: string[];
-  dupTickets: string[];
-  dupRows: number;
+  existingTickets: string[];
 }
 
-const cleanNum = (v: unknown): string => {
-  if (v === null || v === undefined || v === "") return "";
-  if (typeof v === "number") return Number.isInteger(v) ? String(v) : String(v);
-  return String(v).trim();
-};
+const uuid = (): string =>
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
 
-const cleanStr = (v: unknown): string => {
-  if (v === null || v === undefined) return "";
-  return String(v).trim();
-};
-
-const parseDate = (v: unknown): string => {
-  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
-  if (typeof v === "number" && v > 20000 && v < 80000) {
-    const d = XLSX.SSF.parse_date_code(v);
-    if (d) return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
-  }
-  const s = cleanStr(v);
-  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  return new Date().toISOString().slice(0, 10);
-};
+/** Pecah array jadi beberapa batch (batas panjang URL PostgREST). */
+function batches<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 export function RequestUploadPage() {
   const { user, hasPermission } = useAuth();
@@ -84,6 +96,8 @@ export function RequestUploadPage() {
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [failList, setFailList] = useState<{ ticket: string; detail: string }[]>([]);
+  const [sheetOptions, setSheetOptions] = useState<{ name: string; count: number }[]>([]);
+  const sheetCache = useRef<Map<string, SheetCandidate>>(new Map());
 
   const canShip = hasPermission("requests.review");
 
@@ -96,22 +110,22 @@ export function RequestUploadPage() {
         .order("name")
         .limit(5000);
       const wb = XLSX.utils.book_new();
-      const headers = ["In Progress Date","NO TICKET","CABANG/GERAI","KODE GERAI","NAMA BARANG","QTY",
-        "KETERANGAN","RESI","BARCODE","TYPE BARANG","STATUS REQUEST","STATUS ASSET","STATUS TERKIRIM"];
       const example = ["2026-10-13","A2610130001","Jakarta Sortation","","KOMPUTER RAKITAN",3,
         "V3165SB380260700885","","A130025539","","","ASSET BARU","TERKIRIM"];
       XLSX.utils.book_append_sheet(wb,
-        XLSX.utils.aoa_to_sheet([headers, example]), "PENGIRIMAN");
+        XLSX.utils.aoa_to_sheet([[...SHIPPING_HEADERS], example]), "PENGIRIMAN");
       const tips = [
         ["PETUNJUK PENGISIAN TEMPLATE DOKUMEN PENGIRIMAN"],
         [""],
         ["1. Isi data pada sheet PENGIRIMAN mulai baris 3 (baris 1 header, baris 2 contoh — contoh boleh dihapus)."],
-        ["2. In Progress Date: tanggal pengiriman format YYYY-MM-DD."],
+        ["2. In Progress Date: tanggal pengiriman (format YYYY-MM-DD, dd/mm/yyyy, atau 14-Oct-26)."],
         ["3. NAMA BARANG: samakan dengan sheet DAFTAR BARANG (huruf besar/kecil bebas)."],
-        ["4. QTY kosong + BARCODE terisi = dihitung 1."],
-        ["5. STATUS ASSET menentukan stok mana yang dipotong: ASSET BARU → stok Baru, ASSET RETURN → stok Return, ASSET UNREADY → stok Unready. Kosong = dianggap ASSET BARU."],
-        ["6. STATUS TERKIRIM: TERKIRIM atau PENDING. Baris PENDING masuk dashboard Sisa Belum Terkirim."],
-        ["7. Upload file terisi di menu ini (Upload Dokumen)."],
+        ["4. QTY = jumlah barang pada baris itu dan dianggap paling benar (mis. 23 kursi → tulis 23)."],
+        ["5. Baris lanjutan (mis. 1 sel QTY di-merge untuk beberapa baris/resi): biarkan QTY kosong — baris tanpa QTY dan tanpa BARCODE tidak menambah qty, hanya mencatat RESI/KETERANGAN."],
+        ["6. QTY kosong tetapi BARCODE terisi = dihitung 1 unit."],
+        ["7. STATUS ASSET menentukan stok mana yang dipotong: ASSET BARU → stok Baru, ASSET RETUR/RETURN → stok Return, ASSET UNREADY → stok Unready. Kosong = dianggap ASSET BARU."],
+        ["8. STATUS TERKIRIM: TERKIRIM atau PENDING. Baris PENDING masuk dashboard Sisa Belum Terkirim."],
+        ["9. Upload file terisi di menu ini (Upload Dokumen) — periksa tabel pratinjau, pastikan QTY sudah sesuai file sebelum klik Import."],
       ];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tips), "PETUNJUK");
       const daftar = [["KODE","NAMA BARANG (pakai nama ini di kolom NAMA BARANG)"],
@@ -123,6 +137,114 @@ export function RequestUploadPage() {
     }
   };
 
+  /**
+   * Ambil "sidik jari" baris yang sudah pernah diimpor (tiket + barang + barcode/resi)
+   * supaya upload ulang file yang sama tidak menggandakan qty.
+   */
+  const loadExisting = async (
+    rows: ParsedShippingRow[],
+  ): Promise<{ index: DupIndex; existingTickets: string[] }> => {
+    const tickets = [...new Set(rows.map((r) => r.ticket).filter(Boolean))];
+    const dates = [...new Set(rows.map((r) => r.date))];
+    if (tickets.length === 0 || dates.length === 0) return { index: buildDupIndex([]), existingTickets: [] };
+    const stored: StoredItemRow[] = [];
+    const existingTickets = new Set<string>();
+    for (const tBatch of batches(tickets, 60)) {
+      for (const dBatch of batches(dates, 60)) {
+        const { data: reqs, error } = await supabase
+          .from("requests")
+          .select("id, ticket_no, request_date")
+          .in("ticket_no", tBatch)
+          .in("request_date", dBatch)
+          .limit(3000);
+        if (error) throw new Error(error.message);
+        const reqs2 = (reqs ?? []) as { id: string; ticket_no: string; request_date: string }[];
+        if (reqs2.length === 0) continue;
+        for (const r of reqs2) existingTickets.add(r.ticket_no);
+        const reqById = new Map(reqs2.map((r) => [r.id, r]));
+        for (const idBatch of batches([...reqById.keys()], 80)) {
+          const { data: items, error: itErr } = await supabase
+            .from("request_items")
+            .select("request_id, item_id, barcode, resi, qty_requested")
+            .in("request_id", idBatch)
+            .limit(5000);
+          if (itErr) throw new Error(itErr.message);
+          for (const it of (items ?? []) as {
+            request_id: string;
+            item_id: string;
+            barcode: string | null;
+            resi: string | null;
+            qty_requested: number | string;
+          }[]) {
+            const req = reqById.get(it.request_id);
+            if (!req) continue;
+            stored.push({
+              ticket_no: req.ticket_no,
+              request_date: req.request_date,
+              item_id: it.item_id,
+              barcode: it.barcode,
+              resi: it.resi,
+              qty_requested: it.qty_requested,
+            });
+          }
+        }
+      }
+    }
+    return { index: buildDupIndex(stored), existingTickets: [...existingTickets] };
+  };
+
+  /**
+   * Bangun pratinjau dari baris satu sheet: cocokkan barang, buang baris yang sudah
+   * pernah masuk, lalu agregasi qty per barang + kondisi aset.
+   */
+  const buildPreview = async (rowsIn: ParsedShippingRow[], sheetName: string) => {
+    // Baris tanpa tanggal memakai tanggal sheet (bukan tanggal hari ini) supaya tidak dobel
+    // saat file yang sama diproses ulang di hari lain.
+    const rows = applySheetDate(rowsIn, sheetName);
+    // Cocokkan nama barang dengan master.
+      const { data: items, error: itemsErr } = await supabase
+        .from("inventory_items")
+        .select("id, name")
+        .eq("is_active", true)
+        .limit(5000);
+      if (itemsErr) throw new Error(itemsErr.message);
+      const idByName = new Map<string, string>();
+      const nameById = new Map<string, string>();
+      for (const it of (items ?? []) as { id: string; name: string }[]) {
+        idByName.set(it.name.trim().toUpperCase(), it.id);
+        nameById.set(it.id, it.name);
+      }
+      const keyOf = (r: ParsedShippingRow): string =>
+        idByName.get(r.itemName.toUpperCase()) ?? `NAME:${r.itemName.toUpperCase()}`;
+      const unmatched = [
+        ...new Set(rows.filter((r) => !idByName.has(r.itemName.toUpperCase())).map((r) => r.itemName)),
+      ];
+
+      // Baris yang sudah pernah masuk (upload ulang file yang sama) dibuang.
+      const { index, existingTickets } = await loadExisting(rows);
+      const { kept, skipped } = filterDuplicateRows(rows, keyOf, index);
+      const dupsInFile = findDuplicateRowsInFile(kept, keyOf);
+      const lines = aggregateGroup(kept, keyOf);
+      const groups = new Set(kept.map(groupKeyOf));
+
+    setPreview({
+      rows,
+      kept,
+      skipped,
+      dupsInFile,
+      lines,
+      idByName,
+      nameById,
+      sheetName,
+      sheetOptions: [...sheetCache.current.entries()].map(([name, c]) => ({ name, count: c.rows.length })),
+      groups: groups.size,
+      unmatched,
+      existingTickets,
+    });
+    if (skipped.length > 0)
+      toast.warning(`${skipped.length} baris sudah ada di sistem — akan dilewati.`);
+  };
+
   const handleFile = async (f: File) => {
     setPreview(null);
     setResult(null);
@@ -131,122 +253,40 @@ export function RequestUploadPage() {
     try {
       const buf = await f.arrayBuffer();
       const wb = XLSX.read(buf, { cellDates: true });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
-      if (aoa.length < 2) {
-        toast.error("File kosong atau tidak ada data.");
+      const parsed = parseWorkbook(wb);
+      if (parsed.sheets.length === 0) {
+        toast.error(
+          "Tidak ada sheet berisi tabel pengiriman (kolom NAMA BARANG). Pastikan memakai template yang disediakan."
+        );
         return;
       }
-      // Cari baris header (mengandung 'NAMA BARANG').
-      let hIdx = aoa.findIndex((r: unknown[]) =>
-        r.some((c: unknown) => cleanStr(c).toUpperCase() === "NAMA BARANG")
-      );
-      if (hIdx < 0) hIdx = 0;
-      const headers = (aoa[hIdx] as unknown[]).map((c) => cleanStr(c).toUpperCase());
-      const col = (name: string) => headers.indexOf(name);
-      const cDate = col("IN PROGRESS DATE") >= 0 ? col("IN PROGRESS DATE") : col("TANGGAL");
-      const cTicket = col("NO TICKET");
-      const cBranch = col("CABANG/GERAI") >= 0 ? col("CABANG/GERAI") : col("GERAI");
-      const cBranchCode = col("KODE GERAI");
-      const cItem = col("NAMA BARANG");
-      const cQty = col("QTY");
-      const cKet = col("KETERANGAN");
-      const cResi = col("RESI");
-      const cBarcode = col("BARCODE");
-      const cType = col("TYPE BARANG");
-      const cStatusReq = col("STATUS REQUEST");
-      const cStatusAset = col("STATUS ASSET");
-      const cTerkirim = col("STATUS TERKIRIM");
-      if (cItem < 0) {
-        toast.error("Kolom NAMA BARANG tidak ditemukan. Pakai template yang disediakan.");
-        return;
+      // File gabungan (mis. satu sheet per tanggal): pilih sheet dengan data terbanyak,
+      // sisanya bisa dipilih lewat dropdown.
+      // Sistem selalu mulai dari sheet terbaru (nama sheet bertanggal, mis. "14 OKT").
+      const terbaru = pickNewestSheet(parsed.sheets) ?? parsed.sheets[0];
+      const tanggalSheet = parseSheetLabel(terbaru.name).date;
+      sheetCache.current = new Map(parsed.sheets.map((sh) => [sh.name, sh]));
+      setSheetOptions(parsed.sheets.map((sh) => ({ name: sh.name, count: sh.rows.length })));
+      if (parsed.sheets.length > 1) {
+        toast.info(
+          `File punya ${parsed.sheets.length} sheet data — diproses sheet terbaru: "${terbaru.name}"` +
+            (tanggalSheet ? ` (${formatDate(tanggalSheet)})` : "") + "."
+        );
       }
-      const rows: ParsedRow[] = [];
-      for (let i = hIdx + 1; i < aoa.length; i++) {
-        const r = aoa[i] as unknown[];
-        const itemName = cleanStr(r[cItem]);
-        if (!itemName || itemName.toUpperCase() === "NAMA BARANG") continue;
-        let qty = Number(r[cQty]);
-        if (!(qty > 0)) qty = 1;
-        rows.push({
-          date: cDate >= 0 ? parseDate(r[cDate]) : new Date().toISOString().slice(0, 10),
-          ticket: cTicket >= 0 ? cleanStr(r[cTicket]) : "",
-          branch: cBranch >= 0 ? cleanStr(r[cBranch]) || "TANPA GERAI" : "TANPA GERAI",
-          branchCode: cBranchCode >= 0 ? cleanNum(r[cBranchCode]) : "",
-          itemName,
-          qty,
-          ket: cKet >= 0 ? cleanStr(r[cKet]) : "",
-          resi: cResi >= 0 ? cleanNum(r[cResi]) : "",
-          barcode: cBarcode >= 0 ? cleanNum(r[cBarcode]) : "",
-          typeBarang: cType >= 0 ? cleanStr(r[cType]) : "",
-          statusRequest: cStatusReq >= 0 ? cleanStr(r[cStatusReq]) : "",
-          statusAset: cStatusAset >= 0 ? cleanStr(r[cStatusAset]) : "",
-          terkirim: cTerkirim >= 0 ? cleanStr(r[cTerkirim]).toUpperCase() : "",
-        });
-      }
-      if (rows.length === 0) {
-        toast.error("Tidak ada baris data valid.");
-        return;
-      }
-      // Cocokkan nama barang.
-      const { data: items, error: itemsErr } = await supabase
-        .from("inventory_items")
-        .select("id, name")
-        .eq("is_active", true)
-        .limit(5000);
-      if (itemsErr) throw new Error(itemsErr.message);
-      const nameSet = new Set(
-        ((items ?? []) as { name: string }[]).map((x) => x.name.trim().toUpperCase())
-      );
-      const unmatched = [...new Set(rows.filter((r) => !nameSet.has(r.itemName.toUpperCase())).map((r) => r.itemName))];
-
-      // Deteksi baris duplikat per-baris (tiket + item + barcode), bukan per-tiket.
-      const tickets = [...new Set(rows.map((r) => r.ticket).filter(Boolean))];
-      let dupRows = 0;
-      const dupTickets: string[] = [];
-      if (tickets.length > 0) {
-        const { data: existing } = await supabase
-          .from("requests")
-          .select("id, ticket_no")
-          .in("ticket_no", tickets.slice(0, 200));
-        const reqIds = ((existing ?? []) as { id: string; ticket_no: string }[]);
-        if (reqIds.length > 0) {
-          const { data: exItems } = await supabase
-            .from("request_items")
-            .select("request_id, item_id, barcode, requests!inner(ticket_no)")
-            .in("request_id", reqIds.map((x) => x.id));
-          const fp = new Set<string>();
-          for (const ei of (exItems ?? []) as unknown as { item_id: string; barcode: string | null; requests: { ticket_no: string } | { ticket_no: string }[] }[]) {
-            const tno = Array.isArray(ei.requests) ? ei.requests[0]?.ticket_no : ei.requests.ticket_no;
-            if (!tno) continue;
-            for (const bc of (ei.barcode ?? "").split("\n").map((s) => s.trim()).filter(Boolean)) {
-              fp.add(`${tno}|${ei.item_id}|${bc}`);
-            }
-          }
-          // Butuh mapping nama->id untuk cek; pakai items yang sudah diambil.
-          const idByName = new Map<string, string>();
-          for (const it of (items ?? []) as { id: string; name: string }[])
-            idByName.set(it.name.trim().toUpperCase(), it.id);
-          for (const r of rows) {
-            if (!r.ticket || !r.barcode) continue;
-            const id = idByName.get(r.itemName.toUpperCase());
-            if (id && fp.has(`${r.ticket}|${id}|${r.barcode.trim()}`)) dupRows++;
-          }
-        }
-      }
-
-      // Hitung grup.
-      const groups = new Set(
-        rows.map((r) =>
-          r.ticket ? `${r.date}|${r.branch}|${r.ticket}` : `${r.date}|${r.branch}|ITEM:${r.itemName.toUpperCase()}`
-        )
-      );
-
-      setPreview({ rows, groups: groups.size, unmatched, dupTickets, dupRows });
-      if (dupRows > 0)
-        toast.warning(`${dupRows} baris duplikat terdeteksi — akan dilewati, sisanya tetap masuk.`);
+      await buildPreview(terbaru.rows, terbaru.name);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal membaca file.");
+    }
+  };
+
+  const changeSheet = async (name: string) => {
+    if (!sheetCache.current.has(name)) return;
+    setPreview(null);
+    setResult(null);
+    try {
+      await buildPreview(sheetCache.current.get(name)!.rows, name);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal membaca sheet.");
     }
   };
 
@@ -259,7 +299,6 @@ export function RequestUploadPage() {
     setImporting(true);
     setResult(null);
     try {
-      const rows = preview.rows;
       // 1) Match / buat barang.
       setProgress("Mencocokkan barang…");
       const { data: items } = await supabase
@@ -275,15 +314,13 @@ export function RequestUploadPage() {
       }
 
       if (autoCreate) {
-        const missing = [...new Set(rows.map((r) => r.itemName).filter((n) => !byName.has(n.toUpperCase())))];
-        // Ambil unit default (PCS) untuk barang baru.
+        const missing = [...new Set(preview.rows.map((r) => r.itemName).filter((n) => !byName.has(n.toUpperCase())))];
         const { data: units } = await supabase.from("units").select("id, code").limit(50);
         const pcsUnit = ((units ?? []) as { id: string; code: string }[]).find((u) => u.code.toUpperCase() === "PCS")
           ?? (units?.[0] as { id: string } | undefined);
         if (!pcsUnit) throw new Error("Tabel satuan kosong — hubungi super admin.");
         for (let i = 0; i < missing.length; i += 50) {
           const batch = missing.slice(i, i + 50);
-          // SKU unik per batch.
           const withSku = batch.map((n, j) => ({
             sku: `UPL-${Date.now().toString(36).toUpperCase()}-${i + j}`,
             name: n,
@@ -303,215 +340,150 @@ export function RequestUploadPage() {
         );
       }
 
-      // 2) Grouping.
-      setProgress("Mengelompokkan data…");
-      const groups = new Map<string, ParsedRow[]>();
-      for (const r of rows) {
-        const key = r.ticket ? `${r.date}|${r.branch}|${r.ticket}` : `${r.date}|${r.branch}|ITEM:${r.itemName.toUpperCase()}`;
+      // 2) Buang baris duplikat (dihitung ulang dari seluruh baris file, urutannya sama
+      //    seperti pratinjau supaya hasilnya konsisten).
+      setProgress("Mengecek duplikat…");
+      const keyOf = (r: ParsedShippingRow): string => byName.get(r.itemName.toUpperCase()) ?? "";
+      const { index } = await loadExisting(preview.rows);
+      const { kept: filteredRows, skipped } = filterDuplicateRows(preview.rows, keyOf, index);
+      const skippedDup = skipped.length;
+
+      // 3) Kelompokkan per permintaan (tanggal + gerai + tiket).
+      const groups = new Map<string, ParsedShippingRow[]>();
+      for (const r of filteredRows) {
+        const key = groupKeyOf(r);
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(r);
       }
 
-      // Deteksi duplikat per-baris: tiket + nama item + cabang + barcode harus sama semua
-      // baru dianggap duplikat (bukan hanya tiket saja).
-      const uploadTickets = [...new Set(rows.map((r) => r.ticket).filter(Boolean))];
-      const existingFp = new Set<string>(); // fingerprint: ticket|item_id|barcode
-      const existingReqByTicket = new Map<string, string>(); // ticket -> request id
-      let skippedDup = 0;
-      if (uploadTickets.length > 0) {
-        setProgress("Mengecek duplikat…");
-        const { data: existing } = await supabase
-          .from("requests")
-          .select("id, ticket_no")
-          .in("ticket_no", uploadTickets);
-        for (const ex of (existing ?? []) as { id: string; ticket_no: string }[]) {
-          existingReqByTicket.set(ex.ticket_no, ex.id);
-        }
-        if (existingReqByTicket.size > 0) {
-          const { data: exItems } = await supabase
-            .from("request_items")
-            .select("request_id, item_id, barcode, requests!inner(ticket_no)")
-            .in("request_id", [...existingReqByTicket.values()]);
-          for (const ei of (exItems ?? []) as unknown as { request_id: string; item_id: string; barcode: string | null; requests: { ticket_no: string } | { ticket_no: string }[] }[]) {
-            const tno = Array.isArray(ei.requests) ? ei.requests[0]?.ticket_no : ei.requests.ticket_no;
-            if (!tno) continue;
-            for (const bc of (ei.barcode ?? "").split("\n").map((s) => s.trim()).filter(Boolean)) {
-              existingFp.add(`${tno}|${ei.item_id}|${bc}`);
-            }
-          }
-        }
-      }
-      // Filter baris duplikat sebelum grouping.
-      const filteredRows = rows.filter((r) => {
-        if (!r.ticket || !r.barcode) return true;
-        const id = byName.get(r.itemName.toUpperCase());
-        if (!id) return true;
-        const fp = `${r.ticket}|${id}|${r.barcode.trim()}`;
-        if (existingFp.has(fp)) {
-          skippedDup++;
-          return false;
-        }
-        return true;
-      });
-      // Rebuild groups dari baris yang lolos filter.
-      groups.clear();
-      for (const r of filteredRows) {
-        const key = r.ticket ? `${r.date}|${r.branch}|${r.ticket}` : `${r.date}|${r.branch}|ITEM:${r.itemName.toUpperCase()}`;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key)!.push(r);
-      }
-      const dupSet = new Set<string>();
       // Lokasi kanonis per kondisi untuk pengurangan stok.
-      const locByKondisi = new Map<string, string>();
+      const locByKondisi = new Map<KodeKondisi, string>();
       if (deductStock) {
         const { data: locs } = await supabase
           .from("locations")
           .select("id, code")
           .in("code", ["STOK-BARU", "STOK-RETUR", "STOK-UNREADY"]);
         for (const l of ((locs ?? []) as { id: string; code: string }[])) {
-          locByKondisi.set(l.code, l.id);
+          locByKondisi.set(l.code as KodeKondisi, l.id);
         }
         if (!locByKondisi.has("STOK-BARU")) {
           throw new Error("Lokasi STOK-BARU belum ada — jalankan migrasi 0010 dulu.");
         }
       }
+
       let reqCount = 0;
       let itemCount = 0;
+      let totalQty = 0;
       const failures: { ticket: string; detail: string }[] = [];
       let n = 0;
-      for (const [key, rs] of groups) {
+      for (const rs of groups.values()) {
         n++;
-        const [date, branch, tkey] = key.split("|");
-        const ticket = tkey.startsWith("ITEM:") ? null : tkey;
-        if (ticket && dupSet.has(ticket)) continue;
-
+        const first = rs[0];
+        const ticket = first.ticket || null;
         setProgress(`Mengimpor permintaan ${n}/${groups.size}…`);
         let reqId: string | null = null;
         try {
-        const hasPending = rs.some((r) => r.terkirim === "PENDING");
-        const { data: req, error: reqErr } = await supabase
-          .from("requests")
-          .insert({
-            ticket_no: ticket ?? `UPL-${date}-${n}`,
-            request_date: date,
-            branch_name: branch,
-            branch_code: rs[0].branchCode || null,
-            status: "disetujui",
-            notes: "Upload dokumen pengiriman (otomatis disetujui).",
-            requested_by: user?.id ?? null,
-            reviewed_by: user?.id ?? null,
-            reviewed_at: new Date().toISOString(),
-          })
-          .select("id")
-          .single();
-        if (reqErr) throw new Error(reqErr.message);
-        reqId = req.id;
-
-        // Agregasi per item + kondisi aset + status terkirim/pending
-        // agar barang RETUR tidak tergabung ke BARU dan baris PENDING tidak ikut dipotong stoknya.
-        const byItem = new Map<string, { itemId: string; kodeKondisi: string; isPending: boolean; rows: ParsedRow[] }>();
-        for (const r of rs) {
-          const id = byName.get(r.itemName.toUpperCase());
-          if (!id) throw new Error(`Barang tidak ditemukan: ${r.itemName}`);
-          const asetUpper = (r.statusAset ?? "").toUpperCase();
-          const kodeKondisi = asetUpper.includes("RETUR")
-            ? "STOK-RETUR"
-            : asetUpper.includes("UNREADY")
-              ? "STOK-UNREADY"
-              : "STOK-BARU";
-          const isPending = r.terkirim === "PENDING";
-          const groupKey = `${id}|${kodeKondisi}|${isPending ? "PENDING" : "TERKIRIM"}`;
-          if (!byItem.has(groupKey)) {
-            byItem.set(groupKey, { itemId: id, kodeKondisi, isPending, rows: [] });
-          }
-          byItem.get(groupKey)!.rows.push(r);
-        }
-        const groupEntries = [...byItem.values()];
-        const itemsPayload = groupEntries.map(({ itemId, isPending, rows: irs }) => ({
-          request_id: req.id,
-          item_id: itemId,
-          qty_requested: irs.reduce((s, x) => s + x.qty, 0),
-          qty_approved: irs.reduce((s, x) => s + x.qty, 0),
-          qty_shipped: 0,
-          barcode: [...new Set(irs.map((x) => x.barcode).filter(Boolean))].join("\n") || null,
-          item_type: irs[0].typeBarang || null,
-          status_aset: irs[0].statusAset || null,
-          resi: [...new Set(irs.map((x) => x.resi).filter(Boolean))].join("\n") || null,
-          item_status: isPending ? "pending_sebagian" : "disetujui",
-          notes: [...new Set(irs.map((x) => [x.ket && `Ket: ${x.ket}`, x.statusRequest && `Status request: ${x.statusRequest}`].filter(Boolean).join(" | ")).filter(Boolean))].join("\n") || null,
-        }));
-        const { data: inserted, error: itemsErr } = await supabase
-          .from("request_items")
-          .insert(itemsPayload)
-          .select("id, qty_approved");
-        if (itemsErr) throw new Error(itemsErr.message);
-        reqCount++;
-        itemCount += (inserted ?? []).length;
-
-        // 3) Kurangi stok via RPC per kondisi (STATUS ASSET), atau tandai langsung.
-        if (deductStock) {
-          // Kelompokkan item yang TERKIRIM (bukan PENDING) per kondisi:
-          // RETUR/RETURN → STOK-RETUR, UNREADY → STOK-UNREADY, lainnya → STOK-BARU.
-          const byKondisi = new Map<string, { id: string; qty_approved: number | string; resi: string }[]>();
-          ((inserted ?? []) as { id: string; qty_approved: number | string }[]).forEach((x, idx) => {
-            const meta = groupEntries[idx];
-            if (!meta || meta.isPending) return;
-            const kode = meta.kodeKondisi;
-            if (!byKondisi.has(kode)) byKondisi.set(kode, []);
-            byKondisi.get(kode)!.push({
-              id: x.id,
-              qty_approved: x.qty_approved,
-              resi: (itemsPayload[idx]?.resi ?? "").split("\n")[0] ?? "",
-            });
+          // Baris per barang + kondisi aset + status terkirim.
+          const lines = aggregateGroup(rs, (r) => {
+            const id = byName.get(r.itemName.toUpperCase());
+            if (!id) throw new Error(`Barang tidak ditemukan: ${r.itemName}`);
+            return id;
           });
-          for (const [kode, lines] of byKondisi) {
-            const locId = locByKondisi.get(kode);
-            if (!locId) throw new Error(`Lokasi ${kode} belum ada di database.`);
-            const payload = lines.map((x) => ({
-              request_item_id: x.id,
-              qty: Number(x.qty_approved),
-              resi: x.resi,
-            }));
-            const { error: shipErr } = await supabase.rpc("ship_request_items", {
-              p_request_id: req.id,
-              p_location_id: locId,
-              p_lines: payload,
-              p_notes: `Upload dokumen pengiriman ${ticket ?? ""} (${kode})`.trim(),
-              p_allow_negative: true,
-            });
-            if (shipErr) throw new Error(`Gagal kirim ${ticket ?? req.id} [${kode}]: ${shipErr.message}`);
-          }
-          if (hasPending) {
+          const hasPending = lines.some((l) => l.isPending);
+          const { data: req, error: reqErr } = await supabase
+            .from("requests")
+            .insert({
+              ticket_no: ticket ?? `UPL-${first.date}-${n}`,
+              request_date: first.date,
+              branch_name: first.branch,
+              branch_code: first.branchCode || null,
+              status: "disetujui",
+              notes: "Upload dokumen pengiriman (otomatis disetujui).",
+              requested_by: user?.id ?? null,
+              reviewed_by: user?.id ?? null,
+              reviewed_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+          if (reqErr) throw new Error(reqErr.message);
+          reqId = req.id;
+
+          // Id baris dibuat di sisi klien supaya pemetaan hasil insert -> baris import
+          // tidak bergantung pada urutan balikan PostgREST.
+          const planned = lines.map((line) => ({ line, id: uuid() }));
+          const payload = planned.map(({ line, id }) => ({
+            id,
+            request_id: req.id,
+            item_id: line.itemKey,
+            qty_requested: line.qty,
+            qty_approved: line.qty,
+            qty_shipped: 0,
+            barcode: [...new Set(line.rows.map((x) => x.barcode).filter(Boolean))].join("\n") || null,
+            item_type: line.rows[0].typeBarang || null,
+            status_aset: line.rows[0].statusAset || null,
+            resi: [...new Set(line.rows.map((x) => x.resi).filter(Boolean))].join("\n") || null,
+            item_status: line.isPending ? "pending_sebagian" : "disetujui",
+            notes: [...new Set(line.rows.map((x) =>
+              [x.ket && `Ket: ${x.ket}`, x.statusRequest && `Status request: ${x.statusRequest}`]
+                .filter(Boolean).join(" | ")
+            ).filter(Boolean))].join("\n") || null,
+          }));
+          const { error: itemsErr } = await supabase.from("request_items").insert(payload);
+          if (itemsErr) throw new Error(itemsErr.message);
+          reqCount++;
+          itemCount += payload.length;
+          totalQty += lines.reduce((s, l) => s + l.qty, 0);
+
+          if (deductStock) {
+            // Kelompokkan item TERKIRIM (bukan PENDING) per kondisi:
+            // RETUR/RETURN → STOK-RETUR, UNREADY → STOK-UNREADY, lainnya → STOK-BARU.
+            const byKondisi = new Map<KodeKondisi, { request_item_id: string; qty: number; resi: string }[]>();
+            for (const { line, id } of planned) {
+              if (line.isPending) continue;
+              const list = byKondisi.get(line.kodeKondisi) ?? [];
+              list.push({ request_item_id: id, qty: line.qty, resi: line.rows.map((x) => x.resi).find(Boolean) ?? "" });
+              byKondisi.set(line.kodeKondisi, list);
+            }
+            for (const [kode, plines] of byKondisi) {
+              const locId = locByKondisi.get(kode);
+              if (!locId) throw new Error(`Lokasi ${kode} belum ada di database.`);
+              const { error: shipErr } = await supabase.rpc("ship_request_items", {
+                p_request_id: req.id,
+                p_location_id: locId,
+                p_lines: plines,
+                p_notes: `Upload dokumen pengiriman ${ticket ?? ""} (${kode})`.trim(),
+                p_allow_negative: true,
+              });
+              if (shipErr) throw new Error(`Gagal kirim ${ticket ?? req.id} [${kode}]: ${shipErr.message}`);
+            }
+            if (hasPending) {
+              await supabase
+                .from("requests")
+                .update({ status: "disetujui_sebagian" })
+                .eq("id", req.id);
+            }
+          } else {
+            // Tandai selesai/pending tanpa ubah stok.
+            for (const { line, id } of planned) {
+              await supabase
+                .from("request_items")
+                .update({
+                  qty_shipped: line.isPending ? 0 : line.qty,
+                  item_status: line.isPending ? "pending_sebagian" : "terkirim",
+                })
+                .eq("id", id);
+            }
             await supabase
               .from("requests")
-              .update({ status: "disetujui_sebagian" })
+              .update({ status: hasPending ? "disetujui_sebagian" : "selesai" })
               .eq("id", req.id);
           }
-        } else {
-          // Tandai selesai/pending tanpa ubah stok.
-          const insertedRows = (inserted ?? []) as { id: string; qty_approved: number | string }[];
-          for (let idx = 0; idx < insertedRows.length; idx++) {
-            const c = insertedRows[idx];
-            const isPending = groupEntries[idx]?.isPending ?? false;
-            await supabase
-              .from("request_items")
-              .update({
-                qty_shipped: isPending ? 0 : Number(c.qty_approved),
-                item_status: isPending ? "pending_sebagian" : "terkirim",
-              })
-              .eq("id", c.id);
-          }
-          await supabase
-            .from("requests")
-            .update({ status: hasPending ? "disetujui_sebagian" : "selesai" })
-            .eq("id", req.id);
-        }
         } catch (e) {
           // Gagal di satu permintaan: hapus request yang sudah terbuat (rollback parsial), catat, lanjut.
           if (reqId) await supabase.from("requests").delete().eq("id", reqId);
           const rawMsg = e instanceof Error ? e.message : "gagal";
           failures.push({
-            ticket: ticket ?? `baris ${n}`,
+            ticket: ticket ?? `baris grup ${n}`,
             detail: formatShipError(rawMsg, itemNameById),
           });
         }
@@ -520,7 +492,10 @@ export function RequestUploadPage() {
       setFailList(failures);
       const failMsg = failures.length > 0 ? ` Gagal: ${failures.length} permintaan (lihat rincian di bawah).` : "";
       const dupMsg = skippedDup > 0 ? ` ${skippedDup} baris duplikat dilewati.` : "";
-      setResult(`Berhasil: ${reqCount} permintaan, ${itemCount} baris barang terimpor.${deductStock ? " Stok otomatis berkurang." : ""}${dupMsg}${failMsg}`);
+      const emptyMsg = filteredRows.length === 0 ? " Tidak ada baris baru untuk diimpor." : "";
+      setResult(
+        `Berhasil: ${reqCount} permintaan, ${itemCount} baris barang (total qty ${totalQty}).${deductStock ? " Stok otomatis berkurang." : ""}${dupMsg}${emptyMsg}${failMsg}`
+      );
       if (failures.length > 0) toast.warning(`${failures.length} permintaan gagal — lihat rincian.`);
       else toast.success("Import selesai.");
       setPreview(null);
@@ -531,6 +506,8 @@ export function RequestUploadPage() {
       setProgress("");
     }
   };
+
+  const nameOf = (line: AggLine): string => line.itemName;
 
   return (
     <div>
@@ -574,14 +551,46 @@ export function RequestUploadPage() {
 
             {preview && (
               <div className="space-y-3 rounded-lg border border-white/10 p-4">
-                <div className="grid grid-cols-3 gap-3 text-center">
+                {(sheetOptions.length > 1 || preview.sheetName) && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-slate-400">Sheet diproses:</span>
+                    {sheetOptions.length > 1 ? (
+                      <select
+                        value={preview.sheetName}
+                        onChange={(e) => void changeSheet(e.target.value)}
+                        className="rounded-md border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-200"
+                      >
+                        {sheetOptions.map((sh) => (
+                          <option key={sh.name} value={sh.name}>
+                            {sh.name} — {sh.count} baris
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="font-medium text-slate-200">{preview.sheetName}</span>
+                    )}
+                    {sheetOptions.length > 1 && (
+                      <span className="text-amber-200">
+                        File punya {sheetOptions.length} sheet berisi data — sistem memakai sheet terbaru; ganti
+                        lewat dropdown bila perlu.
+                      </span>
+                    )}
+                  </div>
+                )}
+                <div className="grid grid-cols-4 gap-3 text-center">
                   <div>
-                    <p className="tnum font-display text-xl font-bold text-white">{preview.rows.length}</p>
-                    <p className="text-xs text-slate-500">Baris data</p>
+                    <p className="tnum font-display text-xl font-bold text-white">{preview.kept.length}</p>
+                    <p className="text-xs text-slate-500">Baris diimpor</p>
                   </div>
                   <div>
                     <p className="tnum font-display text-xl font-bold text-white">{preview.groups}</p>
                     <p className="text-xs text-slate-500">Permintaan</p>
+                  </div>
+                  <div>
+                    <p className="tnum font-display text-xl font-bold text-white">
+                      {preview.lines.reduce((s, l) => s + l.qty, 0)}
+                    </p>
+                    <p className="text-xs text-slate-500">Total qty</p>
                   </div>
                   <div>
                     <p className={`tnum font-display text-xl font-bold ${preview.unmatched.length > 0 ? "text-amber-300" : "text-brand-300"}`}>
@@ -590,6 +599,48 @@ export function RequestUploadPage() {
                     <p className="text-xs text-slate-500">Barang baru</p>
                   </div>
                 </div>
+
+                {/* Rincian qty per barang — dipakai untuk mengecek qty sudah sama dengan file */}
+                <div className="max-h-72 overflow-auto rounded-md border border-white/10">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-slate-900/95 text-left text-slate-400">
+                      <tr>
+                        <th className="px-2 py-1.5 font-medium">Nama barang</th>
+                        <th className="px-2 py-1.5 font-medium">Status aset</th>
+                        <th className="px-2 py-1.5 font-medium">Terkirim</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Qty</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Baris</th>
+                        <th className="px-2 py-1.5 font-medium">Catatan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.lines.map((l, i) => (
+                        <tr key={`${l.itemKey}-${l.kodeKondisi}-${l.isPending}-${i}`} className="border-t border-white/5">
+                          <td className="px-2 py-1.5 text-slate-200">
+                            {nameOf(l)}
+                            {!preview.idByName.has(l.itemName.toUpperCase()) && (
+                              <span className="ml-1 text-amber-300">(baru)</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 text-slate-400">{asetLabelOf(l.kodeKondisi)}</td>
+                          <td className="px-2 py-1.5 text-slate-400">{l.isPending ? "PENDING" : "TERKIRIM"}</td>
+                          <td className="tnum px-2 py-1.5 text-right font-semibold text-white">{l.qty}</td>
+                          <td className="tnum px-2 py-1.5 text-right text-slate-400">{l.rows.length}</td>
+                          <td className="px-2 py-1.5 text-amber-200">
+                            {l.qtyFile === 0
+                              ? `QTY kosong di file → dihitung ${l.qty} dari ${l.rowCount} baris/barcode`
+                              : l.qty > l.qtyFile
+                                ? `QTY file ${l.qtyFile} untuk ${l.rowCount} baris → dipakai ${l.qty} unit${l.qtySource === "barcode" ? " (mengikuti jumlah barcode)" : ""}`
+                                : l.qty < l.rowCount
+                                  ? `QTY file ${l.qtyFile} dibagi ke ${l.rowCount} baris (blok di-merge)` 
+                                  : ""}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
                 {preview.unmatched.length > 0 && (
                   <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -601,11 +652,82 @@ export function RequestUploadPage() {
                     </div>
                   </div>
                 )}
-                {preview.dupRows > 0 && (
+                {preview.skipped.length > 0 && (
                   <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
-                      {preview.dupRows} baris duplikat (tiket + barang + barcode sama) akan dilewati — sisanya tetap masuk dan stok tetap dipotong.
+                      {preview.skipped.length} baris sudah ada di sistem (tiket + barang + barcode/resi sama)
+                      → dilewati: baris {preview.skipped.slice(0, 8).map((r) => r.rowNo).join(", ")}
+                      {preview.skipped.length > 8 && `, +${preview.skipped.length - 8} lainnya`}.
+                    </div>
+                  </div>
+                )}
+                {preview.lines.some((l) => l.qtyFile > 0 && l.qty > l.qtyFile) && (
+                  <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>
+                      Ada barang yang jumlah baris/barcode-nya lebih banyak dari angka QTY di file, jadi qty
+                      dinaikkan (tiap baris/barcode = 1 unit fisik):{" "}
+                      {preview.lines
+                        .filter((l) => l.qtyFile > 0 && l.qty > l.qtyFile)
+                        .slice(0, 4)
+                        .map((l) => `${l.itemName} (QTY file ${l.qtyFile} → ${l.qty})`)
+                        .join(", ")}
+                      . Cek kembali file bila memang tidak sesuai.
+                    </div>
+                  </div>
+                )}
+                {preview.rows.some((r) => !r.ticket) && (
+                  <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>
+                      {preview.rows.filter((r) => !r.ticket).length} baris tidak punya NO TICKET (baris{" "}
+                      {preview.rows.filter((r) => !r.ticket).slice(0, 8).map((r) => r.rowNo).join(", ")}
+                      {preview.rows.filter((r) => !r.ticket).length > 8 ? ", …" : ""}) → akan dibuat jadi permintaan
+                      terpisah per barang (nomor tiket otomatis). Isi NO TICKET di file bila ingin digabung.
+                    </div>
+                  </div>
+                )}
+                {preview.rows.some((r) => !r.dateExplicit) && (
+                  <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>
+                      {preview.rows.filter((r) => !r.dateExplicit).length} baris tanpa tanggal di file (baris{" "}
+                      {preview.rows.filter((r) => !r.dateExplicit).slice(0, 8).map((r) => r.rowNo).join(", ")}
+                      {preview.rows.filter((r) => !r.dateExplicit).length > 8 ? ", …" : ""}) — sistem memakai
+                      tanggal sheet \"{(preview.sheetName ?? "").trim()}\" untuk baris tersebut. Lengkapi kolom In
+                      Progress Date bila tanggalnya beda.
+                    </div>
+                  </div>
+                )}
+                {preview.rows.some((r) => r.qtyUnreadable) && (
+                  <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>
+                      Kolom QTY tidak terbaca sebagai angka di baris{" "}
+                      {preview.rows.filter((r) => r.qtyUnreadable).slice(0, 8).map((r) => r.rowNo).join(", ")}
+                      {" "}(dianggap {preview.rows.filter((r) => r.qtyUnreadable).length} baris tanpa qty). Perbaiki
+                      isi kolom QTY di file bila perlu.
+                    </div>
+                  </div>
+                )}
+                {preview.dupsInFile.length > 0 && (
+                  <div className="flex gap-2 rounded-md bg-amber-400/10 p-3 text-xs text-amber-200">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>
+                      {preview.dupsInFile.length} baris punya tiket + barang + barcode/resi sama di dalam file
+                      (baris {preview.dupsInFile.slice(0, 8).map((r) => r.rowNo).join(", ")}). Baris tetap
+                      diproses — hapus di Excel bila memang dobel.
+                    </div>
+                  </div>
+                )}
+                {preview.existingTickets.length > 0 && (
+                  <div className="flex gap-2 rounded-md bg-white/[0.03] p-3 text-xs text-slate-400">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>
+                      Tiket {preview.existingTickets.slice(0, 5).join(", ")}
+                      {preview.existingTickets.length > 5 && ` (+${preview.existingTickets.length - 5})`} sudah ada
+                      di sistem. Baris yang identik dilewati; baris baru tetap dibuat sebagai permintaan baru.
                     </div>
                   </div>
                 )}
@@ -638,6 +760,7 @@ export function RequestUploadPage() {
           </CardContent>
         </Card>
 
+        <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-base text-white">Opsi Import</CardTitle>
@@ -680,12 +803,16 @@ export function RequestUploadPage() {
               <Label className="mb-1 block">Cara pakai</Label>
               1. Download template, isi datanya.
               <br />
-              2. Upload file yang sudah terisi.
+              2. Upload file yang sudah terisi (sheet terbaru otomatis dipakai).
               <br />
-              3. Periksa pratinjau, lalu klik Import.
+              3. Cek tabel pratinjau — pastikan QTY per barang sudah sama dengan file.
+              <br />
+              4. Klik Import.
             </div>
           </CardContent>
         </Card>
+        <SheetSyncPanel />
+        </div>
       </div>
     </div>
   );
