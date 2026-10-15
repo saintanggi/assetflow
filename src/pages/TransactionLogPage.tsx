@@ -9,6 +9,7 @@ import { PageHeader } from "../components/PageHeader";
 import { DataTable } from "../components/DataTable";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { Select } from "../components/ui/select";
 
 interface LogRow {
@@ -19,6 +20,7 @@ interface LogRow {
   txnDate: string;
   docNumber: string;
   txnType: string;
+  txnStatus: string;
   reference: string;
   ticket: string;
   notes: string;
@@ -36,6 +38,7 @@ export function TransactionLogPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [jenis, setJenis] = useState("");
+  const [hideReversed, setHideReversed] = useState(true);
 
   const load = async () => {
     setLoading(true);
@@ -44,7 +47,7 @@ export function TransactionLogPage() {
         .from("inventory_ledger")
         .select(
           "id, item_id, qty_change, qty_after, created_at, transaction_id, " +
-            "inventory_transactions!inner(doc_number, transaction_date, type, reference, notes, created_by), " +
+            "inventory_transactions!inner(doc_number, transaction_date, type, status, reference, notes, created_by), " +
             "inventory_items!inner(sku, name), " +
             "locations!inner(code, name, warehouses(name))"
         )
@@ -59,7 +62,7 @@ export function TransactionLogPage() {
         qty_after: number | string;
         created_at: string;
         transaction_id: string;
-        inventory_transactions: { doc_number: string; transaction_date: string; type: string; reference: string | null; notes: string | null; created_by: string | null } | { doc_number: string; transaction_date: string; type: string; reference: string | null; notes: string | null; created_by: string | null }[];
+        inventory_transactions: { doc_number: string; transaction_date: string; type: string; status: string; reference: string | null; notes: string | null; created_by: string | null } | { doc_number: string; transaction_date: string; type: string; status: string; reference: string | null; notes: string | null; created_by: string | null }[];
         inventory_items: { sku: string; name: string } | { sku: string; name: string }[];
         locations: { code: string; name: string; warehouses: { name: string }[] | null } | { code: string; name: string; warehouses: { name: string }[] | null }[];
       }[];
@@ -132,6 +135,7 @@ export function TransactionLogPage() {
           txnDate: tx?.transaction_date ?? r.created_at.slice(0, 10),
           docNumber: tx?.doc_number ?? "",
           txnType: tx?.type ?? "",
+          txnStatus: tx?.status ?? "",
           reference: tx?.reference ?? "",
           ticket,
           notes: tx?.notes ?? "",
@@ -162,9 +166,10 @@ export function TransactionLogPage() {
       if (dateTo && r.txnDate > dateTo) return false;
       if (jenis === "in" && r.qtyChange <= 0) return false;
       if (jenis === "out" && r.qtyChange >= 0) return false;
+      if (hideReversed && r.txnStatus === "reversed") return false;
       return true;
     });
-  }, [rows, dateFrom, dateTo, jenis]);
+  }, [rows, dateFrom, dateTo, jenis, hideReversed]);
 
   const totalIn = useMemo(
     () => filtered.filter((r) => r.qtyChange > 0).reduce((s, r) => s + r.qtyChange, 0),
@@ -318,11 +323,18 @@ export function TransactionLogPage() {
               onChange={(e) => setDateTo(e.target.value)}
               className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
             />
-            {(dateFrom || dateTo || jenis) && (
-              <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setJenis(""); }}>
+            {(dateFrom || dateTo || jenis || !hideReversed) && (
+              <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setJenis(""); setHideReversed(true); }}>
                 Reset
               </Button>
             )}
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-300">
+              <Checkbox
+                checked={hideReversed}
+                onChange={(e) => setHideReversed(e.target.checked)}
+              />
+              Sembunyikan yang dibalik
+            </label>
             <div className="ml-auto w-48">
               <Select
                 placeholder="Semua IN & OUT"

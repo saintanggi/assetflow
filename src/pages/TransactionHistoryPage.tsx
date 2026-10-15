@@ -8,6 +8,7 @@ import { PageHeader } from "../components/PageHeader";
 import { DataTable } from "../components/DataTable";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { Checkbox } from "../components/ui/checkbox";
 import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
@@ -61,6 +62,7 @@ export function TransactionHistoryPage() {
   const [locationMap, setLocationMap] = useState<Record<string, string>>({});
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [hideReversed, setHideReversed] = useState(true);
 
   const [selected, setSelected] = useState<InventoryTransaction | null>(null);
   const [detailItems, setDetailItems] = useState<InventoryTransactionItem[]>([]);
@@ -189,9 +191,10 @@ export function TransactionHistoryPage() {
     return lineRows.filter(
       (r) =>
         (!typeFilter || r.tx?.type === typeFilter) &&
-        (!statusFilter || r.tx?.status === statusFilter)
+        (!statusFilter || r.tx?.status === statusFilter) &&
+        (!hideReversed || r.tx?.status !== "reversed")
     );
-  }, [lineRows, typeFilter, statusFilter]);
+  }, [lineRows, typeFilter, statusFilter, hideReversed]);
 
   const handleExportLines = () => {
     if (filteredLines.length === 0) {
@@ -255,9 +258,10 @@ export function TransactionHistoryPage() {
     return transactions.filter(
       (t) =>
         (!typeFilter || t.type === typeFilter) &&
-        (!statusFilter || t.status === statusFilter)
+        (!statusFilter || t.status === statusFilter) &&
+        (!hideReversed || t.status !== "reversed")
     );
-  }, [transactions, typeFilter, statusFilter]);
+  }, [transactions, typeFilter, statusFilter, hideReversed]);
 
   const openDetail = async (tx: InventoryTransaction) => {
     setSelected(tx);
@@ -430,6 +434,13 @@ export function TransactionHistoryPage() {
                 )}
               />
             </div>
+            <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-slate-300">
+              <Checkbox
+                checked={hideReversed}
+                onChange={(e) => setHideReversed(e.target.checked)}
+              />
+              Sembunyikan yang dibalik
+            </label>
           </div>
 
           {view === "dokumen" ? (
