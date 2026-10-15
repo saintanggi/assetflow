@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Boxes,
   Bell,
@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Toaster } from "sonner";
@@ -142,10 +143,12 @@ function NavEntry({
   item,
   collapsed,
   onNavigate,
+  badgeCount,
 }: {
   item: NavItem;
   collapsed: boolean;
   onNavigate: () => void;
+  badgeCount?: number;
 }) {
   const [open, setOpen] = useState(false);
   if (item.children) {
@@ -202,20 +205,20 @@ function NavEntry({
       }
       title={collapsed ? item.label : undefined}
     >
-      {({ isActive }) =>
-        isActive ? (
-          <>
+      {({ isActive }) => (
+        <>
+          {isActive && (
             <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-brand-400" />
-            <item.icon className="h-5 w-5 shrink-0" />
-            {!collapsed && <span>{item.label}</span>}
-          </>
-        ) : (
-          <>
-            <item.icon className="h-5 w-5 shrink-0" />
-            {!collapsed && <span>{item.label}</span>}
-          </>
-        )
-      }
+          )}
+          <item.icon className="h-5 w-5 shrink-0" />
+          {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+          {!collapsed && badgeCount !== undefined && badgeCount > 0 && (
+            <span className="tnum rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+              {badgeCount > 99 ? "99+" : badgeCount}
+            </span>
+          )}
+        </>
+      )}
     </NavLink>
   );
 }
@@ -237,9 +240,11 @@ function getRoleLabel(roleName: string | undefined, isSuperAdmin: boolean): stri
 function SidebarContent({
   collapsed,
   onNavigate,
+  badges,
 }: {
   collapsed: boolean;
   onNavigate: () => void;
+  badges: Record<string, number>;
 }) {
   const { hasPermission, isSuperAdmin, profile, user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -279,7 +284,13 @@ function SidebarContent({
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         {items.map((item) => (
-          <NavEntry key={item.to + item.label} item={item} collapsed={collapsed} onNavigate={onNavigate} />
+          <NavEntry
+            key={item.to + item.label}
+            item={item}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+            badgeCount={badges[item.to]}
+          />
         ))}
       </nav>
 
@@ -371,28 +382,76 @@ function GlobalSearch() {
 export function AppLayout(): ReactNode {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { profile, user, isSuperAdmin } = useAuth();
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [queueCounts, setQueueCounts] = useState<{
+    diajukan: number;
+    aktif: number;
+    sisa: number;
+  }>({ diajukan: 0, aktif: 0, sisa: 0 });
+  const { profile, user, isSuperAdmin, hasPermission } = useAuth();
+  const location = useLocation();
   const roleLabel = getRoleLabel(profile?.roles?.name, isSuperAdmin);
   const displayName =
     profile?.full_name ??
     (profile as unknown as { display_name?: string } | null)?.display_name ??
     user?.email;
 
+  useEffect(() => {
+    if (!user || !hasPermission("requests.view")) return;
+    let cancelled = false;
+    (async () => {
+      const [diajukanRes, aktifRes, sisaRes] = await Promise.all([
+        supabase
+          .from("requests")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "diajukan"),
+        supabase
+          .from("requests")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["disetujui", "disetujui_sebagian", "diproses"]),
+        supabase
+          .from("request_items")
+          .select("id", { count: "exact", head: true })
+          .in("item_status", ["pending_sebagian", "menunggu_stok"]),
+      ]);
+      if (cancelled) return;
+      setQueueCounts({
+        diajukan: diajukanRes.count ?? 0,
+        aktif: aktifRes.count ?? 0,
+        sisa: sisaRes.count ?? 0,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, hasPermission, location.pathname]);
+
+  const roleName = profile?.roles?.name;
+  const permintaanBadge =
+    roleName === "helper"
+      ? queueCounts.aktif
+      : queueCounts.diajukan + queueCounts.aktif;
+  const badges: Record<string, number> = {
+    "/permintaan": permintaanBadge,
+    "/permintaan/sisa": queueCounts.sisa,
+  };
+  const totalNotif = queueCounts.diajukan + queueCounts.aktif + queueCounts.sisa;
+
   return (
     <div className="flex min-h-screen bg-ink-950">
       {/* Sidebar desktop */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 border-r border-white/5 bg-ink-900 transition-all duration-200 lg:block",
+          "sticky top-0 hidden h-screen shrink-0 border-r border-white/5 bg-ink-900 transition-all duration-200 lg:block print:hidden",
           collapsed ? "w-20" : "w-64"
         )}
       >
-        <SidebarContent collapsed={collapsed} onNavigate={() => {}} />
+        <SidebarContent collapsed={collapsed} onNavigate={() => {}} badges={badges} />
       </aside>
 
       {/* Sidebar mobile */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden print:hidden">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
           <aside className="absolute left-0 top-0 h-full w-72 border-r border-white/5 bg-ink-900">
             <button
@@ -403,13 +462,17 @@ export function AppLayout(): ReactNode {
             >
               <X className="h-5 w-5" />
             </button>
-            <SidebarContent collapsed={false} onNavigate={() => setMobileOpen(false)} />
+            <SidebarContent
+              collapsed={false}
+              onNavigate={() => setMobileOpen(false)}
+              badges={badges}
+            />
           </aside>
         </div>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/5 bg-ink-950/85 px-4 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/5 bg-ink-950/85 px-4 backdrop-blur-xl print:hidden">
           <button
             type="button"
             aria-label="Menu"
@@ -435,14 +498,67 @@ export function AppLayout(): ReactNode {
             >
               Lihat situs publik
             </Link>
-            <button
-              type="button"
-              aria-label="Notifikasi"
-              className="relative rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
-            >
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-ink-950" />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="Notifikasi"
+                onClick={() => setNotifOpen((v) => !v)}
+                className="relative rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+              >
+                <Bell className="h-5 w-5" />
+                {totalNotif > 0 && (
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-ink-950" />
+                )}
+              </button>
+              {notifOpen && (
+                <div className="absolute right-0 mt-2 w-72 rounded-xl border border-white/10 bg-ink-900 p-3 shadow-xl">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Antrean Operasional
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setNotifOpen(false)}
+                      className="text-xs text-slate-500 hover:text-white"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 text-sm">
+                    <Link
+                      to="/permintaan"
+                      onClick={() => setNotifOpen(false)}
+                      className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2 hover:bg-white/10"
+                    >
+                      <span className="text-slate-300">Perlu Direview</span>
+                      <span className="tnum font-semibold text-sky-300">
+                        {queueCounts.diajukan}
+                      </span>
+                    </Link>
+                    <Link
+                      to="/permintaan"
+                      onClick={() => setNotifOpen(false)}
+                      className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2 hover:bg-white/10"
+                    >
+                      <span className="text-slate-300">Aktif (Proses/Kirim)</span>
+                      <span className="tnum font-semibold text-amber-300">
+                        {queueCounts.aktif}
+                      </span>
+                    </Link>
+                    <Link
+                      to="/permintaan/sisa"
+                      onClick={() => setNotifOpen(false)}
+                      className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2 hover:bg-white/10"
+                    >
+                      <span className="text-slate-300">Sisa Belum Terkirim</span>
+                      <span className="tnum font-semibold text-rose-300">
+                        {queueCounts.sisa}
+                      </span>
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-sm font-bold text-ink-950 ring-2 ring-brand-400/20">
               {(displayName ?? "?").charAt(0).toUpperCase()}
