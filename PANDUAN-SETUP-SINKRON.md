@@ -149,6 +149,13 @@ yang dipakai tim:
 
 ---
 
+## MEMASTIKAN SINKRON BENAR-BENAR JALAN — ±2 menit
+
+Setelah Langkah 4, buka file **`CEK-SINKRON.md`** → jalankan 2 query di sana (copas ke SQL Editor).
+Di situ ada tabel **cara membaca hasilnya**: kapan artinya "berhasil", kapan artinya Langkah 1/2/3
+belum beres, dan apa yang harus diklik. Angka patokan sheet `14 OKT`: **± 21 permintaan**, **152 unit**,
+pesan `150/150 baris baru`.
+
 ## CARA PAKAI SEHARI-HARI (untuk tim)
 
 1. Buka Google Sheet **DOKUMEN PENGIRIMAN 2026**.
@@ -201,6 +208,7 @@ LIMIT 20;
 - [ ] **Langkah 1** — `docs/sql/setup_sheet_sync.sql` dijalankan → “Success” ✅
 - [ ] **Langkah 2** — Edge Function `sync-sheets` berstatus **Deployed** ✅
 - [ ] **Langkah 3** — Panel: Tes koneksi hijau → Simpan → Pratinjau → Sinkron sekarang ✅
+- [ ] **Cek** — query di `CEK-SINKRON.md`: konfigurasi ≥ 1, status `sukses`, kode HTTP `200`
 - [ ] **Langkah 4** — `docs/sql/setup_cron.sql` (placeholder sudah diganti) → jadwal aktif ✅
 - [ ] **Langkah 5** — PR #4 di-**Merge** ✅
 
