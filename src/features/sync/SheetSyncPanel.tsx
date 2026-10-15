@@ -222,36 +222,38 @@ export function SheetSyncPanel() {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="font-display text-base text-white">Sinkron Google Sheet</CardTitle>
+        <CardTitle className="font-display text-base text-ink-800">Sinkron Google Sheet</CardTitle>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
-        <p className="text-xs text-slate-500">
-          Sistem selalu membaca <span className="text-slate-300">sheet terbaru</span> (mis. “14 OKT”) dan hanya
+        <p className="text-xs text-ink-500">
+          Sistem selalu membaca <span className="text-ink-700">sheet terbaru</span> (mis. “14 OKT”) dan hanya
           mengimpor baris yang belum pernah masuk — jadi bisa dijadwalkan otomatis tanpa risiko dobel.
         </p>
 
         <div className="space-y-1">
-          <Label className="text-xs">Link Google Sheet (dokumen pengiriman)</Label>
+          <Label htmlFor="sync-sheet-url" className="text-xs">Link Google Sheet (dokumen pengiriman)</Label>
           <Input
+            id="sync-sheet-url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://docs.google.com/spreadsheets/d/…/edit"
           />
-          <p className="text-[11px] text-slate-500">
+          <p className="text-xs text-ink-500">
             Sharing file harus “Siapa saja yang memiliki link → Pelihat” agar bisa dibaca otomatis.
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
-            <Label className="text-xs">Sheet yang dipakai</Label>
+            <Label htmlFor="sync-sheet-mode" className="text-xs">Sheet yang dipakai</Label>
             <select
+              id="sync-sheet-mode"
               value={mode}
               onChange={(e) => setMode(e.target.value as "newest" | "named")}
-              className="w-full rounded-md border border-white/15 bg-slate-900/70 px-2 py-1.5 text-xs text-slate-200"
+              className="w-full rounded-md border border-ink-200 bg-white/70 px-2 py-1.5 text-xs text-ink-800"
             >
               <option value="newest">Selalu sheet terbaru</option>
               <option value="named">Sheet tertentu</option>
@@ -259,8 +261,8 @@ export function SheetSyncPanel() {
           </div>
           {mode === "named" && (
             <div className="space-y-1">
-              <Label className="text-xs">Nama sheet</Label>
-              <Input value={sheetName} onChange={(e) => setSheetName(e.target.value)} placeholder="14 OKT" />
+              <Label htmlFor="sync-sheet-name" className="text-xs">Nama sheet</Label>
+              <Input id="sync-sheet-name" value={sheetName} onChange={(e) => setSheetName(e.target.value)} placeholder="14 OKT" />
             </div>
           )}
         </div>
@@ -268,15 +270,15 @@ export function SheetSyncPanel() {
         <div className="space-y-2">
           <label className="flex cursor-pointer items-start gap-2 text-xs">
             <input type="checkbox" checked={deductStock} onChange={(e) => setDeductStock(e.target.checked)} className="mt-0.5" />
-            <span className="text-slate-300">Kurangi stok otomatis (sesuai STATUS ASSET: Baru/Retur/Unready)</span>
+            <span className="text-ink-700">Kurangi stok otomatis (sesuai STATUS ASSET: Baru/Retur/Unready)</span>
           </label>
           <label className="flex cursor-pointer items-start gap-2 text-xs">
             <input type="checkbox" checked={allowNegative} onChange={(e) => setAllowNegative(e.target.checked)} className="mt-0.5" />
-            <span className="text-slate-300">Izinkan stok minus (dokumen lama / stok belum diisi)</span>
+            <span className="text-ink-700">Izinkan stok minus (dokumen lama / stok belum diisi)</span>
           </label>
           <label className="flex cursor-pointer items-start gap-2 text-xs">
             <input type="checkbox" checked={autoCreate} onChange={(e) => setAutoCreate(e.target.checked)} className="mt-0.5" />
-            <span className="text-slate-300">Buat barang baru otomatis bila nama belum ada di master</span>
+            <span className="text-ink-700">Buat barang baru otomatis bila nama belum ada di master</span>
           </label>
         </div>
 
@@ -296,42 +298,42 @@ export function SheetSyncPanel() {
         </div>
 
         {testResult && (
-          <div className="flex gap-2 rounded-md bg-brand-400/10 p-2 text-xs text-brand-200">
+          <div className="flex gap-2 rounded-md bg-brand-50 p-2 text-xs text-brand-700">
             <CheckCircle2 className="h-4 w-4 shrink-0" /> {testResult}
           </div>
         )}
 
         {source?.last_run_at && (
-          <div className="rounded-md border border-white/10 p-3 text-xs">
-            <p className="text-slate-300">
+          <div className="rounded-md border border-ink-200 p-3 text-xs">
+            <p className="text-ink-700">
               Terakhir jalan {formatDateTime(source.last_run_at)} · sheet{" "}
-              <span className="text-white">{source.last_sheet ?? "—"}</span> ·{" "}
+              <span className="text-ink-800">{source.last_sheet ?? "—"}</span> ·{" "}
               <span
                 className={
                   source.last_status === "sukses"
-                    ? "text-brand-300"
+                    ? "text-brand-700"
                     : source.last_status === "gagal"
-                      ? "text-rose-300"
-                      : "text-amber-300"
+                      ? "text-brand-600"
+                      : "text-warn-600"
                 }
               >
                 {STATUS_LABEL[source.last_status ?? ""] ?? source.last_status}
               </span>
             </p>
-            {source.last_message && <p className="mt-1 text-slate-500">{source.last_message}</p>}
+            {source.last_message && <p className="mt-1 text-ink-500">{source.last_message}</p>}
           </div>
         )}
 
         {runs.length > 0 && (
           <div className="space-y-1">
-            <p className="text-xs text-slate-400">5 eksekusi terakhir</p>
-            <ul className="space-y-1 text-[11px] text-slate-500">
+            <p className="text-xs text-ink-500">5 eksekusi terakhir</p>
+            <ul className="space-y-1 text-xs text-ink-500">
               {runs.map((r) => (
                 <li key={r.id} className="flex justify-between gap-2">
                   <span>
                     {formatDateTime(r.started_at)} · {r.sheet_name ?? "—"}
                   </span>
-                  <span className={r.status === "sukses" ? "text-brand-300" : "text-amber-300"}>
+                  <span className={r.status === "sukses" ? "text-brand-700" : "text-warn-600"}>
                     {r.requests_created} permintaan / {Number(r.qty_imported)} unit
                   </span>
                 </li>
@@ -341,7 +343,7 @@ export function SheetSyncPanel() {
         )}
 
         {!source && !loading && (
-          <div className="flex gap-2 rounded-md bg-amber-400/10 p-2 text-xs text-amber-200">
+          <div className="flex gap-2 rounded-md bg-warn-50 p-2 text-xs text-warn-700">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>
               Belum ada sumber tersimpan. Isi link di atas lalu <b>Simpan sumber</b>. Untuk otomatis tiap 15 menit,

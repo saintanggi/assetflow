@@ -62,7 +62,7 @@ export function QrLabel({ value, size = 160, fileName = "qr-code", showDownload 
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="rounded-lg border border-ink-200 bg-white p-3">
         <QRCodeSVG
           ref={svgRef}
           value={value}

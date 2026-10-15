@@ -4,10 +4,13 @@ import { useAuth } from "../context/AuthContext";
 
 function LoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100">
+    <div className="flex min-h-screen items-center justify-center bg-ink-50">
       <div className="flex flex-col items-center gap-3">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-navy-200 border-t-navy-700" />
-        <p className="text-sm text-slate-500">Memuat…</p>
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-600 shadow-soft">
+          <span className="font-display text-xs font-extrabold text-white">IW</span>
+        </div>
+        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-ink-200 border-t-brand-600" />
+        <p className="text-sm text-ink-500">Memuat…</p>
       </div>
     </div>
   );

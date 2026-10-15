@@ -85,7 +85,7 @@ export function PublicDashboardPage() {
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -128,7 +128,7 @@ export function PublicDashboardPage() {
               key={asset.sku}
               className="overflow-hidden transition-shadow hover:shadow-lg"
             >
-              <div className="aspect-[4/3] w-full bg-white/5">
+              <div className="aspect-[4/3] w-full bg-ink-100">
                 {asset.photo_url ? (
                   <img
                     src={asset.photo_url}
@@ -138,13 +138,13 @@ export function PublicDashboardPage() {
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
-                    <ImageOff className="h-10 w-10 text-slate-300" />
+                    <ImageOff className="h-10 w-10 text-ink-700" />
                   </div>
                 )}
               </div>
               <CardContent className="space-y-2 p-4">
                 <h3 className="line-clamp-1 font-semibold text-white">{asset.name}</h3>
-                <p className="line-clamp-1 text-sm text-slate-500">
+                <p className="line-clamp-1 text-sm text-ink-500">
                   {asset.category ?? "Tanpa kategori"}
                   {[asset.brand, asset.model].filter(Boolean).length > 0 &&
                     ` • ${[asset.brand, asset.model].filter(Boolean).join(" ")}`}
@@ -159,7 +159,7 @@ export function PublicDashboardPage() {
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center justify-between pt-1 text-xs text-slate-400">
+                <div className="flex items-center justify-between pt-1 text-xs text-ink-500">
                   <span>Stok: <b className="text-white">{Number(asset.total_stock).toLocaleString("id-ID")}</b></span>
                 </div>
               </CardContent>

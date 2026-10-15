@@ -159,14 +159,14 @@ export function AuditLogPage() {
         </DialogHeader>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase text-slate-500">Data lama</h3>
-            <pre className="max-h-72 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">
+            <h3 className="mb-1 text-xs font-semibold uppercase text-ink-500">Data lama</h3>
+            <pre className="max-h-72 overflow-auto rounded-lg bg-white p-3 text-xs text-ink-800">
               {prettyJson(selected?.old_data)}
             </pre>
           </div>
           <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase text-slate-500">Data baru</h3>
-            <pre className="max-h-72 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">
+            <h3 className="mb-1 text-xs font-semibold uppercase text-ink-500">Data baru</h3>
+            <pre className="max-h-72 overflow-auto rounded-lg bg-white p-3 text-xs text-ink-800">
               {prettyJson(selected?.new_data)}
             </pre>
           </div>

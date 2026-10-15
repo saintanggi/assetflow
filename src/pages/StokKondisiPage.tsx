@@ -330,14 +330,14 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       header: "TOTAL IN",
       accessorKey: "totalIn",
       cell: ({ row }) => (
-        <span className="tnum font-semibold text-emerald-300">+{formatQty(row.original.totalIn)}</span>
+        <span className="tnum font-semibold text-ok-600">+{formatQty(row.original.totalIn)}</span>
       ),
     },
     {
       header: "TOTAL OUT",
       accessorKey: "totalOut",
       cell: ({ row }) => (
-        <span className="tnum font-semibold text-rose-300">-{formatQty(row.original.totalOut)}</span>
+        <span className="tnum font-semibold text-brand-600">-{formatQty(row.original.totalOut)}</span>
       ),
     },
     {
@@ -464,26 +464,26 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card>
           <CardContent className="pt-4">
-            <p className="text-xs text-slate-500">TOTAL STOK AWAL</p>
-            <p className="tnum font-display text-xl font-bold text-slate-200">{formatQty(totals.awal)}</p>
+            <p className="text-xs text-ink-500">TOTAL STOK AWAL</p>
+            <p className="tnum font-display text-xl font-bold text-ink-800">{formatQty(totals.awal)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <p className="text-xs text-slate-500">TOTAL IN</p>
-            <p className="tnum font-display text-xl font-bold text-emerald-300">+{formatQty(totals.in)}</p>
+            <p className="text-xs text-ink-500">TOTAL IN</p>
+            <p className="tnum font-display text-xl font-bold text-ok-600">+{formatQty(totals.in)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <p className="text-xs text-slate-500">TOTAL OUT</p>
-            <p className="tnum font-display text-xl font-bold text-rose-300">-{formatQty(totals.out)}</p>
+            <p className="text-xs text-ink-500">TOTAL OUT</p>
+            <p className="tnum font-display text-xl font-bold text-brand-600">-{formatQty(totals.out)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <p className="text-xs text-slate-500">TOTAL STOK AKHIR</p>
-            <p className="tnum font-display text-xl font-bold text-amber-300">{formatQty(totals.akhir)}</p>
+            <p className="text-xs text-ink-500">TOTAL STOK AKHIR</p>
+            <p className="tnum font-display text-xl font-bold text-warn-600">{formatQty(totals.akhir)}</p>
           </CardContent>
         </Card>
       </div>
@@ -491,19 +491,19 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       <Card>
         <CardContent className="space-y-4 pt-6">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm text-slate-400">Filter:</span>
+            <span className="text-sm text-ink-500">Filter:</span>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
+              className="h-9 rounded-lg border border-ink-200 bg-ink-100 px-3 text-sm text-ink-800"
             />
-            <span className="text-sm text-slate-500">s/d</span>
+            <span className="text-sm text-ink-500">s/d</span>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200"
+              className="h-9 rounded-lg border border-ink-200 bg-ink-100 px-3 text-sm text-ink-800"
             />
             {(dateFrom || dateTo) && (
               <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }}>
@@ -511,7 +511,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
               </Button>
             )}
             {(dateFrom || dateTo) && (
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-ink-500">
                 IN/OUT menampilkan periode {dateFrom || "…"} s/d {dateTo || "…"}
               </span>
             )}

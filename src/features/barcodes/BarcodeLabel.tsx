@@ -83,7 +83,7 @@ export function BarcodeLabel({
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="rounded-lg border border-ink-200 bg-white p-3">
         <svg ref={svgRef} role="img" aria-labelledby={titleId} />
         <title id={titleId}>Barcode {value}</title>
       </div>

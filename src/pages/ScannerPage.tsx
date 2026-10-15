@@ -226,7 +226,7 @@ export function ScannerPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {cameraError && (
-              <div className="rounded-lg border border-rose-400/20 bg-rose-400/5 p-3 text-sm text-rose-300">
+              <div className="rounded-lg border border-brand-200 bg-brand-50 p-3 text-sm text-brand-600">
                 {cameraError} Pastikan izin kamera diberikan dan halaman diakses via HTTPS.
               </div>
             )}
@@ -247,7 +247,7 @@ export function ScannerPage() {
 
             <div
               id="qr-reader"
-              className="overflow-hidden rounded-lg border bg-slate-950"
+              className="overflow-hidden rounded-lg border bg-white"
               style={{ minHeight: scanning ? 320 : 0 }}
             />
 
@@ -292,7 +292,7 @@ export function ScannerPage() {
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-500">
                 Fallback bila kamera tidak tersedia atau kode tidak terbaca.
               </p>
             </CardContent>
@@ -304,10 +304,10 @@ export function ScannerPage() {
             </CardHeader>
             <CardContent>
               {resolving && (
-                <p className="text-sm text-slate-500">Mencari di database…</p>
+                <p className="text-sm text-ink-500">Mencari di database…</p>
               )}
               {!resolving && !result && (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-ink-500">
                   Belum ada hasil. Mulai scan atau gunakan input manual.
                 </p>
               )}
@@ -317,7 +317,7 @@ export function ScannerPage() {
                     <>
                       <p className="text-sm">
                         Terdeteksi <strong>tautan publik aset</strong> dengan kode{" "}
-                        <code className="rounded bg-white/5 px-1">{result.publicCode}</code>.
+                        <code className="rounded bg-ink-100 px-1">{result.publicCode}</code>.
                       </p>
                       <Button
                         onClick={() => window.open(result.url, "_blank", "noreferrer")}
@@ -330,7 +330,7 @@ export function ScannerPage() {
                     <>
                       <p className="text-sm">
                         Aset ditemukan: <strong>{result.name}</strong>{" "}
-                        <span className="text-slate-500">({result.asset_code})</span>
+                        <span className="text-ink-500">({result.asset_code})</span>
                       </p>
                       <Button onClick={() => navigate(`/aset/${result.id}`)}>
                         Buka Detail Aset
@@ -341,7 +341,7 @@ export function ScannerPage() {
                     <>
                       <p className="text-sm">
                         Barang ditemukan: <strong>{result.name}</strong>{" "}
-                        <span className="text-slate-500">({result.sku})</span>
+                        <span className="text-ink-500">({result.sku})</span>
                       </p>
                       <Button onClick={() => navigate(`/persediaan/${result.id}`)}>
                         Buka Detail Barang
@@ -350,10 +350,10 @@ export function ScannerPage() {
                   )}
                   {result.kind === "raw" && (
                     <>
-                      <p className="text-sm text-slate-400">
+                      <p className="text-sm text-ink-500">
                         Tidak ditemukan di database. Teks mentah hasil pindaian:
                       </p>
-                      <code className="block break-all rounded bg-white/5 p-3 text-sm">
+                      <code className="block break-all rounded bg-ink-100 p-3 text-sm">
                         {result.text}
                       </code>
                       <Button variant="outline" onClick={() => void copyRaw(result.text)}>

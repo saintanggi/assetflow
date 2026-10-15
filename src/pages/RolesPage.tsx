@@ -98,11 +98,11 @@ export function RolesPage() {
         description="Atur izin bawaan untuk setiap peran."
       />
 
-      <div className="mb-6 flex items-start gap-3 rounded-xl border border-sky-400/20 bg-sky-400/5 p-4 text-sm text-sky-200">
-        <Info className="mt-0.5 h-5 w-5 shrink-0 text-sky-300" />
+      <div className="mb-6 flex items-start gap-3 rounded-xl border border-info-100 bg-info-50 p-4 text-sm text-info-700">
+        <Info className="mt-0.5 h-5 w-5 shrink-0 text-info-600" />
         <div>
           <p className="font-semibold">Cara kerja matriks izin</p>
-          <p className="mt-1 text-sky-300">
+          <p className="mt-1 text-info-600">
             Setiap peran memiliki izin bawaan. Izin khusus per pengguna (di halaman Pengguna) akan
             menimpa izin peran: centang berarti diberikan, tidak dicentang berarti dicabut untuk
             pengguna tersebut. Izin <span className="font-mono font-semibold">assets.publish</span>{" "}
@@ -117,7 +117,7 @@ export function RolesPage() {
           <Skeleton className="h-64 w-full" />
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-white/10">
+        <div className="overflow-x-auto rounded-xl border border-ink-200">
           <Table>
             <TableHeader>
               <TableRow>
@@ -138,7 +138,7 @@ export function RolesPage() {
                 <TableRow key={p.code}>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs font-semibold text-white">
+                      <span className="font-mono text-xs font-semibold text-ink-800">
                         {p.code}
                       </span>
                       {p.code === PUBLISH_PERMISSION && (
@@ -146,9 +146,9 @@ export function RolesPage() {
                           Super Admin
                         </Badge>
                       )}
-                      <span className="w-full text-xs text-slate-500">{p.description}</span>
+                      <span className="w-full text-xs text-ink-500">{p.description}</span>
                       {p.code === PUBLISH_PERMISSION && (
-                        <span className="w-full text-xs text-amber-300">
+                        <span className="w-full text-xs text-warn-600">
                           Hanya Super Admin yang dapat memberi izin ini — ditegakkan di database
                           (RPC).
                         </span>

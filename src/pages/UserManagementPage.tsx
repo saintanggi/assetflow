@@ -149,7 +149,7 @@ export function UserManagementPage() {
 
   if (!isSuperAdmin) {
     return (
-      <div className="py-20 text-center text-slate-400">
+      <div className="py-20 text-center text-ink-500">
         Hanya Super Admin yang bisa mengakses halaman ini.
       </div>
     );
@@ -157,7 +157,7 @@ export function UserManagementPage() {
 
   const columns: ColumnDef<Account, unknown>[] = [
     { header: "Username", accessorKey: "username",
-      cell: ({ row }) => <span className="font-mono text-sm text-brand-300">{row.original.username}</span> },
+      cell: ({ row }) => <span className="font-mono text-sm text-brand-700">{row.original.username}</span> },
     { header: "Nama", accessorKey: "display_name" },
     { header: "Role", accessorKey: "role",
       cell: ({ row }) => <Badge>{ROLE_LABELS[row.original.role] ?? row.original.role}</Badge> },
@@ -213,7 +213,7 @@ export function UserManagementPage() {
           <div className="space-y-1.5">
             <Label>Username</Label>
             <Input value={fUsername} onChange={(e) => setFUsername(e.target.value.toLowerCase())} placeholder="cth: helper1" />
-            <p className="text-xs text-slate-500">Huruf kecil, angka, _ . - (3-30 karakter)</p>
+            <p className="text-xs text-ink-500">Huruf kecil, angka, _ . - (3-30 karakter)</p>
           </div>
           <div className="space-y-1.5">
             <Label>Nama Tampilan</Label>
@@ -228,7 +228,7 @@ export function UserManagementPage() {
             <select
               value={fRole}
               onChange={(e) => setFRole(e.target.value)}
-              className="w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white"
+              className="w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800"
             >
               <option value="helper">Helper Gudang</option>
               <option value="admin_gudang">Admin Gudang</option>

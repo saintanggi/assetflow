@@ -66,12 +66,12 @@ interface DashboardState {
 }
 
 const STATUS_COLORS: Record<AssetStatus, string> = {
-  tersedia: "#2dd4bf",
-  digunakan: "#60a5fa",
-  dipinjamkan: "#fbbf24",
-  perbaikan: "#fb923c",
-  rusak: "#fb7185",
-  dipensiunkan: "#64748b",
+  tersedia: "#15803D",
+  digunakan: "#2563EB",
+  dipinjamkan: "#D97706",
+  perbaikan: "#F59E0B",
+  rusak: "#DC2626",
+  dipensiunkan: "#6B7280",
 };
 
 const TX_ICON: Record<TransactionType, typeof ArrowDownToLine> = {
@@ -84,12 +84,12 @@ const TX_ICON: Record<TransactionType, typeof ArrowDownToLine> = {
 };
 
 const TX_COLOR: Record<TransactionType, string> = {
-  in: "text-brand-300 bg-brand-400/10 border-brand-400/20",
-  out: "text-amber-300 bg-amber-400/10 border-amber-400/20",
-  transfer: "text-sky-300 bg-sky-400/10 border-sky-400/20",
-  adjust: "text-violet-300 bg-violet-400/10 border-violet-400/20",
-  opname: "text-violet-300 bg-violet-400/10 border-violet-400/20",
-  return: "text-brand-300 bg-brand-400/10 border-brand-400/20",
+  in: "text-ok-700 bg-ok-50 border-ok-100",
+  out: "text-brand-700 bg-brand-50 border-brand-200",
+  transfer: "text-info-700 bg-info-50 border-info-100",
+  adjust: "text-warn-700 bg-warn-50 border-warn-100",
+  opname: "text-warn-700 bg-warn-50 border-warn-100",
+  return: "text-ok-700 bg-ok-50 border-ok-100",
 };
 
 function shortDate(iso: string): string {
@@ -111,22 +111,28 @@ function StatTile({
   tone: "teal" | "amber" | "blue" | "violet";
 }) {
   const toneClass = {
-    teal: "text-brand-300",
-    amber: "text-amber-300",
-    blue: "text-sky-300",
-    violet: "text-violet-300",
+    teal: "text-brand-700",
+    amber: "text-warn-600",
+    blue: "text-info-600",
+    violet: "text-ink-600",
+  }[tone];
+  const toneRing = {
+    teal: "bg-brand-50 ring-brand-100",
+    amber: "bg-warn-50 ring-warn-100",
+    blue: "bg-info-50 ring-info-100",
+    violet: "bg-ink-100 ring-ink-200",
   }[tone];
   return (
     <Card className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-400/40 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-600/40 to-transparent" />
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-slate-500">{label}</p>
-            <p className="tnum mt-2 text-4xl font-bold tracking-tight text-white">{value}</p>
-            <p className="mt-1.5 text-xs text-slate-500">{sub}</p>
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-500">{label}</p>
+            <p className="tnum mt-2 text-4xl font-bold tracking-tight text-ink-800">{value}</p>
+            <p className="mt-1.5 text-xs text-ink-500">{sub}</p>
           </div>
-          <div className={cn("rounded-xl bg-white/5 p-2.5 ring-1 ring-white/10", toneClass)}>
+          <div className={cn("rounded-xl p-2.5 ring-1", toneRing, toneClass)}>
             <Icon className="h-5 w-5" />
           </div>
         </div>
@@ -301,18 +307,18 @@ export function DashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-white">
+            <h1 className="font-display text-2xl font-bold tracking-tight text-ink-800">
               Command Center
             </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-400/30 bg-brand-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest text-brand-300">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-widest text-brand-700">
               <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand-400" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-600 opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand-600" />
               </span>
               Live
             </span>
           </div>
-          <p className="mt-1 text-sm text-slate-500">{now} — pantauan operasional gudang real-time</p>
+          <p className="mt-1 text-sm text-ink-500">{now} — pantauan operasional gudang real-time</p>
         </div>
       </div>
 
@@ -355,12 +361,12 @@ export function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="font-display text-base text-white">
+              <CardTitle className="font-display text-base text-ink-800">
                 Aktivitas Transaksi
               </CardTitle>
-              <p className="mt-0.5 text-xs text-slate-500">14 hari terakhir</p>
+              <p className="mt-0.5 text-xs text-ink-500">14 hari terakhir</p>
             </div>
-            <span className="tnum rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-xs text-slate-400">
+            <span className="tnum rounded-md border border-ink-200 bg-ink-100 px-2 py-1 font-mono text-xs text-ink-500">
               {data.tx14.reduce((s, d) => s + d.count, 0)} dokumen
             </span>
           </CardHeader>
@@ -369,22 +375,22 @@ export function DashboardPage() {
               <AreaChart data={data.tx14} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
                 <defs>
                   <linearGradient id="txFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#2dd4bf" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#C62828" stopOpacity={0.22} />
+                    <stop offset="100%" stopColor="#C62828" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1a2233" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
                 <XAxis
                   dataKey="date"
                   tickFormatter={shortDate}
-                  tick={{ fontSize: 11, fill: "#64748b" }}
+                  tick={{ fontSize: 11, fill: "#6B7280" }}
                   interval={2}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
                   allowDecimals={false}
-                  tick={{ fontSize: 11, fill: "#64748b" }}
+                  tick={{ fontSize: 11, fill: "#6B7280" }}
                   axisLine={false}
                   tickLine={false}
                 />
@@ -392,17 +398,19 @@ export function DashboardPage() {
                   labelFormatter={(label) => shortDate(String(label))}
                   formatter={(value) => [value, "Transaksi"]}
                   contentStyle={{
-                    background: "#131a28",
-                    border: "1px solid rgba(255,255,255,0.1)",
+                    background: "#FFFFFF",
+                    border: "1px solid #E5E7EB",
                     borderRadius: 8,
-                    color: "#fff",
+                    color: "#1F2937",
+                    boxShadow: "0 8px 28px rgba(16,24,40,0.12)",
+                    fontSize: 12,
                   }}
                 />
                 <Area
                   type="monotone"
                   dataKey="count"
                   name="Transaksi"
-                  stroke="#2dd4bf"
+                  stroke="#C62828"
                   strokeWidth={2}
                   fill="url(#txFill)"
                 />
@@ -414,19 +422,19 @@ export function DashboardPage() {
         {/* Live feed */}
         <Card>
           <CardHeader>
-            <CardTitle className="font-display text-base text-white">Aktivitas Terakhir</CardTitle>
-            <p className="mt-0.5 text-xs text-slate-500">Dokumen terbaru tercatat</p>
+            <CardTitle className="font-display text-base text-ink-800">Aktivitas Terakhir</CardTitle>
+            <p className="mt-0.5 text-xs text-ink-500">Dokumen terbaru tercatat</p>
           </CardHeader>
           <CardContent className="space-y-1">
             {data.recent.length === 0 && (
-              <p className="py-8 text-center text-sm text-slate-500">Belum ada transaksi.</p>
+              <p className="py-8 text-center text-sm text-ink-500">Belum ada transaksi.</p>
             )}
             {data.recent.map((t) => {
               const Icon = TX_ICON[t.type];
               return (
                 <div
                   key={t.id}
-                  className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/5"
+                  className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-ink-100"
                 >
                   <span
                     className={cn(
@@ -437,10 +445,10 @@ export function DashboardPage() {
                     <Icon className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="tnum truncate font-mono text-[13px] font-semibold text-slate-200">
+                    <p className="tnum truncate font-mono text-[13px] font-semibold text-ink-800">
                       {t.doc_number}
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-ink-500">
                       {TRANSACTION_TYPE_LABELS[t.type]} •{" "}
                       {new Date(t.created_at).toLocaleString("id-ID", {
                         day: "numeric",
@@ -461,30 +469,30 @@ export function DashboardPage() {
         {/* Stock per location */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-display text-base text-white">
-              <Warehouse className="h-4 w-4 text-brand-300" />
+            <CardTitle className="flex items-center gap-2 font-display text-base text-ink-800">
+              <Warehouse className="h-4 w-4 text-brand-700" />
               Distribusi Stok per Lokasi
             </CardTitle>
-            <p className="mt-0.5 text-xs text-slate-500">5 lokasi dengan stok terbesar</p>
+            <p className="mt-0.5 text-xs text-ink-500">5 lokasi dengan stok terbesar</p>
           </CardHeader>
           <CardContent className="space-y-4">
             {data.locStock.length === 0 && (
-              <p className="py-8 text-center text-sm text-slate-500">Belum ada stok tercatat.</p>
+              <p className="py-8 text-center text-sm text-ink-500">Belum ada stok tercatat.</p>
             )}
             {data.locStock.map((l) => (
               <div key={l.code}>
                 <div className="mb-1.5 flex items-baseline justify-between">
-                  <p className="text-sm font-medium text-slate-200">
-                    <span className="tnum font-mono text-brand-300">{l.code}</span>
-                    <span className="ml-2 text-slate-400">{l.name}</span>
+                  <p className="text-sm font-medium text-ink-800">
+                    <span className="tnum font-mono text-brand-700">{l.code}</span>
+                    <span className="ml-2 text-ink-500">{l.name}</span>
                   </p>
-                  <p className="tnum font-mono text-sm text-slate-300">
+                  <p className="tnum font-mono text-sm text-ink-700">
                     {l.qty.toLocaleString("id-ID")}
                   </p>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-white/5">
+                <div className="h-2 overflow-hidden rounded-full bg-ink-100">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-300 transition-all"
+                    className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-700 transition-all"
                     style={{ width: `${Math.max(4, (l.qty / maxLoc) * 100)}%` }}
                   />
                 </div>
@@ -496,8 +504,8 @@ export function DashboardPage() {
         {/* Asset status donut */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-display text-base text-white">
-              <Package className="h-4 w-4 text-brand-300" />
+            <CardTitle className="flex items-center gap-2 font-display text-base text-ink-800">
+              <Package className="h-4 w-4 text-brand-700" />
               Aset per Status
             </CardTitle>
           </CardHeader>
@@ -520,10 +528,12 @@ export function DashboardPage() {
                 <Tooltip
                   formatter={(value) => [value, "Aset"]}
                   contentStyle={{
-                    background: "#131a28",
-                    border: "1px solid rgba(255,255,255,0.1)",
+                    background: "#FFFFFF",
+                    border: "1px solid #E5E7EB",
                     borderRadius: 8,
-                    color: "#fff",
+                    color: "#1F2937",
+                    boxShadow: "0 8px 28px rgba(16,24,40,0.12)",
+                    fontSize: 12,
                   }}
                 />
               </PieChart>
@@ -531,14 +541,14 @@ export function DashboardPage() {
             <div className="mt-2 space-y-1.5">
               {data.byStatus.map((s) => (
                 <div key={s.status} className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2 text-slate-400">
+                  <span className="flex items-center gap-2 text-ink-500">
                     <span
                       className="h-2.5 w-2.5 rounded-full"
                       style={{ background: STATUS_COLORS[s.status] }}
                     />
                     {s.label}
                   </span>
-                  <span className="tnum font-mono text-slate-200">
+                  <span className="tnum font-mono text-ink-800">
                     {s.count.toLocaleString("id-ID")}
                   </span>
                 </div>

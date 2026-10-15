@@ -173,7 +173,7 @@ export function RequestFormPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-display text-base text-white">Data Permintaan</CardTitle>
+          <CardTitle className="font-display text-base text-ink-800">Data Permintaan</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
@@ -218,7 +218,7 @@ export function RequestFormPage() {
 
       <Card className="mt-4">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="font-display text-base text-white">Daftar Barang</CardTitle>
+          <CardTitle className="font-display text-base text-ink-800">Daftar Barang</CardTitle>
           <Button variant="outline" size="sm" onClick={() => setRows((p) => [...p, newRow()])}>
             <Plus className="mr-1 h-4 w-4" /> Tambah Baris
           </Button>
@@ -227,7 +227,7 @@ export function RequestFormPage() {
           {rows.map((r, i) => (
             <div
               key={r.key}
-              className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3 lg:grid-cols-12"
+              className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 lg:grid-cols-12"
             >
               <div className="relative lg:col-span-4">
                 <Label>Barang #{i + 1}</Label>
@@ -239,15 +239,15 @@ export function RequestFormPage() {
                   autoComplete="off"
                 />
                 {r.open && r.results.length > 0 && (
-                  <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border border-white/10 bg-ink-900 shadow-xl">
+                  <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border border-ink-200 bg-white shadow-xl">
                     {r.results.map((it) => (
                       <button
                         key={it.id}
                         type="button"
-                        className="block w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5"
+                        className="block w-full px-3 py-2 text-left text-sm text-ink-800 hover:bg-ink-100"
                         onMouseDown={() => pickItem(r.key, it)}
                       >
-                        <span className="font-mono text-xs text-slate-500">{it.sku}</span> — {it.name}
+                        <span className="font-mono text-xs text-ink-500">{it.sku}</span> — {it.name}
                       </button>
                     ))}
                   </div>
@@ -276,7 +276,7 @@ export function RequestFormPage() {
                 <select
                   value={r.statusAset}
                   onChange={(e) => updateRow(r.key, { statusAset: e.target.value as ExcelStatusAset })}
-                  className="w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-slate-200"
+                  className="w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800"
                 >
                   {EXCEL_STATUS_ASET.map((s) => (
                     <option key={s} value={s}>
@@ -297,12 +297,14 @@ export function RequestFormPage() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  title="Hapus baris"
+                  aria-label="Hapus baris"
                   onClick={() =>
                     setRows((p) => (p.length > 1 ? p.filter((x) => x.key !== r.key) : p))
                   }
                   disabled={rows.length <= 1}
                 >
-                  <Trash2 className="h-4 w-4 text-rose-300" />
+                  <Trash2 className="h-4 w-4 text-brand-600" />
                 </Button>
               </div>
               <div className="lg:col-span-12">
