@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
@@ -220,6 +220,20 @@ function NavEntry({
   );
 }
 
+const ROLE_DISPLAY_NAMES: Record<string, string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  admin_ho: "Admin HO",
+  admin_gudang: "Admin Gudang",
+  helper: "Helper Gudang",
+};
+
+function getRoleLabel(roleName: string | undefined, isSuperAdmin: boolean): string {
+  if (isSuperAdmin) return "Super Admin";
+  if (roleName && ROLE_DISPLAY_NAMES[roleName]) return ROLE_DISPLAY_NAMES[roleName];
+  return "Admin";
+}
+
 function SidebarContent({
   collapsed,
   onNavigate,
@@ -230,6 +244,11 @@ function SidebarContent({
   const { hasPermission, isSuperAdmin, profile, user, signOut } = useAuth();
   const navigate = useNavigate();
   const items = NAV.filter((i) => isVisible(i, hasPermission, isSuperAdmin));
+  const roleLabel = getRoleLabel(profile?.roles?.name, isSuperAdmin);
+  const displayName =
+    profile?.full_name ??
+    (profile as unknown as { display_name?: string } | null)?.display_name ??
+    user?.email;
 
   return (
     <div className="flex h-full flex-col">
@@ -273,10 +292,10 @@ function SidebarContent({
             </span>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-white">
-                {profile?.full_name ?? user?.email}
+                {displayName}
               </p>
               <p className="truncate text-xs text-slate-500">
-                {isSuperAdmin ? "Super Admin" : "Admin"} • Online
+                {roleLabel} • Online
               </p>
             </div>
           </div>
@@ -300,19 +319,42 @@ function SidebarContent({
 
 function GlobalSearch() {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const [q, setQ] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <form
       className="relative hidden w-72 md:block"
       onSubmit={(e) => {
         e.preventDefault();
-        if (q.trim()) navigate(`/aset?q=${encodeURIComponent(q.trim())}`);
+        const term = q.trim();
+        if (!term) return;
+        if (hasPermission("assets.view")) {
+          navigate(`/aset?q=${encodeURIComponent(term)}`);
+        } else if (hasPermission("inventory.view")) {
+          navigate("/persediaan");
+        } else {
+          navigate("/permintaan");
+        }
       }}
     >
       <input
+        ref={inputRef}
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Cari aset, SKU, transaksi…"
+        placeholder="Cari barang, permintaan, SKU…"
         className="h-9 w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-16 text-sm text-slate-200 placeholder:text-slate-500 focus:border-brand-400/50 focus:outline-none focus:ring-2 focus:ring-brand-400/20"
       />
       <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2">
@@ -330,6 +372,11 @@ export function AppLayout(): ReactNode {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { profile, user, isSuperAdmin } = useAuth();
+  const roleLabel = getRoleLabel(profile?.roles?.name, isSuperAdmin);
+  const displayName =
+    profile?.full_name ??
+    (profile as unknown as { display_name?: string } | null)?.display_name ??
+    user?.email;
 
   return (
     <div className="flex min-h-screen bg-ink-950">
@@ -398,13 +445,13 @@ export function AppLayout(): ReactNode {
             </button>
             <div className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-sm font-bold text-ink-950 ring-2 ring-brand-400/20">
-              {(profile?.full_name ?? user?.email ?? "?").charAt(0).toUpperCase()}
+              {(displayName ?? "?").charAt(0).toUpperCase()}
             </div>
             <div className="hidden sm:block">
               <p className="max-w-40 truncate text-sm font-medium text-white">
-                {profile?.full_name ?? user?.email}
+                {displayName}
               </p>
-              <p className="text-xs text-slate-500">{isSuperAdmin ? "Super Admin" : "Admin"}</p>
+              <p className="text-xs text-slate-500">{roleLabel}</p>
             </div>
           </div>
         </header>

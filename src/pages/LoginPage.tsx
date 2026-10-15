@@ -45,14 +45,22 @@ export function LoginPage() {
 
   async function onSubmit(data: LoginForm) {
     setFormError(null);
-    const uname = data.username.trim().toLowerCase();
-    const { data: acc } = await supabase
-      .from("user_accounts")
-      .select("username")
-      .eq("username", uname)
-      .eq("is_active", true)
-      .maybeSingle();
-    const email = acc ? `${uname}@inventory.internal` : data.username;
+    const rawInput = data.username.trim();
+    const uname = rawInput.toLowerCase();
+    let email = rawInput;
+
+    if (!uname.includes("@")) {
+      const { data: resolved, error: rpcErr } = await supabase.rpc(
+        "resolve_login_email",
+        { p_username: uname }
+      );
+      if (!rpcErr && typeof resolved === "string" && resolved) {
+        email = resolved;
+      } else {
+        email = `${uname}@inventory.internal`;
+      }
+    }
+
     const { error } = await signIn(email, data.password);
     if (error) {
       setFormError("Username atau kata sandi salah");

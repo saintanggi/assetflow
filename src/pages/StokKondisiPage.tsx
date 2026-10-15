@@ -114,18 +114,27 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
           openingMap.set(b.item_id, Number(b.opening_qty ?? 0));
         }
 
-        let ledQuery = supabase
-          .from("inventory_ledger")
-          .select("item_id, qty_change")
-          .eq("location_id", locationId)
-          .limit(10000);
-        if (dateFrom) ledQuery = ledQuery.gte("created_at", `${dateFrom}T00:00:00`);
-        if (dateTo) ledQuery = ledQuery.lte("created_at", `${dateTo}T23:59:59`);
-        const { data: leds } = await ledQuery;
-        for (const l of (leds ?? []) as { item_id: string; qty_change: number | string }[]) {
-          const q = Number(l.qty_change);
-          if (q > 0) inMap.set(l.item_id, (inMap.get(l.item_id) ?? 0) + q);
-          else if (q < 0) outMap.set(l.item_id, (outMap.get(l.item_id) ?? 0) + Math.abs(q));
+        const pageSize = 1000;
+        let offset = 0;
+        while (true) {
+          let ledQuery = supabase
+            .from("inventory_ledger")
+            .select("item_id, qty_change")
+            .eq("location_id", locationId)
+            .order("id", { ascending: true })
+            .range(offset, offset + pageSize - 1);
+          if (dateFrom) ledQuery = ledQuery.gte("created_at", `${dateFrom}T00:00:00`);
+          if (dateTo) ledQuery = ledQuery.lte("created_at", `${dateTo}T23:59:59`);
+          const { data: leds, error: ledErr } = await ledQuery;
+          if (ledErr) throw new Error(ledErr.message);
+          const batch = (leds ?? []) as { item_id: string; qty_change: number | string }[];
+          for (const l of batch) {
+            const q = Number(l.qty_change);
+            if (q > 0) inMap.set(l.item_id, (inMap.get(l.item_id) ?? 0) + q);
+            else if (q < 0) outMap.set(l.item_id, (outMap.get(l.item_id) ?? 0) + Math.abs(q));
+          }
+          if (batch.length < pageSize) break;
+          offset += pageSize;
         }
       }
 

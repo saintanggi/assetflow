@@ -118,7 +118,7 @@ export function RequestUploadPage() {
         ...(((items ?? []) as { sku: string; name: string }[]).map((x) => [x.sku, x.name]))];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(daftar), "DAFTAR BARANG");
       XLSX.writeFile(wb, "Template_Upload_Pengiriman.xlsx");
-    } catch (e) {
+    } catch {
       toast.error("Gagal membuat template.");
     }
   };
@@ -407,24 +407,37 @@ export function RequestUploadPage() {
         if (reqErr) throw new Error(reqErr.message);
         reqId = req.id;
 
-        // Agregasi per item (hindari duplikat unique constraint).
-        const byItem = new Map<string, ParsedRow[]>();
+        // Agregasi per item + kondisi aset + status terkirim/pending
+        // agar barang RETUR tidak tergabung ke BARU dan baris PENDING tidak ikut dipotong stoknya.
+        const byItem = new Map<string, { itemId: string; kodeKondisi: string; isPending: boolean; rows: ParsedRow[] }>();
         for (const r of rs) {
           const id = byName.get(r.itemName.toUpperCase());
           if (!id) throw new Error(`Barang tidak ditemukan: ${r.itemName}`);
-          if (!byItem.has(id)) byItem.set(id, []);
-          byItem.get(id)!.push(r);
+          const asetUpper = (r.statusAset ?? "").toUpperCase();
+          const kodeKondisi = asetUpper.includes("RETUR")
+            ? "STOK-RETUR"
+            : asetUpper.includes("UNREADY")
+              ? "STOK-UNREADY"
+              : "STOK-BARU";
+          const isPending = r.terkirim === "PENDING";
+          const groupKey = `${id}|${kodeKondisi}|${isPending ? "PENDING" : "TERKIRIM"}`;
+          if (!byItem.has(groupKey)) {
+            byItem.set(groupKey, { itemId: id, kodeKondisi, isPending, rows: [] });
+          }
+          byItem.get(groupKey)!.rows.push(r);
         }
-        const itemsPayload = [...byItem.entries()].map(([itemId, irs]) => ({
+        const groupEntries = [...byItem.values()];
+        const itemsPayload = groupEntries.map(({ itemId, isPending, rows: irs }) => ({
           request_id: req.id,
           item_id: itemId,
           qty_requested: irs.reduce((s, x) => s + x.qty, 0),
           qty_approved: irs.reduce((s, x) => s + x.qty, 0),
+          qty_shipped: 0,
           barcode: [...new Set(irs.map((x) => x.barcode).filter(Boolean))].join("\n") || null,
           item_type: irs[0].typeBarang || null,
           status_aset: irs[0].statusAset || null,
           resi: [...new Set(irs.map((x) => x.resi).filter(Boolean))].join("\n") || null,
-          item_status: "disetujui",
+          item_status: isPending ? "pending_sebagian" : "disetujui",
           notes: [...new Set(irs.map((x) => [x.ket && `Ket: ${x.ket}`, x.statusRequest && `Status request: ${x.statusRequest}`].filter(Boolean).join(" | ")).filter(Boolean))].join("\n") || null,
         }));
         const { data: inserted, error: itemsErr } = await supabase
@@ -437,13 +450,13 @@ export function RequestUploadPage() {
 
         // 3) Kurangi stok via RPC per kondisi (STATUS ASSET), atau tandai langsung.
         if (deductStock) {
-          // Kelompokkan item per kondisi: RETURN → STOK-RETUR, UNREADY → STOK-UNREADY, lainnya → STOK-BARU.
+          // Kelompokkan item yang TERKIRIM (bukan PENDING) per kondisi:
+          // RETUR/RETURN → STOK-RETUR, UNREADY → STOK-UNREADY, lainnya → STOK-BARU.
           const byKondisi = new Map<string, { id: string; qty_approved: number | string; resi: string }[]>();
           ((inserted ?? []) as { id: string; qty_approved: number | string }[]).forEach((x, idx) => {
-            const aset = (itemsPayload[idx]?.status_aset ?? "").toUpperCase();
-            const kode = aset.includes("RETURN") ? "STOK-RETUR"
-              : aset.includes("UNREADY") ? "STOK-UNREADY"
-              : "STOK-BARU";
+            const meta = groupEntries[idx];
+            if (!meta || meta.isPending) return;
+            const kode = meta.kodeKondisi;
             if (!byKondisi.has(kode)) byKondisi.set(kode, []);
             byKondisi.get(kode)!.push({
               id: x.id,
@@ -468,15 +481,23 @@ export function RequestUploadPage() {
             });
             if (shipErr) throw new Error(`Gagal kirim ${ticket ?? req.id} [${kode}]: ${shipErr.message}`);
           }
+          if (hasPending) {
+            await supabase
+              .from("requests")
+              .update({ status: "disetujui_sebagian" })
+              .eq("id", req.id);
+          }
         } else {
-          // Tandai selesai tanpa ubah stok.
-          const { data: cur } = await supabase.from("request_items").select("id, qty_approved").eq("request_id", req.id);
-          for (const c of (cur ?? []) as { id: string; qty_approved: number | string }[]) {
+          // Tandai selesai/pending tanpa ubah stok.
+          const insertedRows = (inserted ?? []) as { id: string; qty_approved: number | string }[];
+          for (let idx = 0; idx < insertedRows.length; idx++) {
+            const c = insertedRows[idx];
+            const isPending = groupEntries[idx]?.isPending ?? false;
             await supabase
               .from("request_items")
               .update({
-                qty_shipped: Number(c.qty_approved),
-                item_status: hasPending ? "pending_sebagian" : "terkirim",
+                qty_shipped: isPending ? 0 : Number(c.qty_approved),
+                item_status: isPending ? "pending_sebagian" : "terkirim",
               })
               .eq("id", c.id);
           }

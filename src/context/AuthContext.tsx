@@ -76,16 +76,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile({
         id: u.id,
         email: `${a.username}@inventory.internal`,
+        full_name: a.display_name,
         display_name: a.display_name,
         roles: { name: roleName },
         is_active: true,
       } as unknown as typeof profile);
-      // Permissions berdasarkan role.
+      // Permissions berdasarkan role operasional (sinkron dengan has_permission() di DB).
       const rolePerms: Record<string, string[]> = {
         super_admin: ["*"],
-        admin_ho: ["requests.view", "requests.create"],
-        admin_gudang: ["requests.view", "requests.approve", "inventory.view"],
-        helper: ["requests.view", "requests.process"],
+        admin_ho: [
+          "requests.view",
+          "requests.create",
+          "inventory.view",
+          "reports.view",
+        ],
+        admin_gudang: [
+          "requests.view",
+          "requests.create",
+          "requests.review",
+          "requests.approve",
+          "inventory.view",
+          "inventory.receive",
+          "inventory.issue",
+          "inventory.transfer",
+          "inventory.adjust",
+          "labels.print",
+          "reports.view",
+          "reports.export",
+        ],
+        helper: [
+          "requests.view",
+          "requests.process",
+          "inventory.view",
+          "labels.print",
+        ],
       };
       setPermissions(rolePerms[roleName] ?? []);
       return;
@@ -159,7 +183,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const roleName = profile?.roles?.name;
     const isSuperAdmin = roleName === "super_admin";
     const isStaff =
-      !!profile?.is_active && (roleName === "super_admin" || roleName === "admin");
+      !!profile?.is_active &&
+      (roleName === "super_admin" ||
+        roleName === "admin" ||
+        roleName === "admin_ho" ||
+        roleName === "admin_gudang" ||
+        roleName === "helper");
     return {
       user,
       profile,
@@ -169,7 +198,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isStaff,
       // Super Admin selalu lolos semua permission (cerminan has_permission() di DB).
       // Jangan pernah baca role dari localStorage — identitas dari Supabase Auth + DB.
-      hasPermission: (code: string) => isSuperAdmin || permissions.includes(code),
+      hasPermission: (code: string) =>
+        isSuperAdmin || permissions.includes("*") || permissions.includes(code),
       signIn,
       signOut,
       refreshProfile,

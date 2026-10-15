@@ -48,8 +48,11 @@ describe("inventoryItemSchema", () => {
     expect(r.success).toBe(true);
   });
 
-  it("menolak SKU kosong dan stok minimum negatif", () => {
-    expect(inventoryItemSchema.safeParse({ sku: "", name: "x", is_active: true }).success).toBe(false);
+  it("mengizinkan SKU kosong (auto-SKU) serta menolak SKU tidak valid, nama kosong, dan stok minimum negatif", () => {
+    expect(inventoryItemSchema.safeParse({ sku: "", name: "x", is_active: true }).success).toBe(true);
+    expect(inventoryItemSchema.safeParse({ name: "x", is_active: true }).success).toBe(true);
+    expect(inventoryItemSchema.safeParse({ sku: "SPASI TIDAK BOLEH", name: "x", is_active: true }).success).toBe(false);
+    expect(inventoryItemSchema.safeParse({ sku: "A", name: "", is_active: true }).success).toBe(false);
     expect(
       inventoryItemSchema.safeParse({ sku: "A", name: "x", min_stock: -1, is_active: true }).success
     ).toBe(false);

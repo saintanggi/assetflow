@@ -187,10 +187,15 @@ export function KartuStokPage() {
     setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : prev));
   };
 
-  /** Lokasi untuk baris: ASSET BARU -> lokasi *-BARU, selain itu *-RETUR. */
+  /** Lokasi untuk baris: ASSET BARU -> *-BARU, UNREADY -> *-UNREADY, selain itu -> *-RETUR. */
   const locationFor = (statusAset: ExcelStatusAset): LocationRow | null => {
     if (locations.length === 0) return null;
-    const suffix = statusAset === "ASSET BARU" ? "-BARU" : "-RETUR";
+    const upper = statusAset.toUpperCase();
+    const suffix = upper.includes("UNREADY")
+      ? "-UNREADY"
+      : upper.includes("RETUR")
+        ? "-RETUR"
+        : "-BARU";
     return locations.find((l) => l.code.toUpperCase().endsWith(suffix)) ?? locations[0];
   };
 
