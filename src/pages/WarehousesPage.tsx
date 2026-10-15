@@ -313,8 +313,8 @@ export function WarehousesPage() {
             key: "is_active",
             label: "Status",
             render: (row) => (
-              <Badge variant={Boolean(row.is_active) ? "success" : "secondary"}>
-                {Boolean(row.is_active) ? "Aktif" : "Nonaktif"}
+              <Badge variant={row.is_active ? "success" : "secondary"}>
+                {row.is_active ? "Aktif" : "Nonaktif"}
               </Badge>
             ),
           },

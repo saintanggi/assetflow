@@ -5,6 +5,20 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   build: {
-    chunkSizeWarningLimit: 900,
+    chunkSizeWarningLimit: 1200,
+    rolldownOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('xlsx')) return 'vendor-xlsx'
+          if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts'
+          if (id.includes('html5-qrcode') || id.includes('qrcode') || id.includes('jsbarcode')) {
+            return 'vendor-barcode'
+          }
+          if (id.includes('@supabase')) return 'vendor-supabase'
+          return 'vendor'
+        },
+      },
+    },
   },
 })

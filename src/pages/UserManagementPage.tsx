@@ -73,8 +73,17 @@ export function UserManagementPage() {
     try {
       const json = await callFn("list");
       setRows(json.accounts ?? []);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal memuat akun");
+    } catch {
+      // Fallback baca langsung via RLS bila Edge Function belum di-redeploy.
+      const { data, error } = await supabase
+        .from("user_accounts")
+        .select("username, role, display_name, is_active, created_at")
+        .order("created_at", { ascending: false });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        setRows((data ?? []) as Account[]);
+      }
     } finally {
       setLoading(false);
     }
@@ -122,7 +131,15 @@ export function UserManagementPage() {
 
   const toggleActive = async (acc: Account) => {
     try {
-      await callFn("set-active", { username: acc.username, is_active: !acc.is_active });
+      try {
+        await callFn("set-active", { username: acc.username, is_active: !acc.is_active });
+      } catch {
+        const { error } = await supabase
+          .from("user_accounts")
+          .update({ is_active: !acc.is_active, updated_at: new Date().toISOString() })
+          .eq("username", acc.username);
+        if (error) throw new Error(error.message);
+      }
       toast.success(acc.is_active ? "Akun dinonaktifkan." : "Akun diaktifkan.");
       await load();
     } catch (e) {

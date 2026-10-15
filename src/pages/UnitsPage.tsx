@@ -15,8 +15,8 @@ export function UnitsPage() {
           key: "allow_decimal",
           label: "Desimal",
           render: (row) => (
-            <Badge variant={Boolean(row.allow_decimal) ? "info" : "secondary"}>
-              {Boolean(row.allow_decimal) ? "Ya" : "Tidak"}
+            <Badge variant={row.allow_decimal ? "info" : "secondary"}>
+              {row.allow_decimal ? "Ya" : "Tidak"}
             </Badge>
           ),
         },

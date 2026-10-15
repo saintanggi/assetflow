@@ -167,7 +167,7 @@ export function CrudPage({
   };
 
   const toggleActive = async (row: Row) => {
-    const next = !Boolean(row.is_active);
+    const next = !row.is_active;
     const { error } = await supabase
       .from(table)
       .update({ is_active: next })

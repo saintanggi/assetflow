@@ -4,7 +4,7 @@
 BEGIN;
 
 -- 1) Hapus data turunan (urutan aman FK).
-DELETE FROM public.hist_staging;
+DROP TABLE IF EXISTS public.hist_staging;
 DELETE FROM public.request_items;
 DELETE FROM public.requests;
 DELETE FROM public.inventory_ledger;

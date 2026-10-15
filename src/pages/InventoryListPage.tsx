@@ -45,6 +45,8 @@ interface ItemRow extends InventoryItem {
   total_stock: number;
   stock_baru: number;
   stock_retur: number;
+  opening_baru: number;
+  opening_retur: number;
   stock_status: StockStatus;
 }
 
@@ -74,7 +76,7 @@ export function InventoryListPage() {
       { data: locData },
     ] = await Promise.all([
       supabase.from("inventory_items").select(ITEM_SELECT).order("name"),
-      supabase.from("inventory_balances").select("item_id, location_id, qty"),
+      supabase.from("inventory_balances").select("item_id, location_id, qty, opening_qty"),
       supabase.from("locations").select("id, code").in("code", ["STOK-BARU", "STOK-RETUR"]),
     ]);
     if (itemError || balError) {
@@ -88,11 +90,25 @@ export function InventoryListPage() {
       const totals = new Map<string, number>();
       const baruMap = new Map<string, number>();
       const returMap = new Map<string, number>();
-      for (const b of (balData ?? []) as { item_id: string; location_id: string; qty: number | string }[]) {
+      const openBaruMap = new Map<string, number>();
+      const openReturMap = new Map<string, number>();
+      for (const b of (balData ?? []) as {
+        item_id: string;
+        location_id: string;
+        qty: number | string;
+        opening_qty?: number | string | null;
+      }[]) {
         const q = Number(b.qty);
+        const op = Number(b.opening_qty ?? b.qty);
         totals.set(b.item_id, (totals.get(b.item_id) ?? 0) + q);
-        if (baruId && b.location_id === baruId) baruMap.set(b.item_id, (baruMap.get(b.item_id) ?? 0) + q);
-        if (returId && b.location_id === returId) returMap.set(b.item_id, (returMap.get(b.item_id) ?? 0) + q);
+        if (baruId && b.location_id === baruId) {
+          baruMap.set(b.item_id, (baruMap.get(b.item_id) ?? 0) + q);
+          openBaruMap.set(b.item_id, (openBaruMap.get(b.item_id) ?? 0) + op);
+        }
+        if (returId && b.location_id === returId) {
+          returMap.set(b.item_id, (returMap.get(b.item_id) ?? 0) + q);
+          openReturMap.set(b.item_id, (openReturMap.get(b.item_id) ?? 0) + op);
+        }
       }
       const rows: ItemRow[] = ((itemData ?? []) as InventoryItem[]).map((it) => {
         const total = totals.get(it.id) ?? 0;
@@ -104,6 +120,8 @@ export function InventoryListPage() {
           total_stock: total,
           stock_baru: baruMap.get(it.id) ?? 0,
           stock_retur: returMap.get(it.id) ?? 0,
+          opening_baru: openBaruMap.get(it.id) ?? baruMap.get(it.id) ?? 0,
+          opening_retur: openReturMap.get(it.id) ?? returMap.get(it.id) ?? 0,
           stock_status: status,
         };
       });
@@ -226,8 +244,8 @@ export function InventoryListPage() {
 
   const openAdjust = (row: ItemRow) => {
     setAdjustItem(row);
-    setAdjustBaru(String(row.stock_baru ?? 0));
-    setAdjustRetur(String(row.stock_retur ?? 0));
+    setAdjustBaru(String(row.opening_baru ?? row.stock_baru ?? 0));
+    setAdjustRetur(String(row.opening_retur ?? row.stock_retur ?? 0));
     setAdjustOpen(true);
   };
 

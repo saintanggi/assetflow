@@ -57,14 +57,6 @@ export const router = createBrowserRouter([
       { path: "/reset-password", element: <ResetPasswordPage /> },
       { path: "/publik", element: <PublicDashboardPage /> },
       { path: "/publik/aset/:publicCode", element: <PublicAssetDetailPage /> },
-      {
-        path: "/pengaturan/akun",
-        element: (
-          <RequirePermission code="users.manage">
-            <UserManagementPage />
-          </RequirePermission>
-        ),
-      },
       { path: "/403", element: <ForbiddenPage /> },
     ],
   },

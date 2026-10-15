@@ -19,12 +19,14 @@ CREATE INDEX IF NOT EXISTS idx_user_accounts_auth ON public.user_accounts(auth_u
 -- RLS: hanya super_admin yang bisa kelola.
 ALTER TABLE public.user_accounts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "user_accounts superadmin all" ON public.user_accounts;
 CREATE POLICY "user_accounts superadmin all"
 ON public.user_accounts FOR ALL
 USING (public.has_permission('users.manage'))
 WITH CHECK (public.has_permission('users.manage'));
 
 -- Semua user login bisa baca akunnya sendiri (untuk mapping username).
+DROP POLICY IF EXISTS "user_accounts self read" ON public.user_accounts;
 CREATE POLICY "user_accounts self read"
 ON public.user_accounts FOR SELECT
 USING (auth_user_id = auth.uid());

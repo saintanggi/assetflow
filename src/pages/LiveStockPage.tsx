@@ -138,15 +138,33 @@ export function LiveStockPage() {
         .in("location_id", locIds);
       if (balErr) throw new Error(balErr.message);
 
-      // Mutasi dalam periode dari ledger.
-      const { data: ledData, error: ledErr } = await supabase
-        .from("inventory_ledger")
-        .select("item_id, location_id, qty_change")
-        .in("location_id", locIds)
-        .gte("created_at", `${startDate}T00:00:00`)
-        .lte("created_at", `${endDate}T23:59:59`)
-        .limit(20000);
-      if (ledErr) throw new Error(ledErr.message);
+      // Mutasi dalam periode dari ledger (paginasi per 1.000 baris agar tidak terpotong batas PostgREST).
+      const ledData: {
+        item_id: string;
+        location_id: string;
+        qty_change: number | string;
+      }[] = [];
+      const pageSize = 1000;
+      let offset = 0;
+      while (true) {
+        const { data: ledBatch, error: ledErr } = await supabase
+          .from("inventory_ledger")
+          .select("item_id, location_id, qty_change")
+          .in("location_id", locIds)
+          .gte("created_at", `${startDate}T00:00:00`)
+          .lte("created_at", `${endDate}T23:59:59`)
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (ledErr) throw new Error(ledErr.message);
+        const batch = (ledBatch ?? []) as {
+          item_id: string;
+          location_id: string;
+          qty_change: number | string;
+        }[];
+        ledData.push(...batch);
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+      }
 
       type Agg = { inQty: number; outQty: number };
       const move = new Map<string, Agg>(); // key: item_id|location_id

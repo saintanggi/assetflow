@@ -153,7 +153,23 @@ export function RequestDetailPage() {
         .eq("is_active", true)
         .order("code")
         .limit(100);
-      setLocations((locs ?? []) as { id: string; code: string; name: string }[]);
+      const locList = (locs ?? []) as { id: string; code: string; name: string }[];
+      setLocations(locList);
+
+      // Pilih lokasi kirim default sesuai status_aset item yang belum terkirim.
+      if (!shipLocation && locList.length > 0) {
+        const firstPending = its.find(
+          (x) => (x.qty_approved ?? 0) - (x.qty_shipped ?? 0) > 0 && x.item_status !== "ditolak"
+        );
+        const asetUpper = (firstPending?.status_aset ?? its[0]?.status_aset ?? "").toUpperCase();
+        const targetCode = asetUpper.includes("RETUR")
+          ? "STOK-RETUR"
+          : asetUpper.includes("UNREADY")
+            ? "STOK-UNREADY"
+            : "STOK-BARU";
+        const defLoc = locList.find((l) => l.code.toUpperCase() === targetCode) ?? locList[0];
+        if (defLoc) setShipLocation(defLoc.id);
+      }
 
       // Prefill state.
       const a: Record<string, string> = {};
@@ -209,7 +225,11 @@ export function RequestDetailPage() {
           })
           .eq("id", id);
         if (error) throw new Error(error.message);
-        await supabase.from("request_items").update({ item_status: "ditolak", qty_approved: 0 }).eq("request_id", id);
+        const { error: itemErr } = await supabase
+          .from("request_items")
+          .update({ item_status: "ditolak", qty_approved: 0 })
+          .eq("request_id", id);
+        if (itemErr) throw new Error(itemErr.message);
       } else {
         // Validasi qty approve per item.
         let needNote = false;
@@ -245,6 +265,8 @@ export function RequestDetailPage() {
               qty_requested: sisaQty,
               qty_approved: null,
               qty_shipped: 0,
+              item_type: x.item_type ?? null,
+              status_aset: x.status_aset ?? null,
               item_status: "menunggu_stok",
               notes: `Menunggu stok: ${warehouseNote.trim()}`,
             });
@@ -299,6 +321,13 @@ export function RequestDetailPage() {
         .update({ qty_approved: qty, item_status: "disetujui", updated_at: new Date().toISOString() })
         .eq("id", itemId);
       if (error) throw new Error(error.message);
+      if (req && ["selesai", "ditolak", "diajukan"].includes(req.status)) {
+        const { error: reqErr } = await supabase
+          .from("requests")
+          .update({ status: "disetujui_sebagian", updated_at: new Date().toISOString() })
+          .eq("id", req.id);
+        if (reqErr) throw new Error(reqErr.message);
+      }
       toast.success("Item disetujui — siap diproses helper.");
       await load();
     } catch (e) {
@@ -401,6 +430,11 @@ export function RequestDetailPage() {
         else if (p) ketList.push(p);
       }
     }
+    if (snList.length === 0 && x.serial_number) {
+      for (const s of x.serial_number.split("\n").map((v) => v.trim()).filter(Boolean)) {
+        snList.push(s);
+      }
+    }
     setEditItem(x);
     setEItemId(x.item_id);
     setEBarcode(x.barcode ?? "");
@@ -417,7 +451,8 @@ export function RequestDetailPage() {
     try {
       // Rekonstruksi notes: "Ket: <SN>" per baris + "Status request: <SR>".
       const notesLines: string[] = [];
-      for (const s of eSn.split("\n").map((v) => v.trim()).filter(Boolean)) {
+      const snValues = eSn.split("\n").map((v) => v.trim()).filter(Boolean);
+      for (const s of snValues) {
         notesLines.push(`Ket: ${s}`);
       }
       if (eStatusReq.trim()) notesLines.push(`Status request: ${eStatusReq.trim()}`);
@@ -429,6 +464,7 @@ export function RequestDetailPage() {
         .update({
           item_id: eItemId || editItem.item_id,
           barcode: eBarcode.trim() || null,
+          serial_number: snValues.join("\n") || null,
           resi: eResi.trim() || null,
           status_aset: eStatusAset.trim() || null,
           notes: notesLines.join("\n") || null,
@@ -470,6 +506,11 @@ export function RequestDetailPage() {
         if (m) snLines.push(m[1].trim());
         else if (ln.trim()) otherNoteLines.push(ln.trim());
       }
+      if (snLines.length === 0 && x.serial_number) {
+        for (const s of x.serial_number.split("\n").map((v) => v.trim()).filter(Boolean)) {
+          snLines.push(s);
+        }
+      }
       const sharedNotes = otherNoteLines.join("\n") || null;
       const notesFor = (i: number) => {
         const parts: string[] = [];
@@ -484,6 +525,7 @@ export function RequestDetailPage() {
           qty_requested: 1,
           qty_approved: x.qty_approved != null ? 1 : null,
           barcode: barcodeLines[0] || null,
+          serial_number: snLines[0] || null,
           resi: resiLines[0] || null,
           notes: notesFor(0),
           updated_at: new Date().toISOString(),
@@ -500,6 +542,7 @@ export function RequestDetailPage() {
           qty_approved: x.qty_approved != null ? 1 : null,
           qty_shipped: 0,
           barcode: barcodeLines[i] || null,
+          serial_number: snLines[i] || null,
           resi: resiLines[i] || null,
           item_type: x.item_type,
           status_aset: x.status_aset,
@@ -523,11 +566,16 @@ export function RequestDetailPage() {
   if (loading) return <div className="text-sm text-slate-500">Memuat…</div>;
   if (!req) return <div className="text-sm text-slate-500">Permintaan tidak ditemukan.</div>;
 
+  const hasProcessableItems = items.some((x) =>
+    ["disetujui", "diproses", "siap", "pending_sebagian"].includes(x.item_status)
+  );
   const isReviewable = canReview && req.status === "diajukan";
   const isProcessable =
-    canProcess && ["disetujui", "disetujui_sebagian", "diproses"].includes(req.status);
+    canProcess &&
+    (["disetujui", "disetujui_sebagian", "diproses"].includes(req.status) || hasProcessableItems);
   const isShippable =
-    canReview && ["disetujui", "disetujui_sebagian", "diproses"].includes(req.status);
+    canReview &&
+    (["disetujui", "disetujui_sebagian", "diproses"].includes(req.status) || pendingItems.length > 0);
 
   return (
     <div>
@@ -865,6 +913,11 @@ export function RequestDetailPage() {
                       } else if (p) {
                         ketList.push(p);
                       }
+                    }
+                  }
+                  if (snList.length === 0 && x.serial_number) {
+                    for (const s of x.serial_number.split("\n").map((v) => v.trim()).filter(Boolean)) {
+                      snList.push(s);
                     }
                   }
                   return (

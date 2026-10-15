@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     const caller = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${jwt}` } },
     });
-    const { data: perm } = await caller.rpc("has_permission", { p_permission: "users.manage" });
+    const { data: perm } = await caller.rpc("has_permission", { p_code: "users.manage" });
     if (!perm) return json({ error: "Forbidden: butuh permission users.manage" }, 403);
 
     const { data: { user: callerUser } } = await caller.auth.getUser(jwt);
@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
         email,
         password,
         email_confirm: true,
-        user_metadata: { username, display_name, role },
+        user_metadata: { username, full_name: display_name, display_name, role },
       });
       if (cErr) return json({ error: `Gagal buat user auth: ${cErr.message}` }, 500);
 
@@ -90,6 +90,20 @@ Deno.serve(async (req) => {
         await admin.auth.admin.deleteUser(created.user.id);
         return json({ error: `Gagal simpan akun: ${mErr.message}` }, 500);
       }
+
+      // Sinkronkan juga ke tabel profiles (agar FK & join profiles tetap valid).
+      const { data: roleRow } = await admin
+        .from("roles")
+        .select("id")
+        .eq("name", role)
+        .maybeSingle();
+      await admin.from("profiles").upsert({
+        id: created.user.id,
+        email,
+        full_name: display_name,
+        role_id: roleRow?.id ?? null,
+        is_active: true,
+      });
 
       return json({ ok: true, username });
     }
@@ -126,6 +140,7 @@ Deno.serve(async (req) => {
       if (!acc?.auth_user_id) return json({ error: "Akun tidak ditemukan" }, 404);
 
       await admin.from("user_accounts").update({ is_active }).eq("username", username);
+      await admin.from("profiles").update({ is_active }).eq("id", acc.auth_user_id);
       // Ban/unban auth user juga.
       await admin.auth.admin.updateUserById(acc.auth_user_id, {
         ban_duration: is_active ? "none" : "876000h",

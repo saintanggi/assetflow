@@ -43,7 +43,7 @@ export function TransactionLogPage() {
       const { data, error } = await supabase
         .from("inventory_ledger")
         .select(
-          "id, qty_change, qty_after, created_at, transaction_id, " +
+          "id, item_id, qty_change, qty_after, created_at, transaction_id, " +
             "inventory_transactions!inner(doc_number, transaction_date, type, reference, notes, created_by), " +
             "inventory_items!inner(sku, name), " +
             "locations!inner(code, name, warehouses(name))"
@@ -54,6 +54,7 @@ export function TransactionLogPage() {
 
       const raw = (data ?? []) as unknown as {
         id: string;
+        item_id: string;
         qty_change: number | string;
         qty_after: number | string;
         created_at: string;
@@ -85,19 +86,10 @@ export function TransactionLogPage() {
           .select("transaction_id, item_id, resi, gerai")
           .in("transaction_id", txIds.slice(i, i + 100));
         for (const t of (tis ?? []) as { transaction_id: string; item_id: string; resi: string | null; gerai: string | null }[]) {
-          // Butuh item_id untuk key — ambil dari raw via transaction_id saja tidak cukup;
-          // simpan per transaction_id + resi/gerai pertama sebagai fallback.
           const k = `${t.transaction_id}|${t.item_id}`;
           itemDetail.set(k, { resi: t.resi ?? "", gerai: t.gerai ?? "" });
         }
       }
-
-      // Petakan item_id per ledger row untuk key detail.
-      const { data: ledgerItems } = await supabase
-        .from("inventory_ledger")
-        .select("id, item_id")
-        .in("id", raw.map((r) => r.id));
-      const ledgerItemMap = new Map(((ledgerItems ?? []) as { id: string; item_id: string }[]).map((x) => [x.id, x.item_id]));
 
       // Tiket dari nomor permintaan.
       const ticketMap = new Map<string, string>();
@@ -110,19 +102,25 @@ export function TransactionLogPage() {
           ticketMap.set(q.request_number, q.ticket_no);
       }
 
-      // Nama user.
+      // Nama user (profiles + fallback user_accounts).
       const userMap = new Map<string, string>();
       if (userIds.length > 0) {
         const { data: profs } = await supabase.from("profiles").select("id, full_name").in("id", userIds);
         for (const p of (profs ?? []) as { id: string; full_name: string | null }[])
-          userMap.set(p.id, p.full_name ?? p.id.slice(0, 8));
+          if (p.full_name) userMap.set(p.id, p.full_name);
+        const { data: uas } = await supabase
+          .from("user_accounts")
+          .select("auth_user_id, display_name")
+          .in("auth_user_id", userIds);
+        for (const ua of (uas ?? []) as { auth_user_id: string | null; display_name: string }[])
+          if (ua.auth_user_id && ua.display_name) userMap.set(ua.auth_user_id, ua.display_name);
       }
 
       const mapped: LogRow[] = raw.map((r) => {
         const tx = (Array.isArray(r.inventory_transactions) ? r.inventory_transactions[0] : r.inventory_transactions) ?? null;
         const it = (Array.isArray(r.inventory_items) ? r.inventory_items[0] : r.inventory_items) ?? null;
         const loc = (Array.isArray(r.locations) ? r.locations[0] : r.locations) ?? null;
-        const itemId = ledgerItemMap.get(r.id) ?? "";
+        const itemId = r.item_id ?? "";
         const det = itemDetail.get(`${r.transaction_id}|${itemId}`) ?? { resi: "", gerai: "" };
         const m = tx?.reference?.match(/REQ-KIRIM\/(REQ-[\w-]+)/);
         const ticket = m ? ticketMap.get(m[1]) ?? m[1] : "";

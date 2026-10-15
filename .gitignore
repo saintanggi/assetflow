@@ -9,3 +9,5 @@ supabase/.branches
 supabase/.temp
 .secrets/
 *.dbpass
+tmp_hist_import/
+
