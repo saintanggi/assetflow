@@ -138,7 +138,10 @@ GRANT SELECT ON public.v_sheet_sync_recent TO authenticated;
 -- Edge Function `sync-sheets` berjalan dengan service_role (auth.uid() = NULL),
 -- sehingga RPC ship_request_items() yang memakai has_permission() tidak bisa
 -- dipakai. Fungsi ini isinya identik dengan ship_request_items versi terakhir
--- (20261015000028), hanya pengecekan izinnya ditambah is_service_role().
+-- (20261016000032 / multi-lokasi): stok dipotong per STATUS ASSET item
+-- (ASSET BARU -> STOK-BARU, ASSET RETUR/RETURN -> STOK-RETUR, UNREADY ->
+-- STOK-UNREADY), p_location_id hanya fallback. Pengecekan izin ditambah
+-- is_service_role() untuk Edge Function.
 
 CREATE OR REPLACE FUNCTION public.is_service_role()
 RETURNS boolean
@@ -168,6 +171,7 @@ DECLARE
   v_req_date    date;
   v_branch_name text;
   v_txn_id      uuid;
+  v_first_txn   uuid;
   v_line        jsonb;
   v_ri_id       uuid;
   v_qty         numeric;
@@ -178,6 +182,10 @@ DECLARE
   v_item_status text;
   v_status_aset text;
   v_norm_aset   text;
+  v_loc_baru    uuid;
+  v_loc_retur   uuid;
+  v_loc_unready uuid;
+  v_group_loc   uuid;
 BEGIN
   -- Dipakai Edge Function sinkronisasi (service_role) dan tetap aman untuk
   -- pengguna biasa karena hak aksesnya sama seperti ship_request_items.
@@ -203,20 +211,17 @@ BEGIN
     RAISE EXCEPTION 'Permintaan belum disetujui (status: %)', v_req_status;
   END IF;
 
-  INSERT INTO public.inventory_transactions (
-    type, status, transaction_date, source_location_id, notes, reference, created_by, posted_at
-  )
-  VALUES (
-    'out', 'posted', COALESCE(v_req_date, CURRENT_DATE), p_location_id, p_notes,
-    'REQ-KIRIM/' || v_req_number, auth.uid(), now()
-  )
-  RETURNING id INTO v_txn_id;
+  -- Lokasi stok per jenis (kode unik global). Fallback: p_location_id.
+  SELECT id INTO v_loc_baru    FROM public.locations WHERE code = 'STOK-BARU'    AND is_active LIMIT 1;
+  SELECT id INTO v_loc_retur   FROM public.locations WHERE code = 'STOK-RETUR'   AND is_active LIMIT 1;
+  SELECT id INTO v_loc_unready FROM public.locations WHERE code = 'STOK-UNREADY' AND is_active LIMIT 1;
 
   CREATE TEMP TABLE tmp_ship_lines (
     item_id     uuid,
     qty         numeric,
     resi        text,
-    status_aset text
+    status_aset text,
+    location_id uuid
   ) ON COMMIT DROP;
 
   FOR v_line IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
@@ -249,6 +254,13 @@ BEGIN
       ELSE 'ASSET BARU'
     END;
 
+    -- Lokasi potong mengikuti jenis stok item, bukan pilihan tunggal pemanggil.
+    v_group_loc := CASE v_norm_aset
+      WHEN 'ASSET RETUR' THEN COALESCE(v_loc_retur, p_location_id)
+      WHEN 'UNREADY'     THEN COALESCE(v_loc_unready, p_location_id)
+      ELSE COALESCE(v_loc_baru, p_location_id)
+    END;
+
     UPDATE public.request_items
        SET qty_shipped = qty_shipped + v_qty,
            resi        = COALESCE(v_resi, resi),
@@ -259,26 +271,43 @@ BEGIN
            updated_at  = now()
      WHERE id = v_ri_id;
 
-    INSERT INTO tmp_ship_lines VALUES (v_item_id, v_qty, v_resi, v_norm_aset);
+    INSERT INTO tmp_ship_lines VALUES (v_item_id, v_qty, v_resi, v_norm_aset, v_group_loc);
   END LOOP;
 
-  -- Agregasi per item_id (hindari pelanggaran uq_txn_item).
-  INSERT INTO public.inventory_transaction_items
-    (transaction_id, item_id, qty, notes, resi, gerai, status_aset)
-  SELECT
-    v_txn_id,
-    item_id,
-    SUM(qty),
-    'Kirim permintaan ' || v_req_number,
-    NULLIF(STRING_AGG(DISTINCT resi, ', ' ORDER BY resi), ''),
-    v_branch_name,
-    MAX(status_aset)
-  FROM tmp_ship_lines
-  GROUP BY item_id;
+  -- Satu transaksi OUT per lokasi: tiap jenis stok terpotong dari lokasi yang benar.
+  FOR v_group_loc IN SELECT DISTINCT location_id FROM tmp_ship_lines LOOP
+    INSERT INTO public.inventory_transactions (
+      type, status, transaction_date, source_location_id, notes, reference, created_by, posted_at
+    )
+    VALUES (
+      'out', 'posted', COALESCE(v_req_date, CURRENT_DATE), v_group_loc, p_notes,
+      'REQ-KIRIM/' || v_req_number, auth.uid(), now()
+    )
+    RETURNING id INTO v_txn_id;
+
+    IF v_first_txn IS NULL THEN
+      v_first_txn := v_txn_id;
+    END IF;
+
+    -- Agregasi per item_id dalam satu transaksi (hindari pelanggaran uq_txn_item).
+    INSERT INTO public.inventory_transaction_items
+      (transaction_id, item_id, qty, notes, resi, gerai, status_aset)
+    SELECT
+      v_txn_id,
+      item_id,
+      SUM(qty),
+      'Kirim permintaan ' || v_req_number,
+      NULLIF(STRING_AGG(DISTINCT resi, ', ' ORDER BY resi), ''),
+      v_branch_name,
+      MAX(status_aset)
+    FROM tmp_ship_lines
+    WHERE location_id = v_group_loc
+    GROUP BY item_id;
+
+    PERFORM public._apply_posted_effects(v_txn_id, p_allow_negative);
+  END LOOP;
 
   DROP TABLE tmp_ship_lines;
-
-  PERFORM public._apply_posted_effects(v_txn_id, p_allow_negative);
 
   -- Update status header request secara akurat:
   -- 'selesai' hanya jika seluruh baris item sudah 'terkirim' atau 'ditolak'.
@@ -299,9 +328,12 @@ BEGIN
          updated_at = now()
    WHERE id = p_request_id;
 
-  RETURN v_txn_id;
+  RETURN v_first_txn;
 END;
 $$;
+
 GRANT EXECUTE ON FUNCTION public.sync_ship_request_items(uuid, uuid, jsonb, text, boolean)
   TO service_role;
-REVOKE ALL ON FUNCTION public.sync_ship_request_items(uuid, uuid, jsonb, text, boolean) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sync_ship_request_items(uuid, uuid, jsonb, text, boolean)
+  FROM PUBLIC, anon, authenticated;
+

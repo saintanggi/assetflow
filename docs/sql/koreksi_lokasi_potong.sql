@@ -1,4 +1,18 @@
 -- ===============================================================================
+-- ⚠️ SCRIPT INI SUDAH DIGANTIKAN — JANGAN DIPAKAI LAGI
+-- ===============================================================================
+-- Script ini memanggil post_inventory_transaction() yang mewajibkan login
+-- (has_permission), sedangkan SQL Editor Supabase berjalan TANPA login JWT.
+-- Akibatnya semua koreksi selalu GAGAL dengan "Izin ditolak".
+--
+-- Gunakan penggantinya: docs/sql/perbaiki_jenis_stok_semua.sql
+--   - tidak memanggil RPC ber-permission (aman dari SQL Editor),
+--   - memperbaiki label status_aset yang kosong dari data permintaan,
+--   - menangani transaksi IN dan OUT, BARU/RETUR/UNREADY sekaligus,
+--   - idempoten (aman dijalankan berulang).
+-- ===============================================================================
+
+-- ===============================================================================
 -- KOREKSI DATA: potongan stok salah lokasi (hasil Sinkron Google Sheet)
 -- ===============================================================================
 -- Masalah : barang keluar hasil sinkronisasi terpotong dari lokasi yang salah.

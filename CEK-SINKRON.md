@@ -106,3 +106,54 @@ Screenshot yang Anda kirim **menampilkan kunci rahasia `service_role`**. Sebaikn
 berjalan lancar: **Project Settings → API Keys → service_role → Rotate/Revoke**, lalu **ulangi BLOK C
 dengan kunci baru**. Aplikasi tidak akan terganggu (aplikasi memakai kunci `anon`), hanya jadwal cron
 yang perlu ditempel ulang.
+
+---
+
+## CEK 3 — Jenis stok sesuai permintaan? (ASSET BARU vs ASSET RETUR)
+
+> Kasus nyata: gerai (contoh **SiCepat Ekspres Purbalingga Kartanegara**) memakai
+> **RETURN** di permintaan, tetapi di Log Transaksi terbaca **BARU** dan stok yang
+> terpotong **Stok Barang Baru**. Penyebab & perbaikannya dibahas lengkap di
+> **`PERBAIKAN-JENIS-STOK.md`** (baca itu untuk langkah memperbaiki).
+
+Cek dulu apakah masih ada potongan yang tidak cocok:
+
+<!-- COPAS MULAI (CEK 3) -->
+```sql
+SELECT t.transaction_date, r.ticket_no, r.branch_name AS gerai,
+       i.sku, i.name AS barang, ti.qty,
+       COALESCE(NULLIF(ti.status_aset, ''), '(kosong=dianggap BARU)') AS status_aset,
+       l.code AS lokasi_terpotong,
+       CASE
+         WHEN upper(COALESCE(ti.status_aset, '')) LIKE '%UNREADY%' THEN 'STOK-UNREADY'
+         WHEN upper(COALESCE(ti.status_aset, '')) LIKE '%RETUR%'   THEN 'STOK-RETUR'
+         ELSE 'STOK-BARU'
+       END AS lokasi_seharusnya
+FROM inventory_transaction_items ti
+JOIN inventory_transactions t ON t.id = ti.transaction_id
+JOIN inventory_items i        ON i.id = ti.item_id
+LEFT JOIN locations l         ON l.id = t.source_location_id
+LEFT JOIN requests r          ON r.request_number = replace(t.reference, 'REQ-KIRIM/', '')
+WHERE t.type = 'out' AND t.status = 'posted'
+  AND t.reference LIKE 'REQ-KIRIM/%'
+  AND (CASE WHEN t.type = 'out' THEN l.code END)
+      IS DISTINCT FROM
+      (CASE
+         WHEN upper(COALESCE(ti.status_aset, '')) LIKE '%UNREADY%' THEN 'STOK-UNREADY'
+         WHEN upper(COALESCE(ti.status_aset, '')) LIKE '%RETUR%'   THEN 'STOK-RETUR'
+         ELSE 'STOK-BARU'
+       END)
+ORDER BY t.transaction_date, t.doc_number;
+```
+<!-- COPAS SELESAI (CEK 3) -->
+
+| Hasil | Arti |
+|---|---|
+| **0 baris** | ✅ semua potongan sudah sesuai jenis stoknya |
+| **ada baris** | ❌ masih ada yang salah (data lama) → jalankan `docs/sql/perbaiki_jenis_stok_semua.sql`, lalu cek lagi |
+
+Perhatikan: setelah koreksi, dokumen lama **tetap** tercatat memotong lokasi lama
+(sejarah tidak diubah) — sistem menambahkan transaksi **transfer koreksi** agar
+saldo tiap lokasi kembali benar, dan label **Status Aset** di dokumen lama ikut
+dibenahi. Kolom **Status Aset** di halaman Log Transaksi bisa dipakai untuk
+memverifikasi.

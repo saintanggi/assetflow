@@ -8,6 +8,7 @@ import {
   findDuplicateRowsInFile,
   groupKeyOf,
   kondisiOf,
+  kanonisAsetOf,
   parseDateText,
   parseQtyCell,
   parseSheetDate,
@@ -368,6 +369,16 @@ describe("util lain", () => {
     expect(kondisiOf("ASSET UNREADY")).toBe("STOK-UNREADY");
     expect(kondisiOf("ASSET BARU")).toBe("STOK-BARU");
     expect(kondisiOf("")).toBe("STOK-BARU");
+  });
+
+  it("kanonisAsetOf menghasilkan label kanonis yang cocok dengan lokasi stok", () => {
+    // Label yang disimpan ke request_items PASTI sesuai lokasi potongnya.
+    expect(kanonisAsetOf(kondisiOf("RETURN"))).toBe("ASSET RETUR");
+    expect(kanonisAsetOf(kondisiOf("ASSET RETURN"))).toBe("ASSET RETUR");
+    expect(kanonisAsetOf(kondisiOf("retur"))).toBe("ASSET RETUR");
+    expect(kanonisAsetOf(kondisiOf("UNREADY"))).toBe("UNREADY");
+    expect(kanonisAsetOf(kondisiOf(""))).toBe("ASSET BARU");
+    expect(kanonisAsetOf(kondisiOf("ASSET BARU"))).toBe("ASSET BARU");
   });
 
   it("mengelompokkan per tanggal + gerai + tiket", () => {

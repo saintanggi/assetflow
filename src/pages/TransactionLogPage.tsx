@@ -39,6 +39,8 @@ interface LogRow {
   itemName: string;
   resi: string;
   gerai: string;
+  /** Status aset kanonis barang pada transaksi ini (ASSET BARU / ASSET RETUR / UNREADY). */
+  statusAset: string;
   location: string;
   locationCode: string;
   jenisStokLabel: string;
@@ -109,16 +111,16 @@ export function TransactionLogPage() {
         }).filter(Boolean) as string[]
       )];
 
-      // Ambil resi & gerai per baris transaksi.
-      const itemDetail = new Map<string, { resi: string; gerai: string }>();
+      // Ambil resi, gerai & status aset per baris transaksi.
+      const itemDetail = new Map<string, { resi: string; gerai: string; statusAset: string }>();
       for (let i = 0; i < txIds.length; i += 100) {
         const { data: tis } = await supabase
           .from("inventory_transaction_items")
-          .select("transaction_id, item_id, resi, gerai")
+          .select("transaction_id, item_id, resi, gerai, status_aset")
           .in("transaction_id", txIds.slice(i, i + 100));
-        for (const t of (tis ?? []) as { transaction_id: string; item_id: string; resi: string | null; gerai: string | null }[]) {
+        for (const t of (tis ?? []) as { transaction_id: string; item_id: string; resi: string | null; gerai: string | null; status_aset: string | null }[]) {
           const k = `${t.transaction_id}|${t.item_id}`;
-          itemDetail.set(k, { resi: t.resi ?? "", gerai: t.gerai ?? "" });
+          itemDetail.set(k, { resi: t.resi ?? "", gerai: t.gerai ?? "", statusAset: t.status_aset ?? "" });
         }
       }
 
@@ -152,7 +154,7 @@ export function TransactionLogPage() {
         const it = (Array.isArray(r.inventory_items) ? r.inventory_items[0] : r.inventory_items) ?? null;
         const loc = (Array.isArray(r.locations) ? r.locations[0] : r.locations) ?? null;
         const itemId = r.item_id ?? "";
-        const det = itemDetail.get(`${r.transaction_id}|${itemId}`) ?? { resi: "", gerai: "" };
+        const det = itemDetail.get(`${r.transaction_id}|${itemId}`) ?? { resi: "", gerai: "", statusAset: "" };
         const m = tx?.reference?.match(/REQ-KIRIM\/(REQ-[\w-]+)/);
         const ticket = m ? ticketMap.get(m[1]) ?? m[1] : "";
         const locationCode = loc?.code ?? "";
@@ -174,6 +176,7 @@ export function TransactionLogPage() {
           itemName: it?.name ?? "",
           resi: det.resi,
           gerai: det.gerai,
+          statusAset: det.statusAset,
           location: loc ? `${loc.warehouses?.[0]?.name ?? ""} — ${loc.name}`.replace(/^ — /, "") : "",
           locationCode,
           jenisStokLabel: jenisInfo?.label ?? "",
@@ -278,6 +281,29 @@ export function TransactionLogPage() {
       },
     },
     {
+      header: "Status Aset",
+      accessorKey: "statusAset",
+      cell: ({ row }) => {
+        const s = row.original.statusAset;
+        if (!s) return <span className="text-ink-400">—</span>;
+        // Peringatan bila status aset barang tidak cocok dengan lokasi stoknya.
+        const lok = row.original.locationCode.toUpperCase();
+        const cocok =
+          (s.includes("RETUR") && lok.includes("RETUR")) ||
+          (s.includes("UNREADY") && lok.includes("UNREADY")) ||
+          (s.includes("BARU") && lok.includes("BARU"));
+        return (
+          <span
+            className={cocok ? "text-xs text-ink-500" : "text-xs font-semibold text-warn-600"}
+            title={cocok ? s : `Status aset "${s}" tidak cocok dengan lokasi ${row.original.locationCode} — periksa/koreksi`}
+          >
+            {s}
+            {!cocok && " ⚠"}
+          </span>
+        );
+      },
+    },
+    {
       header: "Gerai",
       accessorKey: "gerai",
       cell: ({ row }) => row.original.gerai || "—",
@@ -367,6 +393,7 @@ export function TransactionLogPage() {
         IN: r.qtyChange > 0 ? r.qtyChange : "",
         OUT: r.qtyChange < 0 ? Math.abs(r.qtyChange) : "",
         "Jenis Stok": r.jenisStokLabel,
+        "Status Aset": r.statusAset,
         Gerai: r.gerai,
         Lokasi: r.location,
         Keterangan: r.notes,

@@ -10,8 +10,8 @@
 
 | Blok | Dipakai di langkah | Ditempel di | Ukuran |
 |---|---|---|---|
-| **BLOK A** — tabel & fungsi database | Langkah 1 | Supabase → **SQL Editor** → New query → Run | 307 baris |
-| **BLOK B** — mesin sinkron (Edge Function) | Langkah 2 | Supabase → **Edge Functions** → Create function `sync-sheets` → Deploy | 1272 baris |
+| **BLOK A** — tabel & fungsi database | Langkah 1 | Supabase → **SQL Editor** → New query → Run | 338 baris |
+| **BLOK B** — mesin sinkron (Edge Function) | Langkah 2 | Supabase → **Edge Functions** → Create function `sync-sheets` → Deploy | 1335 baris |
 | **BLOK C** — jadwal otomatis tiap 15 menit | Langkah 4 | Supabase → **SQL Editor** → New query → Run (ganti 2 tulisan dulu) | 46 baris |
 
 **Alur singkat:** A dulu → B → (buka aplikasi: Tes koneksi, Simpan, Pratinjau, Sinkron sekarang) → C → Merge PR #4 → cek di `CEK-SINKRON.md`.
@@ -166,7 +166,10 @@ GRANT SELECT ON public.v_sheet_sync_recent TO authenticated;
 -- Edge Function `sync-sheets` berjalan dengan service_role (auth.uid() = NULL),
 -- sehingga RPC ship_request_items() yang memakai has_permission() tidak bisa
 -- dipakai. Fungsi ini isinya identik dengan ship_request_items versi terakhir
--- (20261015000028), hanya pengecekan izinnya ditambah is_service_role().
+-- (20261016000032 / multi-lokasi): stok dipotong per STATUS ASSET item
+-- (ASSET BARU -> STOK-BARU, ASSET RETUR/RETURN -> STOK-RETUR, UNREADY ->
+-- STOK-UNREADY), p_location_id hanya fallback. Pengecekan izin ditambah
+-- is_service_role() untuk Edge Function.
 
 CREATE OR REPLACE FUNCTION public.is_service_role()
 RETURNS boolean
@@ -196,6 +199,7 @@ DECLARE
   v_req_date    date;
   v_branch_name text;
   v_txn_id      uuid;
+  v_first_txn   uuid;
   v_line        jsonb;
   v_ri_id       uuid;
   v_qty         numeric;
@@ -206,6 +210,10 @@ DECLARE
   v_item_status text;
   v_status_aset text;
   v_norm_aset   text;
+  v_loc_baru    uuid;
+  v_loc_retur   uuid;
+  v_loc_unready uuid;
+  v_group_loc   uuid;
 BEGIN
   -- Dipakai Edge Function sinkronisasi (service_role) dan tetap aman untuk
   -- pengguna biasa karena hak aksesnya sama seperti ship_request_items.
@@ -231,20 +239,17 @@ BEGIN
     RAISE EXCEPTION 'Permintaan belum disetujui (status: %)', v_req_status;
   END IF;
 
-  INSERT INTO public.inventory_transactions (
-    type, status, transaction_date, source_location_id, notes, reference, created_by, posted_at
-  )
-  VALUES (
-    'out', 'posted', COALESCE(v_req_date, CURRENT_DATE), p_location_id, p_notes,
-    'REQ-KIRIM/' || v_req_number, auth.uid(), now()
-  )
-  RETURNING id INTO v_txn_id;
+  -- Lokasi stok per jenis (kode unik global). Fallback: p_location_id.
+  SELECT id INTO v_loc_baru    FROM public.locations WHERE code = 'STOK-BARU'    AND is_active LIMIT 1;
+  SELECT id INTO v_loc_retur   FROM public.locations WHERE code = 'STOK-RETUR'   AND is_active LIMIT 1;
+  SELECT id INTO v_loc_unready FROM public.locations WHERE code = 'STOK-UNREADY' AND is_active LIMIT 1;
 
   CREATE TEMP TABLE tmp_ship_lines (
     item_id     uuid,
     qty         numeric,
     resi        text,
-    status_aset text
+    status_aset text,
+    location_id uuid
   ) ON COMMIT DROP;
 
   FOR v_line IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
@@ -277,6 +282,13 @@ BEGIN
       ELSE 'ASSET BARU'
     END;
 
+    -- Lokasi potong mengikuti jenis stok item, bukan pilihan tunggal pemanggil.
+    v_group_loc := CASE v_norm_aset
+      WHEN 'ASSET RETUR' THEN COALESCE(v_loc_retur, p_location_id)
+      WHEN 'UNREADY'     THEN COALESCE(v_loc_unready, p_location_id)
+      ELSE COALESCE(v_loc_baru, p_location_id)
+    END;
+
     UPDATE public.request_items
        SET qty_shipped = qty_shipped + v_qty,
            resi        = COALESCE(v_resi, resi),
@@ -287,26 +299,43 @@ BEGIN
            updated_at  = now()
      WHERE id = v_ri_id;
 
-    INSERT INTO tmp_ship_lines VALUES (v_item_id, v_qty, v_resi, v_norm_aset);
+    INSERT INTO tmp_ship_lines VALUES (v_item_id, v_qty, v_resi, v_norm_aset, v_group_loc);
   END LOOP;
 
-  -- Agregasi per item_id (hindari pelanggaran uq_txn_item).
-  INSERT INTO public.inventory_transaction_items
-    (transaction_id, item_id, qty, notes, resi, gerai, status_aset)
-  SELECT
-    v_txn_id,
-    item_id,
-    SUM(qty),
-    'Kirim permintaan ' || v_req_number,
-    NULLIF(STRING_AGG(DISTINCT resi, ', ' ORDER BY resi), ''),
-    v_branch_name,
-    MAX(status_aset)
-  FROM tmp_ship_lines
-  GROUP BY item_id;
+  -- Satu transaksi OUT per lokasi: tiap jenis stok terpotong dari lokasi yang benar.
+  FOR v_group_loc IN SELECT DISTINCT location_id FROM tmp_ship_lines LOOP
+    INSERT INTO public.inventory_transactions (
+      type, status, transaction_date, source_location_id, notes, reference, created_by, posted_at
+    )
+    VALUES (
+      'out', 'posted', COALESCE(v_req_date, CURRENT_DATE), v_group_loc, p_notes,
+      'REQ-KIRIM/' || v_req_number, auth.uid(), now()
+    )
+    RETURNING id INTO v_txn_id;
+
+    IF v_first_txn IS NULL THEN
+      v_first_txn := v_txn_id;
+    END IF;
+
+    -- Agregasi per item_id dalam satu transaksi (hindari pelanggaran uq_txn_item).
+    INSERT INTO public.inventory_transaction_items
+      (transaction_id, item_id, qty, notes, resi, gerai, status_aset)
+    SELECT
+      v_txn_id,
+      item_id,
+      SUM(qty),
+      'Kirim permintaan ' || v_req_number,
+      NULLIF(STRING_AGG(DISTINCT resi, ', ' ORDER BY resi), ''),
+      v_branch_name,
+      MAX(status_aset)
+    FROM tmp_ship_lines
+    WHERE location_id = v_group_loc
+    GROUP BY item_id;
+
+    PERFORM public._apply_posted_effects(v_txn_id, p_allow_negative);
+  END LOOP;
 
   DROP TABLE tmp_ship_lines;
-
-  PERFORM public._apply_posted_effects(v_txn_id, p_allow_negative);
 
   -- Update status header request secara akurat:
   -- 'selesai' hanya jika seluruh baris item sudah 'terkirim' atau 'ditolak'.
@@ -327,12 +356,14 @@ BEGIN
          updated_at = now()
    WHERE id = p_request_id;
 
-  RETURN v_txn_id;
+  RETURN v_first_txn;
 END;
 $$;
+
 GRANT EXECUTE ON FUNCTION public.sync_ship_request_items(uuid, uuid, jsonb, text, boolean)
   TO service_role;
-REVOKE ALL ON FUNCTION public.sync_ship_request_items(uuid, uuid, jsonb, text, boolean) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sync_ship_request_items(uuid, uuid, jsonb, text, boolean)
+  FROM PUBLIC, anon, authenticated;
 ```
 <!-- COPAS SELESAI (BLOK A) -->
 
@@ -741,6 +772,25 @@ export function kondisiOf(statusAset: string | null | undefined): KodeKondisi {
 export const asetLabelOf = (kode: KodeKondisi): string =>
   kode === "STOK-RETUR" ? "ASSET RETUR" : kode === "STOK-UNREADY" ? "ASSET UNREADY" : "ASSET BARU";
 
+/**
+ * Nilai Status Aset KANONIS yang disimpan ke `request_items.status_aset`
+ * (harus salah satu dari: ASSET BARU / ASSET RETUR / UNREADY).
+ *
+ * Dipakai saat menulis baris hasil import dokumen pengiriman supaya label yang
+ * tersimpan selalu kanonis — bukan teks mentah file (mis. "RETURN",
+ * "ASSET RETURN", "retur"). Label kanonis membuat:
+ *  - RPC pengiriman memotong lokasi yang benar (STOK-RETUR, bukan STOK-BARU),
+ *  - Log Transaksi menampilkan jenis yang konsisten,
+ *  - koreksi jenis stok (admin_correct_txn_item) idempoten.
+ * Sumber kebenarannya kode kondisi lokasi hasil agregasi (`kondisiOf`), jadi
+ * label yang disimpan PASTI sama dengan lokasi stok yang dipotong.
+ */
+export function kanonisAsetOf(kode: KodeKondisi): "ASSET BARU" | "ASSET RETUR" | "UNREADY" {
+  if (kode === "STOK-RETUR") return "ASSET RETUR";
+  if (kode === "STOK-UNREADY") return "UNREADY";
+  return "ASSET BARU";
+}
+
 export function groupKeyOf(row: ParsedShippingRow): string {
   return row.ticket
     ? `${row.date}|${row.branch}|${row.ticket}`
@@ -810,10 +860,54 @@ export function allocateBlockUnits(
   return alloc;
 }
 
+/**
+ * Propagasi STATUS ASSET yang di-merge di sheet.
+ *
+ * Seperti kolom QTY, kolom STATUS ASSET umumnya ditulis sekali (sel merge) untuk
+ * satu blok barang berurutan — baris-baris lanjutannya terbaca kosong ("").
+ * Tanpa propagasi, baris lanjutan digolongkan `kondisiOf("")` = STOK-BARU
+ * sehingga stok terpotong dari lokasi yang salah.
+ *
+ * Aturan: dalam satu blok berurutan (nama barang sama & tanpa angka QTY baru,
+ * persis definisi blok di `allocateBlockUnits`), bila hanya ada SATU nilai
+ * STATUS ASSET tak-kosong yang berbeda, baris kosong mewarisi nilai itu.
+ * Blok yang memang berisi beberapa status eksplisit tidak diubah.
+ */
+export function propagateBlockStatusAset(rows: ParsedShippingRow[]): void {
+  const sameItem = (a: ParsedShippingRow, b: ParsedShippingRow) =>
+    a.itemName.trim().toUpperCase() === b.itemName.trim().toUpperCase();
+
+  let start = 0;
+  const flush = (end: number) => {
+    const vals = new Set<string>();
+    for (let i = start; i < end; i++) {
+      const s = rows[i].statusAset;
+      if (s !== "") vals.add(s);
+    }
+    if (vals.size === 1) {
+      const v = [...vals][0];
+      for (let i = start; i < end; i++) {
+        if (rows[i].statusAset === "") rows[i].statusAset = v;
+      }
+    }
+    start = end;
+  };
+
+  for (let i = 1; i <= rows.length; i++) {
+    const cur = rows[i];
+    const continues =
+      cur !== undefined && !cur.qtyExplicit && sameItem(rows[i - 1], cur);
+    if (!continues) flush(i);
+  }
+}
+
 export function aggregateGroup(
   rows: ParsedShippingRow[],
   itemKeyOf: (row: ParsedShippingRow) => string,
 ): AggLine[] {
+  // STATUS ASSET yang di-merge per blok: baris lanjutan yang kosong mewarisi
+  // nilai bloknya supaya tidak salah digolongkan sebagai STOK-BARU.
+  propagateBlockStatusAset(rows);
   const alloc = allocateBlockUnits(rows);
 
   // Kumpulkan per barang + kondisi aset + status terkirim.
@@ -1341,7 +1435,7 @@ async function syncSource(
         qty_shipped: 0,
         barcode: [...new Set(line.rows.map((x) => x.barcode).filter(Boolean))].join("\n") || null,
         item_type: line.rows[0]?.typeBarang || null,
-        status_aset: line.rows[0]?.statusAset || null,
+        status_aset: kanonisAsetOf(line.kodeKondisi),
         resi: [...new Set(line.rows.map((x) => x.resi).filter(Boolean))].join("\n") || null,
         item_status: line.isPending ? "pending_sebagian" : "disetujui",
         notes: [...new Set(

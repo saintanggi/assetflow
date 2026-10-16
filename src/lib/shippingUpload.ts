@@ -340,6 +340,25 @@ export function kondisiOf(statusAset: string | null | undefined): KodeKondisi {
 export const asetLabelOf = (kode: KodeKondisi): string =>
   kode === "STOK-RETUR" ? "ASSET RETUR" : kode === "STOK-UNREADY" ? "ASSET UNREADY" : "ASSET BARU";
 
+/**
+ * Nilai Status Aset KANONIS yang disimpan ke `request_items.status_aset`
+ * (harus salah satu dari: ASSET BARU / ASSET RETUR / UNREADY).
+ *
+ * Dipakai saat menulis baris hasil import dokumen pengiriman supaya label yang
+ * tersimpan selalu kanonis — bukan teks mentah file (mis. "RETURN",
+ * "ASSET RETURN", "retur"). Label kanonis membuat:
+ *  - RPC pengiriman memotong lokasi yang benar (STOK-RETUR, bukan STOK-BARU),
+ *  - Log Transaksi menampilkan jenis yang konsisten,
+ *  - koreksi jenis stok (admin_correct_txn_item) idempoten.
+ * Sumber kebenarannya kode kondisi lokasi hasil agregasi (`kondisiOf`), jadi
+ * label yang disimpan PASTI sama dengan lokasi stok yang dipotong.
+ */
+export function kanonisAsetOf(kode: KodeKondisi): "ASSET BARU" | "ASSET RETUR" | "UNREADY" {
+  if (kode === "STOK-RETUR") return "ASSET RETUR";
+  if (kode === "STOK-UNREADY") return "UNREADY";
+  return "ASSET BARU";
+}
+
 export function groupKeyOf(row: ParsedShippingRow): string {
   return row.ticket
     ? `${row.date}|${row.branch}|${row.ticket}`

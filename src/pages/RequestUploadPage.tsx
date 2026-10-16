@@ -22,6 +22,7 @@ import {
   parseWorkbook,
   pickNewestSheet,
   applySheetDate,
+  kanonisAsetOf,
   type AggLine,
   type DupIndex,
   type KodeKondisi,
@@ -420,7 +421,7 @@ export function RequestUploadPage() {
             qty_shipped: 0,
             barcode: [...new Set(line.rows.map((x) => x.barcode).filter(Boolean))].join("\n") || null,
             item_type: line.rows[0].typeBarang || null,
-            status_aset: line.rows[0].statusAset || null,
+            status_aset: kanonisAsetOf(line.kodeKondisi),
             resi: [...new Set(line.rows.map((x) => x.resi).filter(Boolean))].join("\n") || null,
             item_status: line.isPending ? "pending_sebagian" : "disetujui",
             notes: [...new Set(line.rows.map((x) =>
