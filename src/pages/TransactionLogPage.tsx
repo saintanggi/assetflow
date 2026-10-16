@@ -7,6 +7,7 @@ import { formatDate, formatQty } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
 import { PageHeader } from "../components/PageHeader";
 import { DataTable } from "../components/DataTable";
+import { Badge } from "../components/ui/badge";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Select } from "../components/ui/select";
@@ -27,7 +28,18 @@ interface LogRow {
   resi: string;
   gerai: string;
   location: string;
+  locationCode: string;
+  jenisStokLabel: string;
   userName: string;
+}
+
+/** Klasifikasi jenis stok (Baru / Retur / Unready) dari kode lokasi. */
+function classifyJenisStok(code: string): { label: string; variant: "success" | "warning" | "destructive" } | null {
+  const c = (code ?? "").toUpperCase();
+  if (c.includes("RETUR")) return { label: "Retur", variant: "warning" };
+  if (c.includes("UNREADY")) return { label: "Unready", variant: "destructive" };
+  if (c.includes("BARU")) return { label: "Baru", variant: "success" };
+  return null;
 }
 
 export function TransactionLogPage() {
@@ -36,6 +48,7 @@ export function TransactionLogPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [jenis, setJenis] = useState("");
+  const [jenisStok, setJenisStok] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -124,6 +137,8 @@ export function TransactionLogPage() {
         const det = itemDetail.get(`${r.transaction_id}|${itemId}`) ?? { resi: "", gerai: "" };
         const m = tx?.reference?.match(/REQ-KIRIM\/(REQ-[\w-]+)/);
         const ticket = m ? ticketMap.get(m[1]) ?? m[1] : "";
+        const locationCode = loc?.code ?? "";
+        const jenisInfo = classifyJenisStok(locationCode);
         return {
           id: r.id,
           qtyChange: Number(r.qty_change),
@@ -140,6 +155,8 @@ export function TransactionLogPage() {
           resi: det.resi,
           gerai: det.gerai,
           location: loc ? `${loc.warehouses?.[0]?.name ?? ""} — ${loc.name}`.replace(/^ — /, "") : "",
+          locationCode,
+          jenisStokLabel: jenisInfo?.label ?? "",
           userName: tx?.created_by ? userMap.get(tx.created_by) ?? tx.created_by.slice(0, 8) : "—",
         };
       });
@@ -162,9 +179,12 @@ export function TransactionLogPage() {
       if (dateTo && r.txnDate > dateTo) return false;
       if (jenis === "in" && r.qtyChange <= 0) return false;
       if (jenis === "out" && r.qtyChange >= 0) return false;
+      if (jenisStok === "baru" && !r.locationCode.toUpperCase().includes("BARU")) return false;
+      if (jenisStok === "retur" && !r.locationCode.toUpperCase().includes("RETUR")) return false;
+      if (jenisStok === "unready" && !r.locationCode.toUpperCase().includes("UNREADY")) return false;
       return true;
     });
-  }, [rows, dateFrom, dateTo, jenis]);
+  }, [rows, dateFrom, dateTo, jenis, jenisStok]);
 
   const totalIn = useMemo(
     () => filtered.filter((r) => r.qtyChange > 0).reduce((s, r) => s + r.qtyChange, 0),
@@ -222,6 +242,22 @@ export function TransactionLogPage() {
         ),
     },
     {
+      header: "Jenis Stok",
+      accessorKey: "jenisStokLabel",
+      cell: ({ row }) => {
+        const info = classifyJenisStok(row.original.locationCode);
+        return info ? (
+          <Badge variant={info.variant} title={row.original.location}>
+            {info.label}
+          </Badge>
+        ) : (
+          <span className="text-ink-400" title={row.original.location}>
+            —
+          </span>
+        );
+      },
+    },
+    {
       header: "Gerai",
       accessorKey: "gerai",
       cell: ({ row }) => row.original.gerai || "—",
@@ -258,6 +294,7 @@ export function TransactionLogPage() {
         Barang: r.itemName,
         IN: r.qtyChange > 0 ? r.qtyChange : "",
         OUT: r.qtyChange < 0 ? Math.abs(r.qtyChange) : "",
+        "Jenis Stok": r.jenisStokLabel,
         Gerai: r.gerai,
         Lokasi: r.location,
         Keterangan: r.notes,
@@ -318,21 +355,35 @@ export function TransactionLogPage() {
               onChange={(e) => setDateTo(e.target.value)}
               className="h-9 rounded-lg border border-ink-200 bg-ink-100 px-3 text-sm text-ink-800"
             />
-            {(dateFrom || dateTo || jenis) && (
-              <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setJenis(""); }}>
+            {(dateFrom || dateTo || jenis || jenisStok) && (
+              <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setJenis(""); setJenisStok(""); }}>
                 Reset
               </Button>
             )}
-            <div className="ml-auto w-48">
-              <Select
-                placeholder="Semua IN & OUT"
-                value={jenis}
-                onValueChange={setJenis}
-                options={[
-                  { value: "in", label: "IN saja" },
-                  { value: "out", label: "OUT saja" },
-                ]}
-              />
+            <div className="ml-auto flex gap-3">
+              <div className="w-44">
+                <Select
+                  placeholder="Jenis stok: Semua"
+                  value={jenisStok}
+                  onValueChange={setJenisStok}
+                  options={[
+                    { value: "baru", label: "Stok Baru" },
+                    { value: "retur", label: "Stok Retur" },
+                    { value: "unready", label: "Stok Unready" },
+                  ]}
+                />
+              </div>
+              <div className="w-48">
+                <Select
+                  placeholder="Semua IN & OUT"
+                  value={jenis}
+                  onValueChange={setJenis}
+                  options={[
+                    { value: "in", label: "IN saja" },
+                    { value: "out", label: "OUT saja" },
+                  ]}
+                />
+              </div>
             </div>
           </div>
 
@@ -340,7 +391,7 @@ export function TransactionLogPage() {
             columns={columns}
             data={filtered}
             loading={loading}
-            searchPlaceholder="Cari tanggal, tiket, resi, barang, gerai…"
+            searchPlaceholder="Cari tanggal, tiket, resi, barang, gerai, jenis stok…"
             emptyTitle="Tidak ada log"
             emptyDescription="Belum ada pergerakan barang pada filter saat ini."
           />
