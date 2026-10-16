@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Download } from "lucide-react";
+import { Download, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 import { formatDate, formatQty } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
 import { PageHeader } from "../components/PageHeader";
@@ -11,9 +12,20 @@ import { Badge } from "../components/ui/badge";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Select } from "../components/ui/select";
+import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 
 interface LogRow {
   id: string;
+  transactionId: string;
+  itemId: string;
   qtyChange: number;
   qtyAfter: number;
   createdAt: string;
@@ -43,12 +55,18 @@ function classifyJenisStok(code: string): { label: string; variant: "success" | 
 }
 
 export function TransactionLogPage() {
+  const { isSuperAdmin } = useAuth();
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [jenis, setJenis] = useState("");
   const [jenisStok, setJenisStok] = useState("");
+  // Koreksi jenis stok (khusus super admin).
+  const [editRow, setEditRow] = useState<LogRow | null>(null);
+  const [editJenis, setEditJenis] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -141,6 +159,8 @@ export function TransactionLogPage() {
         const jenisInfo = classifyJenisStok(locationCode);
         return {
           id: r.id,
+          transactionId: r.transaction_id,
+          itemId: r.item_id,
           qtyChange: Number(r.qty_change),
           qtyAfter: Number(r.qty_after),
           createdAt: r.created_at,
@@ -276,7 +296,59 @@ export function TransactionLogPage() {
       accessorKey: "userName",
       cell: ({ row }) => row.original.userName,
     },
+    ...(isSuperAdmin
+      ? [
+          {
+            header: "Aksi",
+            id: "aksi",
+            cell: ({ row }: { row: { original: LogRow } }) => (
+              <Button
+                variant="outline"
+                size="sm"
+                title="Koreksi jenis stok"
+                onClick={() => {
+                  setEditRow(row.original);
+                  setEditJenis("");
+                  setEditReason("");
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            ),
+          } as ColumnDef<LogRow, unknown>,
+        ]
+      : []),
   ];
+
+  const saveCorrection = async () => {
+    if (!editRow || !editJenis) {
+      toast.error("Pilih jenis stok yang benar.");
+      return;
+    }
+    setEditBusy(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_correct_txn_item", {
+        p_transaction_id: editRow.transactionId,
+        p_item_id: editRow.itemId,
+        p_new_status_aset:
+          editJenis === "retur" ? "ASSET RETUR" : editJenis === "unready" ? "UNREADY" : "ASSET BARU",
+        p_reason: editReason.trim() || null,
+      });
+      if (error) throw new Error(error.message);
+      const res = data as { moved: boolean; doc: string | null; old_status: string; new_status: string; note?: string } | null;
+      toast.success(
+        res?.moved
+          ? `Jenis stok dikoreksi (${res.old_status} → ${res.new_status}). Stok antar lokasi disesuaikan.`
+          : "Jenis stok diperbarui."
+      );
+      setEditRow(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal mengoreksi.");
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   const handleExport = () => {
     if (filtered.length === 0) {
@@ -397,6 +469,61 @@ export function TransactionLogPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Dialog koreksi jenis stok (khusus super admin) */}
+      <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
+        <DialogHeader>
+          <DialogTitle>Koreksi Jenis Stok</DialogTitle>
+          <DialogDescription>
+            {editRow && (
+              <>
+                {editRow.itemName} ({editRow.sku}) — {editRow.docNumber}
+                <br />
+                Jenis saat ini: <b>{editRow.jenisStokLabel || "—"}</b> · Lokasi: {editRow.location}
+              </>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>Jenis stok yang benar</Label>
+            <div className="mt-1">
+              <Select
+                placeholder="Pilih jenis stok…"
+                value={editJenis}
+                onValueChange={setEditJenis}
+                options={[
+                  { value: "baru", label: "Baru (Stok Barang Baru)" },
+                  { value: "retur", label: "Retur (Stok Barang Retur)" },
+                  { value: "unready", label: "Unready (Stok Unready)" },
+                ]}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Alasan koreksi</Label>
+            <Textarea
+              className="mt-1"
+              rows={2}
+              placeholder="cth: seharusnya ASSET RETUR sesuai permintaan A2610140956"
+              value={editReason}
+              onChange={(e) => setEditReason(e.target.value)}
+            />
+          </div>
+          <p className="text-xs text-ink-500">
+            Menyimpan akan memindahkan stok antar lokasi di database agar saldo benar,
+            dan dicatat sebagai transaksi koreksi.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditRow(null)} disabled={editBusy}>
+            Batal
+          </Button>
+          <Button onClick={saveCorrection} disabled={editBusy || !editJenis}>
+            {editBusy ? "Menyimpan…" : "Simpan Koreksi"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }
