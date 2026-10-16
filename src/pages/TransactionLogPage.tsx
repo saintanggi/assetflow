@@ -42,6 +42,9 @@ interface LogRow {
   location: string;
   locationCode: string;
   jenisStokLabel: string;
+  statusAset: string;
+  requestStatusAset: string;
+  corrected: boolean;
   userName: string;
 }
 
@@ -110,27 +113,83 @@ export function TransactionLogPage() {
       )];
 
       // Ambil resi & gerai per baris transaksi.
-      const itemDetail = new Map<string, { resi: string; gerai: string }>();
+      const itemDetail = new Map<string, { resi: string; gerai: string; statusAset: string }>();
       for (let i = 0; i < txIds.length; i += 100) {
         const { data: tis } = await supabase
           .from("inventory_transaction_items")
-          .select("transaction_id, item_id, resi, gerai")
+          .select("transaction_id, item_id, resi, gerai, status_aset")
           .in("transaction_id", txIds.slice(i, i + 100));
-        for (const t of (tis ?? []) as { transaction_id: string; item_id: string; resi: string | null; gerai: string | null }[]) {
+        for (const t of (tis ?? []) as {
+          transaction_id: string;
+          item_id: string;
+          resi: string | null;
+          gerai: string | null;
+          status_aset: string | null;
+        }[]) {
           const k = `${t.transaction_id}|${t.item_id}`;
-          itemDetail.set(k, { resi: t.resi ?? "", gerai: t.gerai ?? "" });
+          itemDetail.set(k, {
+            resi: t.resi ?? "",
+            gerai: t.gerai ?? "",
+            statusAset: t.status_aset ?? "",
+          });
         }
       }
 
       // Tiket dari nomor permintaan.
       const ticketMap = new Map<string, string>();
+      const requestIdMap = new Map<string, string>();
       for (let i = 0; i < reqNums.length; i += 100) {
         const { data: reqs } = await supabase
           .from("requests")
-          .select("request_number, ticket_no")
+          .select("id, request_number, ticket_no")
           .in("request_number", reqNums.slice(i, i + 100));
-        for (const q of (reqs ?? []) as { request_number: string; ticket_no: string }[])
+        for (const q of (reqs ?? []) as { id: string; request_number: string; ticket_no: string }[]) {
           ticketMap.set(q.request_number, q.ticket_no);
+          requestIdMap.set(q.request_number, q.id);
+        }
+      }
+
+      // Status dari baris permintaan adalah sumber acuan. Ini juga mengungkap
+      // transaksi lama yang label transaksi DAN lokasi potongnya sama-sama salah.
+      const requestStatusMap = new Map<string, string | null>();
+      const requestIds = [...requestIdMap.values()];
+      for (let i = 0; i < requestIds.length; i += 100) {
+        const { data: requestItems } = await supabase
+          .from("request_items")
+          .select("request_id, item_id, status_aset")
+          .in("request_id", requestIds.slice(i, i + 100));
+        for (const item of (requestItems ?? []) as {
+          request_id: string;
+          item_id: string;
+          status_aset: string | null;
+        }[]) {
+          const key = `${item.request_id}|${item.item_id}`;
+          const previous = requestStatusMap.get(key);
+          if (previous === undefined) requestStatusMap.set(key, item.status_aset);
+          else if (previous !== item.status_aset) requestStatusMap.set(key, null);
+        }
+      }
+
+      // Tandai pengiriman yang sudah punya transaksi koreksi stok. Ledger asal tetap
+      // menyimpan lokasi historis, tetapi status aset hasil koreksi tetap ditampilkan.
+      const correctedTransactionIds = new Set<string>();
+      const shipmentIds = raw
+        .filter((r) => {
+          const tx = Array.isArray(r.inventory_transactions) ? r.inventory_transactions[0] : r.inventory_transactions;
+          return tx?.reference?.startsWith("REQ-KIRIM/");
+        })
+        .map((r) => r.transaction_id);
+      const correctionRefs = [...new Set(shipmentIds)].map((id) => `KOREKSI-ADMIN/${id}`);
+      for (let i = 0; i < correctionRefs.length; i += 100) {
+        const { data: corrections, error: correctionErr } = await supabase
+          .from("inventory_transactions")
+          .select("reference")
+          .in("reference", correctionRefs.slice(i, i + 100));
+        if (correctionErr) throw new Error(correctionErr.message);
+        for (const correction of (corrections ?? []) as { reference: string | null }[]) {
+          const originalId = correction.reference?.replace(/^KOREKSI-ADMIN\//, "");
+          if (originalId) correctedTransactionIds.add(originalId);
+        }
       }
 
       // Nama user (profiles + fallback user_accounts).
@@ -152,9 +211,14 @@ export function TransactionLogPage() {
         const it = (Array.isArray(r.inventory_items) ? r.inventory_items[0] : r.inventory_items) ?? null;
         const loc = (Array.isArray(r.locations) ? r.locations[0] : r.locations) ?? null;
         const itemId = r.item_id ?? "";
-        const det = itemDetail.get(`${r.transaction_id}|${itemId}`) ?? { resi: "", gerai: "" };
+        const det = itemDetail.get(`${r.transaction_id}|${itemId}`) ?? { resi: "", gerai: "", statusAset: "" };
         const m = tx?.reference?.match(/REQ-KIRIM\/(REQ-[\w-]+)/);
         const ticket = m ? ticketMap.get(m[1]) ?? m[1] : "";
+        const requestId = m ? requestIdMap.get(m[1]) : undefined;
+        const requestStatus = requestId ? requestStatusMap.get(`${requestId}|${itemId}`) : null;
+        // Status yang sudah dikoreksi pada transaksi harus menjadi nilai utama.
+        // Status permintaan disimpan terpisah sebagai pembanding, jangan menimpanya.
+        const statusAset = det.statusAset || requestStatus || "";
         const locationCode = loc?.code ?? "";
         const jenisInfo = classifyJenisStok(locationCode);
         return {
@@ -177,6 +241,9 @@ export function TransactionLogPage() {
           location: loc ? `${loc.warehouses?.[0]?.name ?? ""} — ${loc.name}`.replace(/^ — /, "") : "",
           locationCode,
           jenisStokLabel: jenisInfo?.label ?? "",
+          statusAset,
+          requestStatusAset: requestStatus ?? "",
+          corrected: correctedTransactionIds.has(r.transaction_id),
           userName: tx?.created_by ? userMap.get(tx.created_by) ?? tx.created_by.slice(0, 8) : "—",
         };
       });
@@ -199,9 +266,11 @@ export function TransactionLogPage() {
       if (dateTo && r.txnDate > dateTo) return false;
       if (jenis === "in" && r.qtyChange <= 0) return false;
       if (jenis === "out" && r.qtyChange >= 0) return false;
-      if (jenisStok === "baru" && !r.locationCode.toUpperCase().includes("BARU")) return false;
-      if (jenisStok === "retur" && !r.locationCode.toUpperCase().includes("RETUR")) return false;
-      if (jenisStok === "unready" && !r.locationCode.toUpperCase().includes("UNREADY")) return false;
+      const actualCode = r.locationCode.toUpperCase();
+      const assetStatus = `${r.statusAset} ${r.requestStatusAset}`.toUpperCase();
+      if (jenisStok === "baru" && !actualCode.includes("BARU") && !assetStatus.includes("BARU")) return false;
+      if (jenisStok === "retur" && !actualCode.includes("RETUR") && !assetStatus.includes("RETUR") && !assetStatus.includes("RETURN")) return false;
+      if (jenisStok === "unready" && !actualCode.includes("UNREADY") && !assetStatus.includes("UNREADY")) return false;
       return true;
     });
   }, [rows, dateFrom, dateTo, jenis, jenisStok]);
@@ -265,11 +334,39 @@ export function TransactionLogPage() {
       header: "Jenis Stok",
       accessorKey: "jenisStokLabel",
       cell: ({ row }) => {
-        const info = classifyJenisStok(row.original.locationCode);
+        const actual = classifyJenisStok(row.original.locationCode);
+        const recorded = classifyJenisStok(row.original.statusAset);
+        const requested = classifyJenisStok(row.original.requestStatusAset);
+        const isRequestShipment = row.original.reference.startsWith("REQ-KIRIM/");
+        const statusMismatch = Boolean(
+          isRequestShipment && requested && recorded && requested.label !== recorded.label
+        );
+        const locationMismatch = Boolean(
+          isRequestShipment && !row.original.corrected && recorded && actual && recorded.label !== actual.label
+        );
+        const mismatch = statusMismatch || locationMismatch;
+        const info = recorded ?? requested ?? actual;
         return info ? (
-          <Badge variant={info.variant} title={row.original.location}>
-            {info.label}
-          </Badge>
+          <div className="flex flex-col items-start gap-1">
+            <Badge variant={mismatch ? "destructive" : info.variant} title={`Status transaksi: ${row.original.statusAset || info.label}; status permintaan: ${row.original.requestStatusAset || "—"}; lokasi ledger: ${row.original.location}`}>
+              {info.label}
+            </Badge>
+            {statusMismatch && (
+              <span className="text-xs font-medium text-danger-700">
+                Permintaan: {requested?.label ?? row.original.requestStatusAset} (tidak sesuai)
+              </span>
+            )}
+            {!statusMismatch && locationMismatch && (
+              <span className="text-xs font-medium text-danger-700" title="Lokasi ledger historis berbeda dari status aset">
+                Lokasi: {actual?.label ?? "—"} (perlu koreksi)
+              </span>
+            )}
+            {row.original.corrected && (
+              <span className="text-xs text-ok-700" title="Ada transaksi transfer koreksi untuk pengiriman ini">
+                Koreksi stok tercatat
+              </span>
+            )}
+          </div>
         ) : (
           <span className="text-ink-400" title={row.original.location}>
             —
@@ -308,7 +405,16 @@ export function TransactionLogPage() {
                 title="Koreksi jenis stok"
                 onClick={() => {
                   setEditRow(row.original);
-                  setEditJenis("");
+                  const current = (row.original.requestStatusAset || row.original.statusAset).toUpperCase();
+                  setEditJenis(
+                    current.includes("UNREADY")
+                      ? "unready"
+                      : current.includes("RETUR") || current.includes("RETURN")
+                        ? "retur"
+                        : current.includes("BARU") || current.includes("NEW")
+                          ? "baru"
+                          : ""
+                  );
                   setEditReason("");
                 }}
               >
@@ -366,7 +472,9 @@ export function TransactionLogPage() {
         Barang: r.itemName,
         IN: r.qtyChange > 0 ? r.qtyChange : "",
         OUT: r.qtyChange < 0 ? Math.abs(r.qtyChange) : "",
-        "Jenis Stok": r.jenisStokLabel,
+        "Status Aset Transaksi": r.statusAset,
+        "Status Aset Permintaan": r.requestStatusAset,
+        "Jenis Stok / Lokasi Aktual": r.jenisStokLabel,
         Gerai: r.gerai,
         Lokasi: r.location,
         Keterangan: r.notes,
@@ -479,7 +587,9 @@ export function TransactionLogPage() {
               <>
                 {editRow.itemName} ({editRow.sku}) — {editRow.docNumber}
                 <br />
-                Jenis saat ini: <b>{editRow.jenisStokLabel || "—"}</b> · Lokasi: {editRow.location}
+                Status permintaan: <b>{editRow.requestStatusAset || "—"}</b> · status yang tercatat di transaksi: <b>{editRow.statusAset || editRow.jenisStokLabel || "—"}</b>
+                <br />
+                Lokasi ledger asal: <b>{editRow.locationCode || "—"}</b> · {editRow.location}
               </>
             )}
           </DialogDescription>

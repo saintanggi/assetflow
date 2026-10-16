@@ -26,6 +26,24 @@ Aturan yang dipakai (sama dengan template dokumen pengiriman):
    - `20261015000029_sheet_sync.sql` — tabel konfigurasi + riwayat.
    - `20261015000030_sheet_sync_functions.sql` — fungsi `sync_ship_request_items`
      (memakai hak `service_role`, karena Edge Function berjalan tanpa user login).
+   - `20261016000034_fix_sync_ship_asset_condition.sql` — pastikan pengiriman manual maupun
+     sinkronisasi campuran ASSET BARU/RETURN/UNREADY dipotong dari lokasi dan dicatat per
+     jenis aset yang benar. Fungsi akan gagal dengan jelas bila lokasi kondisi belum ada,
+     bukan fallback memotong stok kondisi lain.
+   - `20261016000035_admin_delete_request_and_transaction.sql` — penghapusan permintaan atau
+     transaksi oleh Super Admin menghapus ledger terkait dan mengembalikan saldo bersih tanpa
+     membuat transaksi IN/OUT pembalik.
+   - `20261016000036_fix_admin_correct_txn_item_idempotent.sql` — pastikan koreksi jenis aset
+     langsung terlihat di Log Transaksi dan koreksi berulang tidak membuat transfer stok ganda.
+
+   Untuk deployment yang dikelola lewat Dashboard SQL Editor, salinan migration tersedia di
+   `docs/sql/fix_sync_ship_asset_condition.sql`,
+   `docs/sql/admin_delete_request_and_transaction.sql`, dan
+   `docs/sql/fix_admin_correct_txn_item.sql`. Untuk memeriksa transaksi lama tanpa
+   mengubah data, jalankan `docs/sql/audit_asset_condition_mismatch.sql`; koreksi kandidat
+   melalui aksi pensil di Log Transaksi sebagai Super Admin agar penyesuaian stok tercatat
+   sebagai transaksi transfer audit. Migration perbaikan status memperbaiki transaksi baru,
+   bukan histori transaksi lama.
 
 ## 2. Deploy Edge Function
 
