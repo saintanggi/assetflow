@@ -461,10 +461,54 @@ export function allocateBlockUnits(
   return alloc;
 }
 
+/**
+ * Propagasi STATUS ASSET yang di-merge di sheet.
+ *
+ * Seperti kolom QTY, kolom STATUS ASSET umumnya ditulis sekali (sel merge) untuk
+ * satu blok barang berurutan — baris-baris lanjutannya terbaca kosong ("").
+ * Tanpa propagasi, baris lanjutan digolongkan `kondisiOf("")` = STOK-BARU
+ * sehingga stok terpotong dari lokasi yang salah.
+ *
+ * Aturan: dalam satu blok berurutan (nama barang sama & tanpa angka QTY baru,
+ * persis definisi blok di `allocateBlockUnits`), bila hanya ada SATU nilai
+ * STATUS ASSET tak-kosong yang berbeda, baris kosong mewarisi nilai itu.
+ * Blok yang memang berisi beberapa status eksplisit tidak diubah.
+ */
+export function propagateBlockStatusAset(rows: ParsedShippingRow[]): void {
+  const sameItem = (a: ParsedShippingRow, b: ParsedShippingRow) =>
+    a.itemName.trim().toUpperCase() === b.itemName.trim().toUpperCase();
+
+  let start = 0;
+  const flush = (end: number) => {
+    const vals = new Set<string>();
+    for (let i = start; i < end; i++) {
+      const s = rows[i].statusAset;
+      if (s !== "") vals.add(s);
+    }
+    if (vals.size === 1) {
+      const v = [...vals][0];
+      for (let i = start; i < end; i++) {
+        if (rows[i].statusAset === "") rows[i].statusAset = v;
+      }
+    }
+    start = end;
+  };
+
+  for (let i = 1; i <= rows.length; i++) {
+    const cur = rows[i];
+    const continues =
+      cur !== undefined && !cur.qtyExplicit && sameItem(rows[i - 1], cur);
+    if (!continues) flush(i);
+  }
+}
+
 export function aggregateGroup(
   rows: ParsedShippingRow[],
   itemKeyOf: (row: ParsedShippingRow) => string,
 ): AggLine[] {
+  // STATUS ASSET yang di-merge per blok: baris lanjutan yang kosong mewarisi
+  // nilai bloknya supaya tidak salah digolongkan sebagai STOK-BARU.
+  propagateBlockStatusAset(rows);
   const alloc = allocateBlockUnits(rows);
 
   // Kumpulkan per barang + kondisi aset + status terkirim.

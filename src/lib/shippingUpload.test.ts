@@ -498,3 +498,54 @@ describe("tanggal baris tanpa tanggal memakai tanggal sheet", () => {
     expect(out[0].date).toBe("2026-10-20");
   });
 });
+
+describe("propagasi STATUS ASSET yang di-merge per blok", () => {
+  // Kolom: date, ticket, branch, branchCode, item, qty, ket, resi, barcode,
+  //         typeBarang, statusRequest, statusAset, terkirim
+  const mk = (item: string, qty: number | "", resi: string, aset: string): (string | number)[] => [
+    "2026-10-15", "T-RETUR-1", "Gerai A", "", item,
+    qty, "", resi, "", "", "", aset, "TERKIRIM",
+  ];
+
+  it("baris lanjutan tanpa STATUS ASSET mewarisi bloknya (tidak jadi STOK-BARU)", () => {
+    const rows = [
+      mk("KOMPUTER RAKITAN", 3, "RESI-1", "ASSET RETUR"),
+      mk("KOMPUTER RAKITAN", "", "RESI-2", ""),
+      mk("KOMPUTER RAKITAN", "", "RESI-3", ""),
+    ];
+    const { rows: parsed } = readSheet(rows);
+    const lines = aggregateGroup(parsed, NAME_KEY);
+    // Sebelum diperbaiki: terbelah jadi 2 baris (RETUR + BARU).
+    expect(lines).toHaveLength(1);
+    expect(lines[0].kodeKondisi).toBe("STOK-RETUR");
+    expect(lines[0].qty).toBe(3);
+  });
+
+  it("blok dengan status eksplisit berbeda tetap terpisah", () => {
+    const rows = [
+      mk("KOMPUTER RAKITAN", 1, "RESI-1", "ASSET RETUR"),
+      mk("KOMPUTER RAKITAN", "", "RESI-2", ""),
+      mk("KOMPUTER RAKITAN", 2, "RESI-3", "ASSET BARU"),
+      mk("KOMPUTER RAKITAN", "", "RESI-4", ""),
+    ];
+    const { rows: parsed } = readSheet(rows);
+    const lines = aggregateGroup(parsed, NAME_KEY);
+    expect(lines).toHaveLength(2);
+    const retur = lines.find((l) => l.kodeKondisi === "STOK-RETUR");
+    const baru = lines.find((l) => l.kodeKondisi === "STOK-BARU");
+    expect(retur?.qty).toBe(2); // blok 1: 2 baris, QTY 1 -> total = max(1, 0, 2) = 2
+    expect(baru?.qty).toBe(2);
+  });
+
+  it("status tidak bocor ke barang lain", () => {
+    const rows = [
+      mk("KOMPUTER RAKITAN", 2, "RESI-1", "ASSET RETUR"),
+      mk("KOMPUTER RAKITAN", "", "RESI-2", ""),
+      mk("KEYBOARD", 1, "RESI-3", ""),
+    ];
+    const { rows: parsed } = readSheet(rows);
+    const lines = aggregateGroup(parsed, NAME_KEY);
+    expect(lines.find((l) => l.itemKey === "KOMPUTER RAKITAN")?.kodeKondisi).toBe("STOK-RETUR");
+    expect(lines.find((l) => l.itemKey === "KEYBOARD")?.kodeKondisi).toBe("STOK-BARU");
+  });
+});
