@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { formatDate, formatDateTime, formatQty } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
@@ -55,7 +56,7 @@ const STATUS_BADGE: Record<TransactionStatus, "success" | "destructive" | "warni
 };
 
 export function TransactionHistoryPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, isSuperAdmin } = useAuth();
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [locationMap, setLocationMap] = useState<Record<string, string>>({});
@@ -69,6 +70,8 @@ export function TransactionHistoryPage() {
   const [reverseTarget, setReverseTarget] = useState<InventoryTransaction | null>(null);
   const [reverseReason, setReverseReason] = useState("");
   const [reversing, setReversing] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<InventoryTransaction | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const canAdjust = hasPermission("inventory.adjust");
 
@@ -299,6 +302,29 @@ export function TransactionHistoryPage() {
       await loadTransactions();
     } finally {
       setReversing(false);
+    }
+  };
+
+  const submitDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.rpc("admin_delete_inventory_transaction", {
+        p_transaction_id: deleteTarget.id,
+      });
+      if (error) throw new Error(error.message);
+      toast.success(`Transaksi ${deleteTarget.doc_number} dan history stoknya dihapus; saldo dipulihkan tanpa membuat IN/OUT baru.`);
+      setDeleteTarget(null);
+      setSelected(null);
+      await loadTransactions();
+      if (view === "baris") {
+        setLineLoaded(false);
+        await loadLineItems();
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menghapus transaksi.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -535,6 +561,17 @@ export function TransactionHistoryPage() {
               )}
             </div>
             <DialogFooter>
+              {isSuperAdmin && (
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    setDeleteTarget(selected);
+                    setSelected(null);
+                  }}
+                >
+                  <Trash2 className="mr-1 h-4 w-4" /> Hapus permanen
+                </Button>
+              )}
               {selected.status === "posted" && canAdjust && (
                 <Button
                   variant="destructive"
@@ -545,6 +582,34 @@ export function TransactionHistoryPage() {
               )}
               <Button variant="outline" onClick={() => setSelected(null)}>
                 Tutup
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && !deleting && setDeleteTarget(null)}
+      >
+        {deleteTarget && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Hapus Transaksi dan History Stok?</DialogTitle>
+              <DialogDescription>
+                Transaksi {deleteTarget.doc_number} akan dihapus permanen bersama history ledger,
+                reversal, dan koreksi terkait. Saldo disesuaikan kembali tanpa membuat baris IN/OUT
+                baru. Jika stok sudah dipakai transaksi setelahnya, saldo lokasi dapat menjadi negatif
+                dan perlu direkonsiliasi. Tindakan ini hanya untuk Super Admin. Pengiriman yang
+                terhubung ke permintaan harus dihapus dari halaman Permintaan.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                Batal
+              </Button>
+              <Button variant="destructive" onClick={submitDelete} disabled={deleting}>
+                {deleting ? "Menghapus…" : "Hapus Permanen"}
               </Button>
             </DialogFooter>
           </>

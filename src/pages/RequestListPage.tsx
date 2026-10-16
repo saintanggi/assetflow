@@ -293,24 +293,11 @@ export function RequestListPage() {
     if (!delReq) return;
     setDelBusy(true);
     try {
-      // 1) Balikkan transaksi pengiriman yang masih posted (stok kembali).
-      //    Yang sudah reversed di-skip agar retry tidak gagal.
-      const { data: txns } = await supabase
-        .from("inventory_transactions")
-        .select("id, status")
-        .eq("reference", `REQ-KIRIM/${delReq.request_number}`)
-        .eq("status", "posted");
-      for (const t of (txns ?? []) as { id: string }[]) {
-        const { error } = await supabase.rpc("reverse_inventory_transaction", {
-          p_transaction_id: t.id,
-          p_reason: `Permintaan ${delReq.ticket_no ?? delReq.request_number} dihapus superadmin`,
-        });
-        if (error) throw new Error(`Gagal membalikkan stok: ${error.message}`);
-      }
-      // 2) Hapus request (cascade ke request_items).
+      // Trigger database secara atomik menghapus ledger/transaksi turunan dan
+      // mengembalikan saldo bersih tanpa membuat baris IN/OUT pembalik.
       const { error: delErr } = await supabase.from("requests").delete().eq("id", delReq.id);
       if (delErr) throw new Error(delErr.message);
-      toast.success(`Permintaan ${delReq.ticket_no ?? delReq.request_number} dihapus, stok dikembalikan.`);
+      toast.success(`Permintaan ${delReq.ticket_no ?? delReq.request_number} dihapus; stok dipulihkan tanpa menambah history IN/OUT.`);
       setDelReq(null);
       await load();
     } catch (e) {
@@ -560,8 +547,10 @@ export function RequestListPage() {
         <DialogHeader>
           <DialogTitle>Hapus Permintaan?</DialogTitle>
           <DialogDescription>
-            {delReq?.ticket_no ?? delReq?.request_number} akan dihapus permanen. Stok yang sudah
-            terkirim akan <b>dikembalikan</b> otomatis. Tindakan ini tidak bisa dibatalkan.
+            {delReq?.ticket_no ?? delReq?.request_number} dan semua history transaksi OUT terkait
+            akan dihapus permanen. Saldo stok dipulihkan seperti sebelum permintaan, tanpa membuat
+            history IN/OUT pembalik. Jika stoknya sudah dipakai transaksi berikutnya, saldo lokasi dapat menjadi
+            negatif dan perlu direkonsiliasi. Tindakan ini hanya untuk Super Admin dan tidak dapat dibatalkan.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
