@@ -11,6 +11,22 @@ import { QrLabel } from "../features/barcodes/QrLabel";
 import { BarcodeLabel } from "../features/barcodes/BarcodeLabel";
 import { toast } from "sonner";
 
+import { SerialLabelPanel } from "../features/barcodes/SerialLabelPanel";
+
+export function LabelPrintPage() {
+  const [mode, setMode] = useState<"serial" | "legacy">("serial");
+  return <div className="space-y-6">
+    <div className="no-print">
+      <PageHeader title="Cetak Label" description="Terbitkan nomor QR berurutan atau cetak ulang label yang sudah tersimpan." />
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Mode cetak">
+        <Button variant={mode === "serial" ? "default" : "outline"} onClick={() => setMode("serial")}>QR Berurutan · Kertas 100 × 150 mm</Button>
+        <Button variant={mode === "legacy" ? "default" : "outline"} onClick={() => setMode("legacy")}>Label lama · 90 × 60 mm</Button>
+      </div>
+    </div>
+    {mode === "serial" ? <SerialLabelPanel /> : <LegacyLabelPrintPanel />}
+  </div>;
+}
+
 interface LabelItem {
   kind: "asset" | "item";
   id: string;
@@ -36,7 +52,7 @@ interface ItemSearchRow {
   barcode: string | null;
 }
 
-export function LabelPrintPage() {
+function LegacyLabelPrintPanel() {
   const [searchParams] = useSearchParams();
   const [labels, setLabels] = useState<LabelItem[]>([]);
 

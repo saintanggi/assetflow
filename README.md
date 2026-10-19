@@ -236,3 +236,11 @@ docs/            # DATABASE.md, DEPLOYMENT.md, BOOTSTRAP.md, SHEET_SYNC.md, SQL 
 | `docs/SHEET_SYNC.md` | Sinkron Google Sheet (teknis) |
 | `PANDUAN-SETUP-SINKRON.md` | Sinkron Google Sheet (panduan non-teknis) |
 | `docs/sql/` | Query siap-copas: diagnosa, koreksi, setup |
+
+## Cetak QR asset/barang berurutan
+
+Menu **Cetak Label → QR Berurutan** menyediakan nomor terpusat lintas pengguna,
+riwayat/cetak ulang, dan label QR + angka **20 × 15 mm** pada kertas **100 × 150 mm**
+(susunan 4 × 6 atau 4 × 8, nama atas dapat diganti).
+Aktifkan migrasi `20261019000038_serial_qr_labels.sql` terlebih dahulu.
+Lihat [panduan QR berurutan](docs/QR_LABELS.md) untuk pemasangan dan setelan printer.
