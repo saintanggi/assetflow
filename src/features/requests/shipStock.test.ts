@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatShipError, targetLocationOf, type ShipErrorContext } from "./shipStock";
+import {
+  formatShipError,
+  itemStockLines,
+  stockForAset,
+  stockShortageHint,
+  targetLocationOf,
+  type ShipErrorContext,
+} from "./shipStock";
 import type { RequestItem } from "../../types/database";
 
 const ITEM_ID = "11111111-1111-1111-1111-111111111111";
@@ -107,5 +114,62 @@ describe("formatShipError", () => {
     const msg = formatShipError(`Item belum di-approve (id ${ITEM_ID})`, ctx());
     expect(msg).not.toContain(ITEM_ID);
     expect(msg).toContain("[id]");
+  });
+});
+
+describe("itemStockLines (form Buat Permintaan)", () => {
+  const stockByLoc = {
+    [`${ITEM_ID}|${LOC_BARU}`]: 22,
+    [`${ITEM_ID}|${LOC_RETUR}`]: 3,
+  };
+
+  it("menampilkan sisa stok Baru, Retur, Unready secara berurutan", () => {
+    const lines = itemStockLines(ITEM_ID, locations, stockByLoc);
+    expect(lines.map((l) => l.label)).toEqual(["Baru", "Retur", "Unready"]);
+    expect(lines.map((l) => l.qty)).toEqual([22, 3, 0]);
+  });
+
+  it("mengembalikan 0 bila barang belum punya saldo", () => {
+    const lines = itemStockLines("item-lain", locations, {});
+    expect(lines.every((l) => l.qty === 0)).toBe(true);
+  });
+});
+
+describe("stockForAset", () => {
+  const stockByLoc = {
+    [`${ITEM_ID}|${LOC_BARU}`]: 22,
+    [`${ITEM_ID}|${LOC_RETUR}`]: 3,
+  };
+
+  it("memakai saldo lokasi sesuai Status Asset", () => {
+    expect(stockForAset(ITEM_ID, "ASSET BARU", locations, stockByLoc)).toMatchObject({
+      code: "STOK-BARU",
+      qty: 22,
+    });
+    expect(stockForAset(ITEM_ID, "ASSET RETUR", locations, stockByLoc)).toMatchObject({
+      code: "STOK-RETUR",
+      qty: 3,
+    });
+    expect(stockForAset(ITEM_ID, "UNREADY", locations, stockByLoc)).toMatchObject({
+      code: "STOK-UNREADY",
+      qty: 0,
+    });
+  });
+});
+
+describe("stockShortageHint", () => {
+  it("memberi peringatan bila qty melebihi stok lokasi pemotong", () => {
+    const hint = stockShortageHint(5, "ASSET RETUR", { code: "STOK-RETUR", qty: 3 });
+    expect(hint).toContain("melebihi stok STOK-RETUR");
+    expect(hint).toContain("Kurang 2");
+  });
+
+  it("tidak memberi peringatan bila stok cukup", () => {
+    expect(stockShortageHint(3, "ASSET RETUR", { code: "STOK-RETUR", qty: 3 })).toBeNull();
+    expect(stockShortageHint(1, "ASSET BARU", { code: "STOK-BARU", qty: 99 })).toBeNull();
+  });
+
+  it("tidak memberi peringatan bila qty belum diisi", () => {
+    expect(stockShortageHint(0, "ASSET BARU", { code: "STOK-BARU", qty: 0 })).toBeNull();
   });
 });

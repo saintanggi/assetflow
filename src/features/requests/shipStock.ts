@@ -153,3 +153,79 @@ export function formatShipError(raw: string, ctx: ShipErrorContext): string {
       .trim() || "Gagal mengirim."
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Ringkasan stok untuk form Buat Permintaan                           */
+/* ------------------------------------------------------------------ */
+
+/** Urutan tampilan ringkasan stok: Baru, Retur, Unready. */
+export const STOCK_SUMMARY_CODES = ["STOK-BARU", "STOK-RETUR", "STOK-UNREADY"] as const;
+
+export interface ItemStockLine {
+  code: string;
+  /** Label pendek untuk UI, mis. "Baru" / "Retur" / "Unready". */
+  label: string;
+  qty: number;
+}
+
+const SHORT_LABEL: Record<string, string> = {
+  "STOK-BARU": "Baru",
+  "STOK-RETUR": "Retur",
+  "STOK-UNREADY": "Unready",
+};
+
+/**
+ * Sisa stok satu barang per lokasi kategori (Baru/Retur/Unready), siap
+ * ditampilkan di bawah kolom pilih barang pada form permintaan.
+ */
+export function itemStockLines(
+  itemId: string,
+  locations: LocationRow[],
+  stockByLoc: StockByLocationMap
+): ItemStockLine[] {
+  const lines: ItemStockLine[] = [];
+  for (const code of STOCK_SUMMARY_CODES) {
+    const loc = locations.find((l) => l.code.toUpperCase() === code);
+    if (!loc) continue;
+    lines.push({
+      code,
+      label: SHORT_LABEL[code] ?? code,
+      qty: stockByLoc[locKey(itemId, loc.id)] ?? 0,
+    });
+  }
+  return lines;
+}
+
+/**
+ * Saldo lokasi yang akan dipotong untuk Status Asset tertentu, dipakai untuk
+ * memperingatkan lebih awal bila qty permintaan melebihi stok lokasi itu.
+ */
+export function stockForAset(
+  itemId: string,
+  aset: ExcelStatusAset,
+  locations: LocationRow[],
+  stockByLoc: StockByLocationMap
+): { code: string; qty: number; loc?: LocationRow } {
+  const code = EXCEL_STATUS_ASET_LOKASI[aset];
+  const loc = locations.find((l) => l.code.toUpperCase() === code.toUpperCase());
+  return {
+    code,
+    qty: loc ? (stockByLoc[locKey(itemId, loc.id)] ?? 0) : 0,
+    loc,
+  };
+}
+
+/** Pesan peringatan singkat bila qty melebihi stok lokasi pemotong. */
+export function stockShortageHint(
+  qty: number,
+  aset: ExcelStatusAset,
+  stock: { code: string; qty: number }
+): string | null {
+  if (!(qty > 0)) return null;
+  if (stock.qty >= qty) return null;
+  const kurang = qty - stock.qty;
+  return (
+    `Qty ${fmtQty(qty)} melebihi stok ${stock.code} (${fmtQty(stock.qty)}). ` +
+    `Kurang ${fmtQty(kurang)} untuk Status Asset ${aset} — sisa bisa menunggu stok atau pilih Status Asset lain.`
+  );
+}

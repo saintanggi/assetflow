@@ -20,6 +20,14 @@ import {
   type StatusRequest,
 } from "../types/database";
 import { formatRequestStatus } from "../lib/requestStatus";
+import { formatQty } from "../lib/format";
+import {
+  itemStockLines,
+  stockForAset,
+  stockShortageHint,
+  type LocationRow,
+  type StockByLocationMap,
+} from "../features/requests/shipStock";
 
 interface ItemSearchResult {
   id: string;
@@ -71,6 +79,11 @@ export function RequestFormPage() {
   const [rows, setRows] = useState<FormRow[]>([newRow()]);
   const [submitting, setSubmitting] = useState(false);
   const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Sisa stok per barang & lokasi (Baru/Retur/Unready) agar bisa dilihat
+  // sebelum permintaan dikirim.
+  const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [stockByLoc, setStockByLoc] = useState<StockByLocationMap>({});
+  const [stockLoaded, setStockLoaded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const timers = searchTimers.current;
@@ -78,6 +91,56 @@ export function RequestFormPage() {
       for (const t of Object.values(timers)) clearTimeout(t);
     };
   }, []);
+
+  // Lokasi kategori stok (kode unik) untuk menampilkan sisa stok.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("locations")
+        .select("id, code, name")
+        .eq("is_active", true)
+        .in("code", ["STOK-BARU", "STOK-RETUR", "STOK-UNREADY"])
+        .order("code");
+      if (cancelled) return;
+      if (error) {
+        toast.error(`Gagal memuat lokasi stok: ${error.message}`);
+        return;
+      }
+      setLocations((data ?? []) as LocationRow[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Muat saldo per lokasi untuk barang-barang yang dipilih/dicari. */
+  const loadStock = async (itemIds: string[]) => {
+    const ids = [...new Set(itemIds.filter(Boolean))];
+    if (ids.length === 0) return;
+    const { data, error } = await supabase
+      .from("inventory_balances")
+      .select("item_id, location_id, qty")
+      .in("item_id", ids);
+    if (error) {
+      toast.error(`Gagal memuat sisa stok: ${error.message}`);
+      return;
+    }
+    const patch: StockByLocationMap = {};
+    for (const b of (data ?? []) as {
+      item_id: string;
+      location_id: string;
+      qty: number | string;
+    }[]) {
+      patch[`${b.item_id}|${b.location_id}`] = Number(b.qty);
+    }
+    setStockByLoc((prev) => ({ ...prev, ...patch }));
+    setStockLoaded((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = true;
+      return next;
+    });
+  };
 
   const updateRow = (key: string, patch: Partial<FormRow>) => {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -96,7 +159,10 @@ export function RequestFormPage() {
       updateRow(key, { results: [], searching: false });
       return;
     }
-    updateRow(key, { results: (data ?? []) as ItemSearchResult[], searching: false });
+    const results = (data ?? []) as ItemSearchResult[];
+    updateRow(key, { results, searching: false });
+    // Prefetch stok agar sisa stok tampil langsung di daftar hasil pencarian.
+    void loadStock(results.map((r) => r.id));
   };
 
   const handleQueryChange = (key: string, q: string) => {
@@ -117,6 +183,7 @@ export function RequestFormPage() {
       searching: false,
       open: false,
     });
+    if (!stockLoaded[item.id]) void loadStock([item.id]);
   };
 
   const validate = (): string | null => {
@@ -266,10 +333,43 @@ export function RequestFormPage() {
                         onMouseDown={() => pickItem(r.key, it)}
                       >
                         <span className="font-mono text-xs text-ink-500">{it.sku}</span> — {it.name}
+                        {stockLoaded[it.id] && (
+                          <span className="mt-0.5 block text-xs text-ink-500">
+                            Sisa stok:{" "}
+                            {itemStockLines(it.id, locations, stockByLoc)
+                              .map((line) => `${line.label} ${formatQty(line.qty)}`)
+                              .join(" · ")}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
                 )}
+                {r.item && stockLoaded[r.item.id] && (() => {
+                  const target = stockForAset(r.item.id, r.statusAset, locations, stockByLoc);
+                  const lines = itemStockLines(r.item.id, locations, stockByLoc);
+                  return (
+                    <div className="mt-1 text-xs">
+                      <span className="text-ink-500">Sisa stok: </span>
+                      {lines.map((line, idx) => (
+                        <span key={line.code}>
+                          {idx > 0 && <span className="text-ink-400"> · </span>}
+                          <span
+                            className={
+                              line.code === target.code
+                                ? "font-semibold text-brand-700"
+                                : line.qty > 0
+                                  ? "text-ink-700"
+                                  : "text-ink-400"
+                            }
+                          >
+                            {line.label} {formatQty(line.qty)}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
               <div className="lg:col-span-1">
                 <Label>Qty</Label>
@@ -325,6 +425,16 @@ export function RequestFormPage() {
                 />
                 <p className="mt-1 text-xs text-ink-500">
                   Stok dipotong dari <b>{EXCEL_STATUS_ASET_LOKASI[r.statusAset]}</b>
+                  {r.item && stockLoaded[r.item.id] && (
+                    <span className="block">
+                      Sisa di lokasi ini:{" "}
+                      <b className="text-brand-700">
+                        {formatQty(
+                          stockForAset(r.item.id, r.statusAset, locations, stockByLoc).qty
+                        )}
+                      </b>
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="lg:col-span-2">
@@ -349,6 +459,16 @@ export function RequestFormPage() {
                   <Trash2 className="h-4 w-4 text-brand-600" />
                 </Button>
               </div>
+              {r.item && stockLoaded[r.item.id] && (() => {
+                const target = stockForAset(r.item.id, r.statusAset, locations, stockByLoc);
+                const hint = stockShortageHint(Number(r.qty), r.statusAset, target);
+                if (!hint) return null;
+                return (
+                  <div className="rounded-md border border-warn-100 bg-warn-50 px-3 py-2 text-xs font-medium text-warn-700 lg:col-span-16">
+                    {hint}
+                  </div>
+                );
+              })()}
               <div className="lg:col-span-16">
                 <Label>Keterangan baris (opsional)</Label>
                 <Input
