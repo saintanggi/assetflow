@@ -1,191 +1,238 @@
-# Inventory Warehouse — Sistem Informasi Manajemen Aset & Gudang
+# AssetFlow — Sistem Permintaan, Persediaan & Aset
 
-Aplikasi web enterprise untuk manajemen **aset tetap** (laptop, printer, kendaraan, …)
-dan **persediaan gudang** (ATK, suku cadang, bahan habis pakai, …) dengan transaksi
-stok atomik, QR code / barcode, audit log, laporan, dan tiga mode akses
-(Super Admin, Admin, Pengunjung Publik).
+Aplikasi web internal untuk mengelola **permintaan barang dari kantor/gerai ke gudang**,
+**stok persediaan per kondisi**, dan **aset tetap** — lengkap dengan pencatatan transaksi
+yang bisa diaudit, cetak label QR/barcode, laporan, serta katalog aset publik.
 
-**Stack:** React 18 + TypeScript + Vite · Tailwind CSS 3 + komponen gaya shadcn/ui ·
-Supabase (PostgreSQL + Auth + Storage) · React Router · React Hook Form + Zod ·
-TanStack Table · Recharts · Lucide · qrcode.react · jsbarcode · html5-qrcode · Vitest.
+> Dokumen ini menjelaskan **cara kerja sistem** untuk tim operasional.
+> Untuk instalasi/deploy teknis, lihat bagian [8. Untuk Developer](#8-untuk-developer).
 
 ---
 
-## 1. Persiapan
+## 1. Tiga hal utama yang dikerjakan sistem ini
 
-### Prasyarat
+| # | Proses | Inti |
+|---|---|---|
+| 1 | **Permintaan Barang** | Kantor/gerai mengajukan barang → gudang review → helper siapkan → gudang kirim & catat transaksi keluar |
+| 2 | **Persediaan** | Stok dicatat per **kondisi barang**: Baru / Retur / Unready, per gudang & lokasi |
+| 3 | **Aset Tetap** | Data aset (laptop, printer, kendaraan, …), label QR, dan katalog publik |
 
-- Node.js 20+
-- Akun [Supabase](https://supabase.com) (2 proyek disarankan: development & production)
-- Akun [Vercel](https://vercel.com) untuk hosting frontend
+---
 
-### Instalasi lokal
+## 2. Alur Permintaan Barang (alur utama)
+
+```
+ ┌──────────────┐   ┌───────────────┐   ┌──────────────┐   ┌──────────────┐
+ │  ADMIN HO    │   │ ADMIN GUDANG  │   │    HELPER    │   │ ADMIN GUDANG │
+ │ Input tiket  │──▶│ Review &      │──▶│ Siapkan      │──▶│ Kirim barang │
+ │ (diajukan)   │   │ setujui qty   │   │ barang +     │   │ + catat OUT  │
+ │              │   │               │   │ barcode/SN   │   │              │
+ └──────────────┘   └───────────────┘   └──────────────┘   └──────────────┘
+                          │                                       │
+                          ├── Ditolak (alasan wajib)              ▼
+                          └── Disetujui sebagian ──▶ Sisa Belum Terkirim
+                                                     (kirim susulan saat stok datang)
+```
+
+### Status permintaan
+
+| Status | Arti | Siapa yang mengubah |
+|---|---|---|
+| **Diajukan** | Permintaan baru masuk, menunggu review gudang | Admin HO (input) |
+| **Disetujui** | Semua qty disetujui | Admin Gudang |
+| **Disetujui Sebagian** | Sebagian disetujui, sisanya masuk **Sisa Belum Terkirim** | Admin Gudang |
+| **Diproses** | Barang sedang disiapkan helper (barcode/SN diisi) | Helper |
+| **Selesai** | Semua item terkirim atau ditolak | Admin Gudang |
+| **Ditolak** | Permintaan ditolak, alasan wajib diisi | Admin Gudang |
+
+### Cara input permintaan (3 jalur)
+
+1. **Manual** — menu **Permintaan → Buat Permintaan**. Isi No Tiket, Cabang/Gerai, lalu pilih barang.
+   Saat memilih barang, sistem langsung menampilkan **sisa stok Baru / Retur / Unready**.
+2. **Upload dokumen pengiriman** — menu **Permintaan → Upload Dokumen** (file Excel).
+3. **Sinkron otomatis Google Sheet** — sheet tanggal terbaru dibaca otomatis tiap 15 menit
+   (lihat [bagian 6](#6-sinkron-google-sheet--upload-dokumen)).
+
+### Saat mengirim barang
+
+- Admin Gudang mengisi **qty kirim**, **no resi**, dan **lokasi gudang pengirim**.
+- Lokasi stok yang dipotong **ditentukan oleh Status Asset tiap baris** (lihat bagian 3).
+- Pengiriman otomatis membuat **transaksi OUT** (stok berkurang + tercatat di buku besar).
+- Barang yang sudah dikirim sebagian tetap muncul di **Sisa Belum Terkirim** untuk dikirim susulan.
+
+---
+
+## 3. Stok: 3 kondisi, 3 lokasi
+
+Sistem memisahkan stok berdasarkan kondisi barang. Kode lokasi baku:
+
+| Status Asset | Lokasi stok | Arti |
+|---|---|---|
+| **ASSET BARU** | `STOK-BARU` | Barang baru, siap pakai |
+| **ASSET RETUR** | `STOK-RETUR` | Barang retur / selesai servis |
+| **UNREADY** | `STOK-UNREADY` | Barang rusak / belum siap pakai |
+
+⚠️ **Penting dipahami tim:**
+
+- Menu **Persediaan** menampilkan stok **TOTAL semua lokasi**.
+- Saat **pengiriman**, stok dipotong dari **satu lokasi saja** sesuai Status Asset baris tersebut.
+- Jadi bisa terjadi stok total "ada 22" tetapi pengiriman gagal karena saldo di lokasi pemotongnya kosong/minus.
+  Panel **Kirim** sudah menampilkan saldo per lokasi dan menandai baris yang kurang.
+- Mengubah **Nama Barang** pada tiket yang **sudah terkirim** akan **memindahkan stok** ke barang/lokasi
+  yang baru secara otomatis (tercatat sebagai transaksi koreksi di Log Transaksi).
+
+---
+
+## 4. Menu & fungsi
+
+| Menu | Fungsi |
+|---|---|
+| **Dashboard** | Ringkasan stok, permintaan, dan aktivitas terbaru |
+| **Aset Tetap** | CRUD aset, detail aset, cetak label QR |
+| **Persediaan → Asset Baru / Return / Unready** | Daftar stok per kondisi (masing-masing lokasi) |
+| **Persediaan → Master Barang** | Semua barang + total stok, stok awal, detail per barang |
+| **Persediaan → Peringatan Stok** | Barang yang habis / di bawah stok minimum |
+| **Permintaan** | Daftar permintaan, buat permintaan, detail (review, proses, kirim) |
+| **Sisa Belum Terkirim** | Barang disetujui sebagian yang menunggu dikirim susulan |
+| **Upload Dokumen** | Import dokumen pengiriman dari Excel + panel sinkron Google Sheet |
+| **Transaksi → Barang Masuk** | Penerimaan barang dari supplier/retur |
+| **Transaksi → Barang Keluar** | Pengeluaran barang di luar alur permintaan |
+| **Transaksi → Transfer Stok** | Pindah stok antar lokasi/gudang |
+| **Transaksi → Stock Opname** | Hitung fisik & sesuaikan saldo |
+| **Transaksi → Input Kartu Stok** | Catat pergerakan harian (gaya Excel KARTU STOK) |
+| **Transaksi → Riwayat / Log Transaksi** | Riwayat transaksi & buku besar per baris IN/OUT (ada koreksi jenis stok) |
+| **Pindai Kode** | Scan QR aset / barcode barang (hanya menampilkan informasi) |
+| **Cetak Label** | Cetak label QR / barcode |
+| **Live Stok** | Posisi stok per gudang: Stok Awal / IN / OUT / Stok Akhir |
+| **Laporan** | Rekap & ekspor (CSV/Excel) |
+| **Master Data** | Kategori, Gudang & Lokasi, Satuan, Departemen, Pemasok |
+| **Pengguna / Peran & Izin** | Kelola akun & hak akses |
+| **Audit Log** | Jejak perubahan data |
+| **Katalog Publik** (`/publik`) | Halaman publik berisi aset yang dipublikasikan (tanpa harga, serial, stok) |
+
+---
+
+## 5. Peran & hak akses
+
+Sistem memakai **permission** (bukan sekadar role). Role hanya wadah; hak aksesnya diatur per izin.
+
+Role bawaan hanya **Super Admin** dan **Admin**. Peran kerja di lapangan dibentuk dari kombinasi izin berikut:
+
+| Peran kerja | Izin utama | Boleh melakukan |
+|---|---|---|
+| **Super Admin** | semua izin | Semua modul, kelola pengguna & peran, audit log, pengaturan, publikasi aset |
+| **Admin HO** | `requests.create`, `requests.view` | Membuat & upload permintaan barang |
+| **Admin Gudang** | `requests.review`, `requests.approve`, `requests.view` | Review, setujui/tolak, memproses, **mengirim** barang, koreksi jenis stok |
+| **Helper** | `requests.process` | Menyiapkan barang: isi barcode, serial number, type barang |
+| **Operator gudang** | `inventory.*`, `reports.*`, `labels.print` | Transaksi stok, laporan, cetak label |
+
+- Semua izin **dicek di database** (`has_permission()`), bukan hanya disembunyikan di UI.
+- `assets.publish` (publikasi aset) hanya bisa diberikan Super Admin.
+- Halaman publik hanya menerima data lewat RPC dengan kolom whitelist.
+
+---
+
+## 6. Sinkron Google Sheet & Upload Dokumen
+
+Tim mengisi dokumen pengiriman di Google Sheet (satu sheet per tanggal). Sistem bisa
+mengambilnya **otomatis** tanpa upload manual:
+
+- Selalu membaca **sheet tanggal terbaru**; jadwal tiap 15 menit dan **idempoten**
+  (dijalankan berulang tidak menggandakan data).
+- Aturan qty mengikuti template dokumen (QTY merge = total satu blok).
+- Kolom **STATUS ASSET** menentukan stok mana yang dipotong (Baru / Retur / Unready).
+
+Panduan klik-per-klik (non-teknis): **`PANDUAN-SETUP-SINKRON.md`**
+Panduan teknis: **`docs/SHEET_SYNC.md`**
+Cek apakah sinkron sudah berjalan: **`CEK-SINKRON.md`**
+
+---
+
+## 7. Aturan penting sistem
+
+1. **Stok hanya berubah lewat transaksi yang posted** — setiap perubahan tercatat di
+   `inventory_ledger` (buku besar), tidak ada edit saldo langsung dari UI.
+2. **Transaksi bersifat atomik** (row lock + idempotency key) — klik ganda tidak menggandakan stok.
+3. **Stok bisa minus** pada kondisi tertentu (import/sinkron massal). Stok minus harus
+   dibereskan lewat **Stock Opname** atau dipindahkan dari lokasi lain.
+4. **Pengiriman memotong satu lokasi** sesuai Status Asset (lihat bagian 3).
+5. **Harga, serial number, dan stok tidak pernah tampil di halaman publik.**
+6. Setiap perubahan data penting tercatat di **Audit Log**; setiap pergerakan stok
+   tercatat di **Log Transaksi**.
+
+---
+
+## 8. Untuk Developer
+
+**Stack:** React 18 + TypeScript + Vite · Tailwind CSS · Supabase (PostgreSQL + Auth + Storage) ·
+React Router · TanStack Table · Recharts · Vitest · Vercel.
+
+### Jalankan lokal
 
 ```bash
-git clone <repo-anda>
+git clone <repo>
 cd assetflow
-cp .env.example .env
-# isi VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_APP_URL di .env
+cp .env.example .env      # isi kredensial Supabase
 npm install
 npm run dev
 ```
 
-### Environment variables
-
 | Variabel | Wajib | Keterangan |
 |---|---|---|
-| `VITE_SUPABASE_URL` | Ya | URL proyek Supabase, mis. `https://xyzcompany.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | Ya | **Anon public key** saja. Jangan pernah taruh service-role key di frontend |
-| `VITE_APP_URL` | Ya | URL publik aplikasi, mis. `https://assetflow.vercel.app` — dipakai untuk QR code aset publik |
-| `VITE_APP_NAME` | Tidak | Nama aplikasi (default: Inventory Warehouse) |
+| `VITE_SUPABASE_URL` | Ya | URL proyek Supabase |
+| `VITE_SUPABASE_ANON_KEY` | Ya | **Anon key** saja (jangan service-role di frontend) |
+| `VITE_APP_URL` | Ya | URL publik aplikasi (untuk QR aset) |
+| `VITE_APP_NAME` | Tidak | Nama aplikasi (default: AssetFlow) |
 
-> Tidak ada kredensial default dan tidak ada endpoint publik untuk menjadikan
-> pengguna sebagai Super Admin.
-
----
-
-## 1b. Sinkronisasi otomatis dari Google Sheet
-
-Dokumen pengiriman yang diisi tim di Google Sheet (satu sheet per tanggal) bisa masuk
-ke sistem **otomatis** tanpa upload manual: sistem selalu membaca **sheet terbaru**,
-mengikuti aturan template dokumen pengiriman (QTY merge = total blok, STATUS ASSET
-menentukan stok Baru/Retur/Unready), dan idempoten sehingga aman dijadwalkan tiap 15 menit.
-
-- Tabel konfigurasi & riwayat: `supabase/migrations/20261015000029_sheet_sync.sql`
-- Fungsi service-role: `supabase/migrations/20261015000030_sheet_sync_functions.sql`
-- Edge Function: `supabase/functions/sync-sheets/`
-- Panduan klik-per-klik (non-teknis): **`PANDUAN-SETUP-SINKRON.md`**
-- Panduan teknis (deploy + jadwal `pg_cron` + troubleshooting): **`docs/SHEET_SYNC.md`**
-- SQL siap copas: `docs/sql/setup_sheet_sync.sql`, `docs/sql/setup_cron.sql`
-- Edge Function versi 1 file (untuk Dashboard): `docs/sync-sheets-standalone.ts`
-- Panelnya ada di menu **Permintaan → Upload Dokumen Pengiriman**.
-
-Setelah mengubah parser (`src/lib/shippingUpload.ts`), jalankan `npm run sync:parser`
-agar salinan di Edge Function ikut ter-update (dijaga tes `src/lib/__sheetSyncSame.test.ts`).
-
----
-
-## 2. Database (Supabase)
-
-Skema lengkap + RLS + fungsi RPC ada di `supabase/migrations/` (dikerjakan bertahap
-sesuai `docs/IMPLEMENTATION_PLAN.md` — kontrak tabel/kolom/RPC yang wajib dipatuhi).
-
-Urutan apply (di SQL Editor Supabase atau via Supabase CLI):
-
-1. `supabase/migrations/*_schema.sql` — tabel inti
-2. `supabase/migrations/*_rls.sql` — Row Level Security
-3. `supabase/migrations/*_functions.sql` — helper `is_super_admin()`, `has_permission()`,
-   RPC `post_inventory_transaction`, `reverse_inventory_transaction`,
-   `finalize_stock_count`, `get_public_asset`, `search_public_assets`
-4. `supabase/migrations/*_seed.sql` — roles, permissions, satuan dasar
-
-### Bootstrap Super Admin pertama
-
-1. Buat user pertama lewat **Supabase Dashboard → Authentication → Add user**
-   (atau biarkan user mendaftar bila sign-up diaktifkan).
-2. Jalankan `supabase/bootstrap/superadmin.sql` di SQL Editor — ganti email di
-   dalamnya dengan email user tersebut. Script hanya mempromosikan bila **belum ada**
-   Super Admin sama sekali.
-3. Login sebagai user itu → buka **Panel Super Admin** (`/admin`).
-
-### Storage
-
-Buat bucket **`asset-photos`** (public read). Policy: `INSERT` untuk role
-`authenticated` dengan batas 5 MB dan tipe `image/*`.
-
----
-
-## 3. Menjalankan & menguji
+### Perintah
 
 ```bash
-npm run dev      # development server
-npm run build    # type-check (tsc) + build produksi → dist/
-npm run preview  # pratinjau hasil build
-npm run test     # Vitest (sekali jalan)
+npm run dev       # development server
+npm run build     # type-check + build produksi → dist/
+npm run preview   # pratinjau hasil build
+npm run test      # Vitest
 ```
 
-Tes yang tersedia: `src/lib/format.test.ts`, `src/routes/guards.test.tsx`,
-`src/schemas/asset.test.ts`. Tes database (RLS & RPC) ada di `supabase/tests/`.
-
----
-
-## 4. Struktur source code
+### Struktur singkat
 
 ```
 src/
-  components/        # UI generik: ui/* (button, input, dialog, …), DataTable, StatCard,
-                     # PageHeader, ConfirmDialog, EmptyState, CrudPage
-  layouts/           # AppLayout (sidebar + header per role), PublicLayout
-  pages/             # 30 halaman (Landing … NotFound)
+  pages/         # 1 file = 1 halaman (Permintaan, Persediaan, Transaksi, Aset, …)
   features/
-    transactions/    # TransactionForm (dipakai Barang Masuk/Keluar/Transfer)
-    barcodes/        # QrLabel, BarcodeLabel
-  lib/               # supabase client, format id-ID, csv, permissions, utils
-  context/           # AuthContext (session, profile, permissions)
-  types/             # database.ts — HARUS cocok dengan IMPLEMENTATION_PLAN.md
-  schemas/           # skema Zod: asset, inventory, transaction
-  routes/            # index.tsx (definisi route), guards.tsx
+    requests/    # aturan permintaan: stok per lokasi, koreksi barang
+    transactions/# form transaksi stok
+    barcodes/    # label QR & barcode
+  components/    # UI generik (ui/*, DataTable, PageHeader, …)
+  context/       # AuthContext (session, profile, permissions)
+  lib/           # supabase client, format, permissions, parser upload
+  routes/        # definisi route + guard izin
 supabase/
-  migrations/        # migrasi SQL berversi
-  bootstrap/         # superadmin.sql
-  tests/             # tes SQL RLS/RPC
-docs/                # IMPLEMENTATION_PLAN.md (kontrak)
+  migrations/    # skema, RLS, fungsi RPC (berversi)
+  functions/     # Edge Function sync-sheets
+  tests/         # tes RLS/RPC
+docs/            # DATABASE.md, DEPLOYMENT.md, BOOTSTRAP.md, SHEET_SYNC.md, SQL siap-copas
 ```
 
----
+### Database & deploy
 
-## 5. Mode akses
+- Skema, RLS, dan RPC ada di `supabase/migrations/` — **dijalankan berurutan**.
+- Bootstrap Super Admin pertama: `docs/BOOTSTRAP.md`.
+- Deploy frontend (Vercel): `docs/DEPLOYMENT.md`.
+- Dokumentasi tabel & fungsi: `docs/DATABASE.md`.
+- Migrasi baru yang perlu dijalankan manual selalu disertai salinan siap-copas di `docs/sql/`.
 
-| Kemampuan | Super Admin | Admin | Publik |
-|---|---|---|---|
-| Semua modul & nilai aset | ✅ | — | — |
-| Kelola pengguna & peran | ✅ | — | — |
-| Audit log, pengaturan | ✅ | — | — |
-| Aset & persediaan (sesuai permission) | ✅ | ✅ | — |
-| Transaksi stok via RPC | ✅ | ✅ (sesuai izin) | — |
-| Cetak label | ✅ | ✅ (`labels.print`) | — |
-| Katalog publik (whitelist) | ✅ | ✅ | ✅ |
-| Data privat (harga, serial, stok) | ✅ | ✅ | ❌ |
-
-Permission `assets.publish` hanya dapat diberikan oleh Super Admin — ditegakkan di
-database (bukan cuma di UI).
+> Jangan commit file `.env`. Semua migrasi bersifat idempoten (`IF NOT EXISTS` /
+> `CREATE OR REPLACE`) sehingga aman dijalankan ulang.
 
 ---
 
-## 6. Deployment ke Vercel
+## Dokumen terkait
 
-1. Push repo ke GitHub.
-2. Di Vercel: **Add New Project → Import** repo → framework terdeteksi **Vite**.
-   - Build Command: `npm run build`
-   - Output Directory: `dist`
-3. Isi Environment Variables (Production): `VITE_SUPABASE_URL`,
-   `VITE_SUPABASE_ANON_KEY`, `VITE_APP_URL` (isi dengan domain Vercel Anda).
-4. Deploy. Di Supabase **Authentication → URL Configuration**:
-   - Site URL: `https://<domain-anda>`
-   - Redirect URLs: tambahkan `https://<domain-anda>/**`
-5. Jalankan migrasi + bootstrap Super Admin di proyek Supabase **production**.
-6. Uji: login, tiap role, halaman publik, satu transaksi, cetak label.
-
-### Rollback
-
-- **Frontend:** Vercel → Deployments → pilih deployment sebelumnya → **Promote to Production**.
-- **Database:** kembalikan dengan `supabase db reset` ke migrasi terakhir yang sehat
-  di environment development dulu, atau restore dari backup. Jangan rollback
-  migrasi destruktif di production tanpa backup.
-
-### Backup database
-
-Supabase Dashboard → **Database → Backups**: aktifkan Point-in-Time Recovery
-(paket Pro) atau unduh backup harian. Untuk restore: gunakan file backup di
-SQL Editor / `pg_restore` sesuai panduan Supabase.
-
----
-
-## 7. Catatan keamanan
-
-- RLS aktif di semua tabel; `anon` hanya lewat RPC publik (`get_public_asset`,
-  `search_public_assets`) yang mengembalikan kolom whitelist saja.
-- Semua permission dicek di database (`has_permission()`); UI hanya cerminan.
-- Transaksi stok hanya via RPC atomik (row lock, idempotency key, validasi stok di Postgres).
-- QR code hanya berisi URL publik — tanpa harga, serial, token, atau data rahasia.
-- Jangan commit file `.env`.
+| Dokumen | Isi |
+|---|---|
+| `docs/BOOTSTRAP.md` | Membuat Super Admin pertama dari nol |
+| `docs/DATABASE.md` | Skema tabel, RLS, dan fungsi RPC |
+| `docs/DEPLOYMENT.md` | Deploy Supabase + Vercel, rollback, backup |
+| `docs/SHEET_SYNC.md` | Sinkron Google Sheet (teknis) |
+| `PANDUAN-SETUP-SINKRON.md` | Sinkron Google Sheet (panduan non-teknis) |
+| `docs/sql/` | Query siap-copas: diagnosa, koreksi, setup |
