@@ -50,6 +50,12 @@ import {
   type StockByLocationMap,
   type StockMap,
 } from "../features/requests/shipStock";
+import {
+  describeItemChange,
+  formatStockMoveResult,
+  isMissingRpcError,
+  needsStockMove,
+} from "../features/requests/itemCorrection";
 
 const STATUS_VARIANT: Record<RequestStatus, "default" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   diajukan: "info",
@@ -575,20 +581,74 @@ export function RequestDetailPage() {
       for (const k of eKet.split("\n").map((v) => v.trim()).filter(Boolean)) {
         notesLines.push(k);
       }
-      const { error } = await supabase
-        .from("request_items")
-        .update({
-          item_id: eItemId || editItem.item_id,
-          barcode: eBarcode.trim() || null,
-          serial_number: snValues.join("\n") || null,
-          resi: eResi.trim() || null,
-          status_aset: eStatusAset,
-          notes: notesLines.join("\n") || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", editItem.id);
-      if (error) throw new Error(error.message);
-      toast.success("Data item diperbarui.");
+
+      // Kolom non-kunci; item_id & status_aset ditangani khusus di bawah.
+      const restFields = {
+        barcode: eBarcode.trim() || null,
+        serial_number: snValues.join("\n") || null,
+        resi: eResi.trim() || null,
+        notes: notesLines.join("\n") || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const newItemId = eItemId || editItem.item_id;
+      const oldStatus = parseStatusAset(editItem.status_aset);
+      const qtyShipped = Number(editItem.qty_shipped ?? 0);
+      const change = {
+        oldItemId: editItem.item_id,
+        newItemId,
+        oldStatus,
+        newStatus: eStatusAset,
+        qtyShipped,
+      };
+
+      if (needsStockMove(change)) {
+        // Baris sudah terkirim: stok WAJIB ikut dipindahkan, kalau tidak barang
+        // lama menyimpan saldo minus walau tiketnya sudah diganti.
+        const oldName = editItem.inventory_items?.name ?? "barang lama";
+        const newName = masterItems.find((m) => m.id === newItemId)?.name ?? oldName;
+        if (
+          !window.confirm(
+            describeItemChange({ ...change, oldName, newName })
+          )
+        ) {
+          setESaving(false);
+          return;
+        }
+        const { data, error } = await supabase.rpc("admin_change_request_item", {
+          p_request_item_id: editItem.id,
+          p_new_item_id: newItemId,
+          p_new_status_aset: eStatusAset,
+          p_reason: `Ubah dari tiket ${req?.ticket_no ?? req?.request_number ?? ""}`.trim(),
+        });
+        if (error) {
+          if (isMissingRpcError(error.message)) {
+            throw new Error(
+              "Fitur koreksi stok belum aktif di database. Jalankan docs/sql/admin_change_request_item.sql di Supabase SQL Editor, lalu ulangi."
+            );
+          }
+          throw new Error(error.message);
+        }
+        const { error: restErr } = await supabase
+          .from("request_items")
+          .update(restFields)
+          .eq("id", editItem.id);
+        if (restErr) throw new Error(restErr.message);
+        toast.success(formatStockMoveResult(data, newName));
+      } else {
+        // Belum ada pengiriman (atau tidak ada perubahan barang/status):
+        // cukup update baris seperti sebelumnya.
+        const { error } = await supabase
+          .from("request_items")
+          .update({
+            item_id: newItemId,
+            status_aset: eStatusAset,
+            ...restFields,
+          })
+          .eq("id", editItem.id);
+        if (error) throw new Error(error.message);
+        toast.success("Data item diperbarui.");
+      }
       setEditItem(null);
       await load();
     } catch (e) {
@@ -1220,6 +1280,13 @@ export function RequestDetailPage() {
           <DialogTitle>Edit — {editItem?.inventory_items?.name}</DialogTitle>
           <DialogDescription>
             Revisi data item. Satu nilai per baris untuk Barcode, SN, Resi, Keterangan.
+            {Number(editItem?.qty_shipped ?? 0) > 0 && (
+              <span className="mt-1 block text-warn-700">
+                Baris ini sudah dikirim {fmt(Number(editItem?.qty_shipped ?? 0))} unit — mengubah
+                Nama Barang atau Status Asset akan memindahkan stok {fmt(Number(editItem?.qty_shipped ?? 0))}{" "}
+                unit tersebut ke barang/lokasi baru (tercatat sebagai transaksi koreksi).
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 px-1 py-2 sm:grid-cols-2">
