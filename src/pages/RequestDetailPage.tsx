@@ -39,6 +39,17 @@ import {
   parseRequestStatus,
   parseStatusAset,
 } from "../lib/requestStatus";
+import {
+  ASET_BY_LOCATION_CODE,
+  bestAlternativeLocation,
+  formatShipError,
+  locKey,
+  stockBreakdown,
+  targetLocationOf,
+  type LocationRow,
+  type StockByLocationMap,
+  type StockMap,
+} from "../features/requests/shipStock";
 
 const STATUS_VARIANT: Record<RequestStatus, "default" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   diajukan: "info",
@@ -62,25 +73,6 @@ const ITEM_VARIANT: Record<string, "default" | "info" | "warning" | "success" | 
 
 const fmt = (n: number) => Number(n).toLocaleString("id-ID", { maximumFractionDigits: 3 });
 
-interface StockMap {
-  [itemId: string]: number;
-}
-
-// Ubah pesan error teknis (berisi UUID) menjadi bahasa yang mudah dipahami.
-function formatShipError(raw: string, items: RequestItem[]): string {
-  const m = raw.match(/Stok tidak mencukupi \(item ([0-9a-f-]{36})/i);
-  if (m) {
-    const found = items.find((x) => x.item_id === m[1]);
-    const itemName = found?.inventory_items?.name ?? "barang";
-    const avail = raw.match(/tersedia ([\d.,]+)/i)?.[1] ?? "?";
-    const need = raw.match(/perubahan -([\d.,]+)/i)?.[1] ?? "?";
-    return `Stok "${itemName}" tidak cukup (tersedia ${avail}, dibutuhkan ${need}). Tambah stok dulu di menu Persediaan.`;
-  }
-  return raw
-    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[id]")
-    .trim() || "Gagal mengirim.";
-}
-
 export function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -88,7 +80,8 @@ export function RequestDetailPage() {
   const [req, setReq] = useState<Request | null>(null);
   const [items, setItems] = useState<RequestItem[]>([]);
   const [stock, setStock] = useState<StockMap>({});
-  const [locations, setLocations] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [stockByLoc, setStockByLoc] = useState<StockByLocationMap>({});
+  const [locations, setLocations] = useState<LocationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -149,18 +142,26 @@ export function RequestDetailPage() {
         .order("name");
       setMasterItems(((mi ?? []) as { id: string; name: string }[]));
 
-      // Stok tersedia per barang (untuk panel review).
+      // Stok tersedia per barang (total) + per lokasi (untuk panel kirim).
       const itemIds = its.map((x) => x.item_id);
       if (itemIds.length > 0) {
         const { data: bal } = await supabase
           .from("inventory_balances")
-          .select("item_id, qty")
+          .select("item_id, location_id, qty")
           .in("item_id", itemIds);
         const m: StockMap = {};
-        for (const b of (bal ?? []) as { item_id: string; qty: number | string }[]) {
-          m[b.item_id] = (m[b.item_id] ?? 0) + Number(b.qty);
+        const mLoc: StockByLocationMap = {};
+        for (const b of (bal ?? []) as {
+          item_id: string;
+          location_id: string;
+          qty: number | string;
+        }[]) {
+          const q = Number(b.qty);
+          m[b.item_id] = (m[b.item_id] ?? 0) + q;
+          mLoc[locKey(b.item_id, b.location_id)] = q;
         }
         setStock(m);
+        setStockByLoc(mLoc);
       }
 
       const { data: locs } = await supabase
@@ -220,6 +221,53 @@ export function RequestDetailPage() {
     () => items.filter((x) => (x.qty_approved ?? 0) - (x.qty_shipped ?? 0) > 0 && x.item_status !== "ditolak"),
     [items]
   );
+
+  /**
+   * Rincian stok untuk tiap baris yang akan dikirim: lokasi mana yang dipotong
+   * (mengikuti Status Aset), saldo lokasi itu, total semua lokasi, dan sisa
+   * kekurangan berdasarkan qty kirim yang sedang diisi.
+   */
+  const shipInfo = useMemo(() => {
+    const info: Record<
+      string,
+      {
+        aset: ExcelStatusAset;
+        code: string;
+        loc?: LocationRow;
+        saldo: number;
+        total: number;
+        qty: number;
+        kurang: number;
+        breakdown: string;
+        suggestedAset?: ExcelStatusAset;
+      }
+    > = {};
+    for (const x of pendingItems) {
+      const { aset, code, loc } = targetLocationOf(x, locations);
+      const total = stock[x.item_id] ?? 0;
+      const saldo = loc ? (stockByLoc[locKey(x.item_id, loc.id)] ?? 0) : 0;
+      const sisa = (x.qty_approved ?? 0) - (x.qty_shipped ?? 0);
+      const raw = shipQty[x.id];
+      const parsed = raw === "" || raw == null ? sisa : Number(raw);
+      const qty = Number.isFinite(parsed) ? parsed : sisa;
+      const alt = bestAlternativeLocation(x.item_id, locations, stockByLoc, qty, loc?.id);
+      info[x.id] = {
+        aset,
+        code,
+        loc,
+        saldo,
+        total,
+        qty,
+        kurang: Math.max(0, qty - saldo),
+        breakdown: stockBreakdown(x.item_id, locations, stockByLoc),
+        suggestedAset: alt ? ASET_BY_LOCATION_CODE[alt.l.code.toUpperCase()] : undefined,
+      };
+    }
+    return info;
+  }, [pendingItems, locations, stock, stockByLoc, shipQty]);
+
+  // Baris yang qty kirimnya melebihi saldo lokasi pemotong (akan ditolak DB).
+  const shortLines = pendingItems.filter((x) => (shipInfo[x.id]?.kurang ?? 0) > 0);
 
   // ---------- REVIEW (admin gudang) ----------
   const submitReview = async (decision: "approve" | "reject") => {
@@ -462,7 +510,14 @@ export function RequestDetailPage() {
       toast.success(`Berhasil dikirim. Transaksi tercatat (ID: ${String(data).slice(0, 8)}…).`);
       await load();
     } catch (e) {
-      toast.error(formatShipError(e instanceof Error ? e.message : "Gagal mengirim.", items));
+      toast.error(
+        formatShipError(e instanceof Error ? e.message : "Gagal mengirim.", {
+          items,
+          locations,
+          stock,
+          stockByLoc,
+        })
+      );
     } finally {
       setBusy(false);
     }
@@ -708,7 +763,9 @@ export function RequestDetailPage() {
                       <span className="text-ink-500">Minta: {fmt(minta)}</span>
                       {" • "}
                       <span className={tersedia >= minta ? "text-brand-700" : "text-warn-600"}>
-                        Stok tersedia: {fmt(tersedia)}
+                        Stok total: {fmt(tersedia)}
+                        {stockBreakdown(x.item_id, locations, stockByLoc) &&
+                          ` (${stockBreakdown(x.item_id, locations, stockByLoc)})`}
                       </span>
                     </div>
                   </div>
@@ -934,14 +991,36 @@ export function RequestDetailPage() {
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-ink-500">
+                  Lokasi pemotongan stok mengikuti Status Aset tiap baris: ASSET BARU →{" "}
+                  <span className="font-mono">STOK-BARU</span>, ASSET RETUR →{" "}
+                  <span className="font-mono">STOK-RETUR</span>, UNREADY →{" "}
+                  <span className="font-mono">STOK-UNREADY</span>.
+                </p>
               </div>
             </div>
+            {shortLines.length > 0 && (
+              <div className="rounded-lg border border-warn-100 bg-warn-50 p-3 text-sm text-warn-700">
+                <div className="font-semibold">
+                  {shortLines.length} baris belum bisa dikirim: saldo lokasi pemotong kurang.
+                </div>
+                <p className="mt-1 text-xs">
+                  Angka di menu Persediaan adalah TOTAL semua lokasi, sedangkan pengiriman hanya
+                  memotong satu lokasi sesuai Status Aset. Ikuti saran pada baris yang ditandai di
+                  bawah.
+                </p>
+              </div>
+            )}
             {pendingItems.map((x) => {
               const sisa = (x.qty_approved ?? 0) - (x.qty_shipped ?? 0);
+              const info = shipInfo[x.id];
+              const kurang = info?.kurang ?? 0;
               return (
                 <div
                   key={x.id}
-                  className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
+                  className={`grid gap-3 rounded-lg border p-3 sm:grid-cols-12 sm:items-end ${
+                    kurang > 0 ? "border-warn-100 bg-warn-50" : "border-ink-200 bg-ink-50"
+                  }`}
                 >
                   <div className="sm:col-span-5">
                     <div className="font-medium">{x.inventory_items?.name}</div>
@@ -949,6 +1028,25 @@ export function RequestDetailPage() {
                       Sisa: {fmt(sisa)} • Terkirim: {fmt(Number(x.qty_shipped ?? 0))}
                       {x.barcode && <span className="font-mono"> • {x.barcode}</span>}
                     </div>
+                    <div className="mt-1 text-xs">
+                      <span className="text-ink-500">Stok total: {fmt(info?.total ?? 0)}</span>
+                      {" • "}
+                      <span className={kurang > 0 ? "text-warn-600" : "text-brand-700"}>
+                        Saldo {info?.code ?? "—"}: {fmt(info?.saldo ?? 0)}
+                      </span>
+                      {info?.breakdown && (
+                        <span className="text-ink-500"> ({info.breakdown})</span>
+                      )}
+                    </div>
+                    {kurang > 0 && (
+                      <div className="mt-2 rounded-md border border-warn-100 bg-white p-2 text-xs text-warn-700">
+                        Qty kirim {fmt(info?.qty ?? 0)} melebihi saldo {info?.code} sebesar{" "}
+                        {fmt(kurang)}.{" "}
+                        {info?.suggestedAset
+                          ? `Stok ada di lokasi lain — ubah Status Aset baris ini ke ${info.suggestedAset} (Edit Item, Super Admin), atau pindahkan stoknya ke ${info.code}.`
+                          : `Pindahkan stok dari lokasi lain ke ${info?.code} (Transfers/Stock Opname), atau kurangi qty kirim.`}
+                      </div>
+                    )}
                   </div>
                   <div className="sm:col-span-2">
                     <Label>Qty kirim</Label>
