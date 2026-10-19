@@ -100,6 +100,19 @@ export function ScannerPage() {
       return;
     }
 
+    // Resolver hanya mengembalikan target sesuai izin assets.view / inventory.view.
+    if (/^\d{12}$/.test(t)) {
+      const { data } = await supabase.rpc("resolve_qr_label", { p_code: t });
+      const serial = (data as { kind: "asset" | "item"; id: string; code: string; name: string }[] | null)?.[0];
+      if (serial) {
+        setResult(serial.kind === "asset"
+          ? { kind: "asset", id: serial.id, asset_code: serial.code, name: serial.name }
+          : { kind: "item", id: serial.id, sku: serial.code, name: serial.name });
+        setResolving(false);
+        return;
+      }
+    }
+
     // (b) Cari di DB: aset by asset_code / public_code
     const { data: asset } = await supabase
       .from("assets")
