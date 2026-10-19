@@ -106,24 +106,30 @@ export function RequestListPage() {
           .from("requests")
           .select("*")
           .in("id", [...idSet].slice(0, 300))
-          .order("request_date", { ascending: false })
-          .order("created_at", { ascending: false });
+          // Urutan tampilan: tanggal terlama -> terbaru, agar daftar mudah
+          // ditelusur berdasarkan tanggal.
+          .order("request_date", { ascending: true })
+          .order("created_at", { ascending: true });
         if (from) qBuilder = qBuilder.gte("request_date", from);
         if (to) qBuilder = qBuilder.lte("request_date", to);
         const { data, error } = await qBuilder;
         if (error) toast.error(error.message);
         else setRows((data ?? []) as Request[]);
       } else {
+        // Ambil 500 permintaan bertanggal paling baru dari server (DESC + limit),
+        // lalu balik urutannya di klien agar tampilan terlama -> terbaru tanpa
+        // membuat permintaan terbaru hilang dari daftar saat total data > 500.
         let qBuilder = supabase
           .from("requests")
           .select("*")
+          .order("request_date", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(500);
         if (from) qBuilder = qBuilder.gte("request_date", from);
         if (to) qBuilder = qBuilder.lte("request_date", to);
         const { data, error } = await qBuilder;
         if (error) toast.error(error.message);
-        else setRows((data ?? []) as Request[]);
+        else setRows([...(data ?? [])].reverse() as Request[]);
       }
     } finally {
       setLoading(false);
