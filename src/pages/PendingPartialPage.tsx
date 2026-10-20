@@ -213,7 +213,7 @@ export function PendingPartialPage() {
     <div>
       <PageHeader
         title="Sisa Belum Terkirim"
-        description="Barang yang disetujui sebagian — kirim susulan begitu stok restock."
+        description="Barang dengan sisa yang belum terpenuhi — menunggu stok atau kiriman susulan."
         actions={
           <Button variant="outline" onClick={exportExcel} disabled={loading || rows.length === 0}>
             <Download className="mr-1 h-4 w-4" /> Export Excel
@@ -228,7 +228,7 @@ export function PendingPartialPage() {
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-widest text-ink-500">
-              Item menunggu kiriman susulan
+              Item menunggu stok / kiriman susulan
             </p>
             <p className="tnum font-display text-2xl font-bold text-ink-800">
               {rows.length.toLocaleString("id-ID")}
@@ -244,7 +244,7 @@ export function PendingPartialPage() {
         searchPlaceholder="Cari permintaan / barang / gerai…"
         pageSize={15}
         emptyTitle="Tidak ada sisa pending"
-        emptyDescription="Semua barang yang disetujui sudah terkirim penuh."
+        emptyDescription="Tidak ada item yang menunggu stok atau kiriman susulan."
       />
     </div>
   );

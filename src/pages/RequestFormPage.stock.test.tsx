@@ -74,6 +74,20 @@ describe("RequestFormPage — sisa stok saat memilih barang", () => {
     vi.clearAllMocks();
   });
 
+  it("menempatkan tombol Tambah Baris setelah daftar barang", () => {
+    render(
+      <MemoryRouter>
+        <RequestFormPage />
+      </MemoryRouter>
+    );
+
+    const itemLabel = screen.getByText("Barang #1");
+    const addButton = screen.getByRole("button", { name: /Tambah Baris/ });
+    expect(
+      itemLabel.compareDocumentPosition(addButton) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it("menampilkan sisa stok Baru & Retur di bawah barang yang dipilih", async () => {
     render(
       <MemoryRouter>

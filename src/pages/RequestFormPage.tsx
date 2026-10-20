@@ -302,11 +302,8 @@ export function RequestFormPage() {
       </Card>
 
       <Card className="mt-4">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle className="font-display text-base text-ink-800">Daftar Barang</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => setRows((p) => [...p, newRow()])}>
-            <Plus className="mr-1 h-4 w-4" /> Tambah Baris
-          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           {rows.map((r, i) => (
@@ -479,6 +476,11 @@ export function RequestFormPage() {
               </div>
             </div>
           ))}
+          <div className="flex justify-start pt-1">
+            <Button variant="outline" size="sm" onClick={() => setRows((p) => [...p, newRow()])}>
+              <Plus className="mr-1 h-4 w-4" /> Tambah Baris
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
