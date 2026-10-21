@@ -1034,7 +1034,7 @@ export function RequestDetailPage() {
                 Proses Helper — isi barcode/SN lalu tandai siap
               </CardTitle>
               <p className="mt-0.5 text-xs text-ink-500">
-                Tips scanner USB: tekan Enter setelah scan Barcode untuk otomatis pindah ke kolom SN / baris berikutnya.
+                Tips scanner USB: isi SN lalu scan Barcode — tekan Enter setelah SN untuk pindah ke Barcode, dan setelah scan Barcode untuk langsung ke baris berikutnya.
               </p>
             </div>
           </CardHeader>
@@ -1056,24 +1056,6 @@ export function RequestDetailPage() {
                         {x.status_aset && <span className="ml-2 text-info-600">• {x.status_aset}</span>}
                       </div>
                     </div>
-                    <div className="sm:col-span-3">
-                      <Label>Barcode (wajib)</Label>
-                      <Input
-                        id={`proc-bc-${x.id}`}
-                        value={p.barcode}
-                        onChange={(e) =>
-                          setProc((prev) => ({ ...prev, [x.id]: { ...p, barcode: e.target.value } }))
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            const snEl = document.getElementById(`proc-sn-${x.id}`);
-                            snEl?.focus();
-                          }
-                        }}
-                        placeholder="Scan / ketik barcode"
-                      />
-                    </div>
                     <div className="sm:col-span-2">
                       <Label>SN (opsional)</Label>
                       <Input
@@ -1085,12 +1067,29 @@ export function RequestDetailPage() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            if (nextId) {
-                              document.getElementById(`proc-bc-${nextId}`)?.focus();
-                            }
+                            document.getElementById(`proc-bc-${x.id}`)?.focus();
                           }
                         }}
                         placeholder="Serial number"
+                      />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <Label>Barcode (wajib)</Label>
+                      <Input
+                        id={`proc-bc-${x.id}`}
+                        value={p.barcode}
+                        onChange={(e) =>
+                          setProc((prev) => ({ ...prev, [x.id]: { ...p, barcode: e.target.value } }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (nextId) {
+                              document.getElementById(`proc-sn-${nextId}`)?.focus();
+                            }
+                          }
+                        }}
+                        placeholder="Scan / ketik barcode"
                       />
                     </div>
                     <div className="sm:col-span-2">
