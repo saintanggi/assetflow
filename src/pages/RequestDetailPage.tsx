@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, Hourglass, PackageCheck, Pencil, Printer, Scissors, Send, XCircle } from "lucide-react";
+import { CheckCircle2, Hourglass, PackageCheck, Pencil, Printer, Scissors, Send, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -50,6 +50,10 @@ import {
   type StockByLocationMap,
   type StockMap,
 } from "../features/requests/shipStock";
+import {
+  describeItemDelete,
+  formatDeleteItemResult,
+} from "../features/requests/deleteItem";
 import {
   describeItemChange,
   formatStockMoveResult,
@@ -108,6 +112,7 @@ export function RequestDetailPage() {
   const [eStatusAset, setEStatusAset] = useState<ExcelStatusAset>("ASSET BARU");
   const [eKet, setEKet] = useState("");
   const [eSaving, setESaving] = useState(false);
+  const [eDeleting, setEDeleting] = useState(false);
 
   // Review state (admin gudang)
   const [approved, setApproved] = useState<Record<string, string>>({});
@@ -682,6 +687,47 @@ export function RequestDetailPage() {
     }
   };
 
+  // Hapus SATU baris Item Permintaan (khusus Super Admin, status apa pun).
+  // Baris terkirim -> RPC mengembalikan stok sebagai transaksi IN koreksi;
+  // baris belum terkirim -> hapus polos tanpa efek stok.
+  const deleteItemEdit = async () => {
+    if (!editItem || !isSuperAdmin) return;
+    const name = editItem.inventory_items?.name ?? "barang";
+    if (items.length <= 1) {
+      toast.error(
+        "Ini baris terakhir permintaan. Untuk membuang seluruh tiket, hapus permintaannya dari menu Permintaan."
+      );
+      return;
+    }
+    const qty = Number(editItem.qty_shipped ?? 0);
+    const { code } = targetLocationOf(editItem, locations);
+    if (!window.confirm(describeItemDelete({ name, qtyShipped: qty, locationCode: code }))) {
+      return;
+    }
+    setEDeleting(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_delete_request_item", {
+        p_request_item_id: editItem.id,
+        p_reason: `Hapus baris dari tiket ${req?.ticket_no ?? req?.request_number ?? ""}`.trim(),
+      });
+      if (error) {
+        if (isMissingRpcError(error.message)) {
+          throw new Error(
+            "Fitur hapus item belum aktif di database. Jalankan docs/sql/admin_delete_request_item.sql di Supabase SQL Editor, lalu ulangi."
+          );
+        }
+        throw new Error(error.message);
+      }
+      toast.success(formatDeleteItemResult(data, name));
+      setEditItem(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menghapus baris.");
+    } finally {
+      setEDeleting(false);
+    }
+  };
+
   // Split 1 baris item (qty N) menjadi N baris @1 satuan,
   // supaya tiap satuan punya barcode/SN/resi sendiri.
   const [splitting, setSplitting] = useState(false);
@@ -982,18 +1028,15 @@ export function RequestDetailPage() {
       {/* ===== PANEL PROSES (Helper) ===== */}
       {isProcessable && (
         <Card className="mb-4 border-warn-100 print:hidden">
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+          <CardHeader>
             <div>
               <CardTitle className="font-display text-base text-ink-800">
                 Proses Helper — isi barcode/SN lalu tandai siap
               </CardTitle>
               <p className="mt-0.5 text-xs text-ink-500">
-                Tips scanner USB: tekan Enter setelah scan Barcode untuk otomatis pindah ke kolom SN / baris berikutnya.
+                Tips scanner USB: isi SN lalu scan Barcode — tekan Enter setelah SN untuk pindah ke Barcode, dan setelah scan Barcode untuk langsung ke baris berikutnya.
               </p>
             </div>
-            <Button size="sm" onClick={saveAllProcessItems} disabled={busy}>
-              <CheckCircle2 className="mr-1 h-4 w-4" /> Simpan Semua & Siap Kirim
-            </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {items
@@ -1013,24 +1056,6 @@ export function RequestDetailPage() {
                         {x.status_aset && <span className="ml-2 text-info-600">• {x.status_aset}</span>}
                       </div>
                     </div>
-                    <div className="sm:col-span-3">
-                      <Label>Barcode (wajib)</Label>
-                      <Input
-                        id={`proc-bc-${x.id}`}
-                        value={p.barcode}
-                        onChange={(e) =>
-                          setProc((prev) => ({ ...prev, [x.id]: { ...p, barcode: e.target.value } }))
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            const snEl = document.getElementById(`proc-sn-${x.id}`);
-                            snEl?.focus();
-                          }
-                        }}
-                        placeholder="Scan / ketik barcode"
-                      />
-                    </div>
                     <div className="sm:col-span-2">
                       <Label>SN (opsional)</Label>
                       <Input
@@ -1042,12 +1067,29 @@ export function RequestDetailPage() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            if (nextId) {
-                              document.getElementById(`proc-bc-${nextId}`)?.focus();
-                            }
+                            document.getElementById(`proc-bc-${x.id}`)?.focus();
                           }
                         }}
                         placeholder="Serial number"
+                      />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <Label>Barcode (wajib)</Label>
+                      <Input
+                        id={`proc-bc-${x.id}`}
+                        value={p.barcode}
+                        onChange={(e) =>
+                          setProc((prev) => ({ ...prev, [x.id]: { ...p, barcode: e.target.value } }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (nextId) {
+                              document.getElementById(`proc-sn-${nextId}`)?.focus();
+                            }
+                          }
+                        }}
+                        placeholder="Scan / ketik barcode"
                       />
                     </div>
                     <div className="sm:col-span-2">
@@ -1084,6 +1126,14 @@ export function RequestDetailPage() {
                   </div>
                 );
               })}
+
+            {/* Tombol aksi di bawah kiri: daftar item bisa panjang, jadi tombol
+                wajib dekat baris terakhir yang sedang diisi helper. */}
+            <div className="flex justify-start pt-1">
+              <Button onClick={saveAllProcessItems} disabled={busy}>
+                <CheckCircle2 className="mr-1 h-4 w-4" /> Simpan Semua & Siap Kirim
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1435,10 +1485,20 @@ export function RequestDetailPage() {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setEditItem(null)} disabled={eSaving}>
+          {isSuperAdmin && (
+            <Button
+              variant="destructive"
+              className="sm:mr-auto"
+              onClick={deleteItemEdit}
+              disabled={eSaving || eDeleting}
+            >
+              <Trash2 className="mr-1 h-4 w-4" /> {eDeleting ? "Menghapus…" : "Hapus Item"}
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => setEditItem(null)} disabled={eSaving || eDeleting}>
             Batal
           </Button>
-          <Button onClick={saveItemEdit} disabled={eSaving}>
+          <Button onClick={saveItemEdit} disabled={eSaving || eDeleting}>
             {eSaving ? "Menyimpan…" : "Simpan"}
           </Button>
         </DialogFooter>
