@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Download, Pencil } from "lucide-react";
+import { Download, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { formatDate, formatQty } from "../lib/format";
@@ -42,9 +42,6 @@ interface LogRow {
   location: string;
   locationCode: string;
   jenisStokLabel: string;
-  statusAset: string;
-  requestStatusAset: string;
-  corrected: boolean;
   userName: string;
 }
 
@@ -70,6 +67,9 @@ export function TransactionLogPage() {
   const [editJenis, setEditJenis] = useState("");
   const [editReason, setEditReason] = useState("");
   const [editBusy, setEditBusy] = useState(false);
+  // Hapus log transaksi + kembalikan stok (khusus super admin).
+  const [deleteRow, setDeleteRow] = useState<LogRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -113,83 +113,27 @@ export function TransactionLogPage() {
       )];
 
       // Ambil resi & gerai per baris transaksi.
-      const itemDetail = new Map<string, { resi: string; gerai: string; statusAset: string }>();
+      const itemDetail = new Map<string, { resi: string; gerai: string }>();
       for (let i = 0; i < txIds.length; i += 100) {
         const { data: tis } = await supabase
           .from("inventory_transaction_items")
-          .select("transaction_id, item_id, resi, gerai, status_aset")
+          .select("transaction_id, item_id, resi, gerai")
           .in("transaction_id", txIds.slice(i, i + 100));
-        for (const t of (tis ?? []) as {
-          transaction_id: string;
-          item_id: string;
-          resi: string | null;
-          gerai: string | null;
-          status_aset: string | null;
-        }[]) {
+        for (const t of (tis ?? []) as { transaction_id: string; item_id: string; resi: string | null; gerai: string | null }[]) {
           const k = `${t.transaction_id}|${t.item_id}`;
-          itemDetail.set(k, {
-            resi: t.resi ?? "",
-            gerai: t.gerai ?? "",
-            statusAset: t.status_aset ?? "",
-          });
+          itemDetail.set(k, { resi: t.resi ?? "", gerai: t.gerai ?? "" });
         }
       }
 
       // Tiket dari nomor permintaan.
       const ticketMap = new Map<string, string>();
-      const requestIdMap = new Map<string, string>();
       for (let i = 0; i < reqNums.length; i += 100) {
         const { data: reqs } = await supabase
           .from("requests")
-          .select("id, request_number, ticket_no")
+          .select("request_number, ticket_no")
           .in("request_number", reqNums.slice(i, i + 100));
-        for (const q of (reqs ?? []) as { id: string; request_number: string; ticket_no: string }[]) {
+        for (const q of (reqs ?? []) as { request_number: string; ticket_no: string }[])
           ticketMap.set(q.request_number, q.ticket_no);
-          requestIdMap.set(q.request_number, q.id);
-        }
-      }
-
-      // Status dari baris permintaan adalah sumber acuan. Ini juga mengungkap
-      // transaksi lama yang label transaksi DAN lokasi potongnya sama-sama salah.
-      const requestStatusMap = new Map<string, string | null>();
-      const requestIds = [...requestIdMap.values()];
-      for (let i = 0; i < requestIds.length; i += 100) {
-        const { data: requestItems } = await supabase
-          .from("request_items")
-          .select("request_id, item_id, status_aset")
-          .in("request_id", requestIds.slice(i, i + 100));
-        for (const item of (requestItems ?? []) as {
-          request_id: string;
-          item_id: string;
-          status_aset: string | null;
-        }[]) {
-          const key = `${item.request_id}|${item.item_id}`;
-          const previous = requestStatusMap.get(key);
-          if (previous === undefined) requestStatusMap.set(key, item.status_aset);
-          else if (previous !== item.status_aset) requestStatusMap.set(key, null);
-        }
-      }
-
-      // Tandai pengiriman yang sudah punya transaksi koreksi stok. Ledger asal tetap
-      // menyimpan lokasi historis, tetapi status aset hasil koreksi tetap ditampilkan.
-      const correctedTransactionIds = new Set<string>();
-      const shipmentIds = raw
-        .filter((r) => {
-          const tx = Array.isArray(r.inventory_transactions) ? r.inventory_transactions[0] : r.inventory_transactions;
-          return tx?.reference?.startsWith("REQ-KIRIM/");
-        })
-        .map((r) => r.transaction_id);
-      const correctionRefs = [...new Set(shipmentIds)].map((id) => `KOREKSI-ADMIN/${id}`);
-      for (let i = 0; i < correctionRefs.length; i += 100) {
-        const { data: corrections, error: correctionErr } = await supabase
-          .from("inventory_transactions")
-          .select("reference")
-          .in("reference", correctionRefs.slice(i, i + 100));
-        if (correctionErr) throw new Error(correctionErr.message);
-        for (const correction of (corrections ?? []) as { reference: string | null }[]) {
-          const originalId = correction.reference?.replace(/^KOREKSI-ADMIN\//, "");
-          if (originalId) correctedTransactionIds.add(originalId);
-        }
       }
 
       // Nama user (profiles + fallback user_accounts).
@@ -211,14 +155,9 @@ export function TransactionLogPage() {
         const it = (Array.isArray(r.inventory_items) ? r.inventory_items[0] : r.inventory_items) ?? null;
         const loc = (Array.isArray(r.locations) ? r.locations[0] : r.locations) ?? null;
         const itemId = r.item_id ?? "";
-        const det = itemDetail.get(`${r.transaction_id}|${itemId}`) ?? { resi: "", gerai: "", statusAset: "" };
+        const det = itemDetail.get(`${r.transaction_id}|${itemId}`) ?? { resi: "", gerai: "" };
         const m = tx?.reference?.match(/REQ-KIRIM\/(REQ-[\w-]+)/);
         const ticket = m ? ticketMap.get(m[1]) ?? m[1] : "";
-        const requestId = m ? requestIdMap.get(m[1]) : undefined;
-        const requestStatus = requestId ? requestStatusMap.get(`${requestId}|${itemId}`) : null;
-        // Status yang sudah dikoreksi pada transaksi harus menjadi nilai utama.
-        // Status permintaan disimpan terpisah sebagai pembanding, jangan menimpanya.
-        const statusAset = det.statusAset || requestStatus || "";
         const locationCode = loc?.code ?? "";
         const jenisInfo = classifyJenisStok(locationCode);
         return {
@@ -241,9 +180,6 @@ export function TransactionLogPage() {
           location: loc ? `${loc.warehouses?.[0]?.name ?? ""} — ${loc.name}`.replace(/^ — /, "") : "",
           locationCode,
           jenisStokLabel: jenisInfo?.label ?? "",
-          statusAset,
-          requestStatusAset: requestStatus ?? "",
-          corrected: correctedTransactionIds.has(r.transaction_id),
           userName: tx?.created_by ? userMap.get(tx.created_by) ?? tx.created_by.slice(0, 8) : "—",
         };
       });
@@ -266,11 +202,9 @@ export function TransactionLogPage() {
       if (dateTo && r.txnDate > dateTo) return false;
       if (jenis === "in" && r.qtyChange <= 0) return false;
       if (jenis === "out" && r.qtyChange >= 0) return false;
-      const actualCode = r.locationCode.toUpperCase();
-      const assetStatus = `${r.statusAset} ${r.requestStatusAset}`.toUpperCase();
-      if (jenisStok === "baru" && !actualCode.includes("BARU") && !assetStatus.includes("BARU")) return false;
-      if (jenisStok === "retur" && !actualCode.includes("RETUR") && !assetStatus.includes("RETUR") && !assetStatus.includes("RETURN")) return false;
-      if (jenisStok === "unready" && !actualCode.includes("UNREADY") && !assetStatus.includes("UNREADY")) return false;
+      if (jenisStok === "baru" && !r.locationCode.toUpperCase().includes("BARU")) return false;
+      if (jenisStok === "retur" && !r.locationCode.toUpperCase().includes("RETUR")) return false;
+      if (jenisStok === "unready" && !r.locationCode.toUpperCase().includes("UNREADY")) return false;
       return true;
     });
   }, [rows, dateFrom, dateTo, jenis, jenisStok]);
@@ -334,39 +268,11 @@ export function TransactionLogPage() {
       header: "Jenis Stok",
       accessorKey: "jenisStokLabel",
       cell: ({ row }) => {
-        const actual = classifyJenisStok(row.original.locationCode);
-        const recorded = classifyJenisStok(row.original.statusAset);
-        const requested = classifyJenisStok(row.original.requestStatusAset);
-        const isRequestShipment = row.original.reference.startsWith("REQ-KIRIM/");
-        const statusMismatch = Boolean(
-          isRequestShipment && requested && recorded && requested.label !== recorded.label
-        );
-        const locationMismatch = Boolean(
-          isRequestShipment && !row.original.corrected && recorded && actual && recorded.label !== actual.label
-        );
-        const mismatch = statusMismatch || locationMismatch;
-        const info = recorded ?? requested ?? actual;
+        const info = classifyJenisStok(row.original.locationCode);
         return info ? (
-          <div className="flex flex-col items-start gap-1">
-            <Badge variant={mismatch ? "destructive" : info.variant} title={`Status transaksi: ${row.original.statusAset || info.label}; status permintaan: ${row.original.requestStatusAset || "—"}; lokasi ledger: ${row.original.location}`}>
-              {info.label}
-            </Badge>
-            {statusMismatch && (
-              <span className="text-xs font-medium text-danger-700">
-                Permintaan: {requested?.label ?? row.original.requestStatusAset} (tidak sesuai)
-              </span>
-            )}
-            {!statusMismatch && locationMismatch && (
-              <span className="text-xs font-medium text-danger-700" title="Lokasi ledger historis berbeda dari status aset">
-                Lokasi: {actual?.label ?? "—"} (perlu koreksi)
-              </span>
-            )}
-            {row.original.corrected && (
-              <span className="text-xs text-ok-700" title="Ada transaksi transfer koreksi untuk pengiriman ini">
-                Koreksi stok tercatat
-              </span>
-            )}
-          </div>
+          <Badge variant={info.variant} title={row.original.location}>
+            {info.label}
+          </Badge>
         ) : (
           <span className="text-ink-400" title={row.original.location}>
             —
@@ -399,27 +305,29 @@ export function TransactionLogPage() {
             header: "Aksi",
             id: "aksi",
             cell: ({ row }: { row: { original: LogRow } }) => (
-              <Button
-                variant="outline"
-                size="sm"
-                title="Koreksi jenis stok"
-                onClick={() => {
-                  setEditRow(row.original);
-                  const current = (row.original.requestStatusAset || row.original.statusAset).toUpperCase();
-                  setEditJenis(
-                    current.includes("UNREADY")
-                      ? "unready"
-                      : current.includes("RETUR") || current.includes("RETURN")
-                        ? "retur"
-                        : current.includes("BARU") || current.includes("NEW")
-                          ? "baru"
-                          : ""
-                  );
-                  setEditReason("");
-                }}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Koreksi jenis stok"
+                  onClick={() => {
+                    setEditRow(row.original);
+                    setEditJenis("");
+                    setEditReason("");
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Hapus log transaksi (stok dikembalikan)"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={() => setDeleteRow(row.original)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             ),
           } as ColumnDef<LogRow, unknown>,
         ]
@@ -456,6 +364,25 @@ export function TransactionLogPage() {
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleteRow) return;
+    setDeleteBusy(true);
+    try {
+      const { data, error } = await supabase.rpc("void_inventory_transaction", {
+        p_transaction_id: deleteRow.transactionId,
+      });
+      if (error) throw new Error(error.message);
+      const res = data as { deleted: boolean; doc: string; ledger_rows: number } | null;
+      toast.success(`Log ${res?.doc ?? ""} dihapus, stok dikembalikan.`);
+      setDeleteRow(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menghapus.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   const handleExport = () => {
     if (filtered.length === 0) {
       toast.error("Tidak ada data untuk diekspor.");
@@ -472,9 +399,7 @@ export function TransactionLogPage() {
         Barang: r.itemName,
         IN: r.qtyChange > 0 ? r.qtyChange : "",
         OUT: r.qtyChange < 0 ? Math.abs(r.qtyChange) : "",
-        "Status Aset Transaksi": r.statusAset,
-        "Status Aset Permintaan": r.requestStatusAset,
-        "Jenis Stok / Lokasi Aktual": r.jenisStokLabel,
+        "Jenis Stok": r.jenisStokLabel,
         Gerai: r.gerai,
         Lokasi: r.location,
         Keterangan: r.notes,
@@ -587,9 +512,7 @@ export function TransactionLogPage() {
               <>
                 {editRow.itemName} ({editRow.sku}) — {editRow.docNumber}
                 <br />
-                Status permintaan: <b>{editRow.requestStatusAset || "—"}</b> · status yang tercatat di transaksi: <b>{editRow.statusAset || editRow.jenisStokLabel || "—"}</b>
-                <br />
-                Lokasi ledger asal: <b>{editRow.locationCode || "—"}</b> · {editRow.location}
+                Jenis saat ini: <b>{editRow.jenisStokLabel || "—"}</b> · Lokasi: {editRow.location}
               </>
             )}
           </DialogDescription>
@@ -631,6 +554,39 @@ export function TransactionLogPage() {
           </Button>
           <Button onClick={saveCorrection} disabled={editBusy || !editJenis}>
             {editBusy ? "Menyimpan…" : "Simpan Koreksi"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Dialog hapus log transaksi (khusus super admin) */}
+      <Dialog open={!!deleteRow} onOpenChange={(o) => !o && setDeleteRow(null)}>
+        <DialogHeader>
+          <DialogTitle>Hapus Log Transaksi</DialogTitle>
+          <DialogDescription>
+            {deleteRow && (
+              <>
+                {deleteRow.itemName} ({deleteRow.sku}) — {deleteRow.docNumber}
+                <br />
+                <br />
+                Log transaksi ini akan <b>dihapus permanen</b> dan stok akan{" "}
+                <b>dikembalikan</b> seperti sebelum transaksi ini (dibatalkan).
+                <br />
+                <br />
+                Lanjutkan?
+              </>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDeleteRow(null)} disabled={deleteBusy}>
+            Batal
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={confirmDelete}
+            disabled={deleteBusy}
+          >
+            {deleteBusy ? "Menghapus…" : "Ya, Hapus"}
           </Button>
         </DialogFooter>
       </Dialog>
