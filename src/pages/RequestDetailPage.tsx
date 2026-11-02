@@ -795,6 +795,15 @@ export function RequestDetailPage() {
                     />
                   </div>
                   <div className="sm:col-span-3">
+                    <Label>SN (opsional)</Label>
+                    <Input
+                      value={quickSn[x.id] ?? ""}
+                      onChange={(e) => setQuickSn((p) => ({ ...p, [x.id]: e.target.value }))}
+                      placeholder="Opsional"
+                      className="font-mono"
+                    />
+                  </div>
+                  <div className="sm:col-span-3">
                     <Label>No resi *</Label>
                     <Input
                       value={quickResi[x.id] ?? ""}
@@ -808,15 +817,6 @@ export function RequestDetailPage() {
                       value={quickBarcode[x.id] ?? ""}
                       onChange={(e) => setQuickBarcode((p) => ({ ...p, [x.id]: e.target.value }))}
                       placeholder="Wajib diisi"
-                      className="font-mono"
-                    />
-                  </div>
-                  <div className="sm:col-span-3">
-                    <Label>SN (opsional)</Label>
-                    <Input
-                      value={quickSn[x.id] ?? ""}
-                      onChange={(e) => setQuickSn((p) => ({ ...p, [x.id]: e.target.value }))}
-                      placeholder="Opsional"
                       className="font-mono"
                     />
                   </div>
