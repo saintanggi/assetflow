@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, Hourglass, PackageCheck, Pencil, Printer, Scissors, Send, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, PackageCheck, Pencil, Printer, Scissors, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -39,32 +39,6 @@ import {
   parseRequestStatus,
   parseStatusAset,
 } from "../lib/requestStatus";
-import {
-  ASET_BY_LOCATION_CODE,
-  bestAlternativeLocation,
-  formatShipError,
-  locKey,
-  stockBreakdown,
-  targetLocationOf,
-  type LocationRow,
-  type StockByLocationMap,
-  type StockMap,
-} from "../features/requests/shipStock";
-import {
-  describeItemDelete,
-  formatDeleteItemResult,
-} from "../features/requests/deleteItem";
-import {
-  describeItemChange,
-  formatStockMoveResult,
-  isMissingRpcError,
-  needsStockMove,
-} from "../features/requests/itemCorrection";
-import {
-  buildRequestReviewPlan,
-  canRecoverZeroQtyItem,
-  withWaitingStockNote,
-} from "../features/requests/review";
 
 const STATUS_VARIANT: Record<RequestStatus, "default" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   diajukan: "info",
@@ -88,6 +62,25 @@ const ITEM_VARIANT: Record<string, "default" | "info" | "warning" | "success" | 
 
 const fmt = (n: number) => Number(n).toLocaleString("id-ID", { maximumFractionDigits: 3 });
 
+interface StockMap {
+  [itemId: string]: number;
+}
+
+// Ubah pesan error teknis (berisi UUID) menjadi bahasa yang mudah dipahami.
+function formatShipError(raw: string, items: RequestItem[]): string {
+  const m = raw.match(/Stok tidak mencukupi \(item ([0-9a-f-]{36})/i);
+  if (m) {
+    const found = items.find((x) => x.item_id === m[1]);
+    const itemName = found?.inventory_items?.name ?? "barang";
+    const avail = raw.match(/tersedia ([\d.,]+)/i)?.[1] ?? "?";
+    const need = raw.match(/perubahan -([\d.,]+)/i)?.[1] ?? "?";
+    return `Stok "${itemName}" tidak cukup (tersedia ${avail}, dibutuhkan ${need}). Tambah stok dulu di menu Persediaan.`;
+  }
+  return raw
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[id]")
+    .trim() || "Gagal mengirim.";
+}
+
 export function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -95,8 +88,7 @@ export function RequestDetailPage() {
   const [req, setReq] = useState<Request | null>(null);
   const [items, setItems] = useState<RequestItem[]>([]);
   const [stock, setStock] = useState<StockMap>({});
-  const [stockByLoc, setStockByLoc] = useState<StockByLocationMap>({});
-  const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [locations, setLocations] = useState<{ id: string; code: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -112,15 +104,12 @@ export function RequestDetailPage() {
   const [eStatusAset, setEStatusAset] = useState<ExcelStatusAset>("ASSET BARU");
   const [eKet, setEKet] = useState("");
   const [eSaving, setESaving] = useState(false);
-  const [eDeleting, setEDeleting] = useState(false);
 
   // Review state (admin gudang)
   const [approved, setApproved] = useState<Record<string, string>>({});
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
   const [warehouseNote, setWarehouseNote] = useState("");
-  const [restoreStockItem, setRestoreStockItem] = useState<RequestItem | null>(null);
-  const [restoreStockNote, setRestoreStockNote] = useState("");
 
   // Process state (helper)
   const [proc, setProc] = useState<Record<string, { barcode: string; sn: string; type: string }>>({});
@@ -130,6 +119,10 @@ export function RequestDetailPage() {
   const [shipQty, setShipQty] = useState<Record<string, string>>({});
   const [shipResi, setShipResi] = useState<Record<string, string>>({});
   const [shipLocation, setShipLocation] = useState("");
+
+  // Kirim cepat 1 pintu (super admin) — setujui + kirim sekaligus.
+  const [quickQty, setQuickQty] = useState<Record<string, string>>({});
+  const [quickResi, setQuickResi] = useState<Record<string, string>>({});
 
   const canReview = hasPermission("requests.review");
   const canProcess = hasPermission("requests.process");
@@ -160,26 +153,18 @@ export function RequestDetailPage() {
         .order("name");
       setMasterItems(((mi ?? []) as { id: string; name: string }[]));
 
-      // Stok tersedia per barang (total) + per lokasi (untuk panel kirim).
+      // Stok tersedia per barang (untuk panel review).
       const itemIds = its.map((x) => x.item_id);
       if (itemIds.length > 0) {
         const { data: bal } = await supabase
           .from("inventory_balances")
-          .select("item_id, location_id, qty")
+          .select("item_id, qty")
           .in("item_id", itemIds);
         const m: StockMap = {};
-        const mLoc: StockByLocationMap = {};
-        for (const b of (bal ?? []) as {
-          item_id: string;
-          location_id: string;
-          qty: number | string;
-        }[]) {
-          const q = Number(b.qty);
-          m[b.item_id] = (m[b.item_id] ?? 0) + q;
-          mLoc[locKey(b.item_id, b.location_id)] = q;
+        for (const b of (bal ?? []) as { item_id: string; qty: number | string }[]) {
+          m[b.item_id] = (m[b.item_id] ?? 0) + Number(b.qty);
         }
         setStock(m);
-        setStockByLoc(mLoc);
       }
 
       const { data: locs } = await supabase
@@ -210,6 +195,7 @@ export function RequestDetailPage() {
       const a: Record<string, string> = {};
       const p: Record<string, { barcode: string; sn: string; type: string }> = {};
       const q: Record<string, string> = {};
+      const qq: Record<string, string> = {};
       for (const x of its) {
         a[x.id] = x.qty_approved != null ? String(x.qty_approved) : String(x.qty_requested);
         p[x.id] = {
@@ -219,10 +205,14 @@ export function RequestDetailPage() {
         };
         const sisa = (x.qty_approved ?? 0) - (x.qty_shipped ?? 0);
         q[x.id] = sisa > 0 ? String(sisa) : "";
+        // Kirim cepat: default qty = sisa permintaan (belum terkirim).
+        const sisaReq = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
+        qq[x.id] = sisaReq > 0 ? String(sisaReq) : "";
       }
       setApproved(a);
       setProc(p);
       setShipQty(q);
+      setQuickQty(qq);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memuat permintaan.");
     } finally {
@@ -240,52 +230,50 @@ export function RequestDetailPage() {
     [items]
   );
 
-  /**
-   * Rincian stok untuk tiap baris yang akan dikirim: lokasi mana yang dipotong
-   * (mengikuti Status Aset), saldo lokasi itu, total semua lokasi, dan sisa
-   * kekurangan berdasarkan qty kirim yang sedang diisi.
-   */
-  const shipInfo = useMemo(() => {
-    const info: Record<
-      string,
-      {
-        aset: ExcelStatusAset;
-        code: string;
-        loc?: LocationRow;
-        saldo: number;
-        total: number;
-        qty: number;
-        kurang: number;
-        breakdown: string;
-        suggestedAset?: ExcelStatusAset;
-      }
-    > = {};
-    for (const x of pendingItems) {
-      const { aset, code, loc } = targetLocationOf(x, locations);
-      const total = stock[x.item_id] ?? 0;
-      const saldo = loc ? (stockByLoc[locKey(x.item_id, loc.id)] ?? 0) : 0;
-      const sisa = (x.qty_approved ?? 0) - (x.qty_shipped ?? 0);
-      const raw = shipQty[x.id];
-      const parsed = raw === "" || raw == null ? sisa : Number(raw);
-      const qty = Number.isFinite(parsed) ? parsed : sisa;
-      const alt = bestAlternativeLocation(x.item_id, locations, stockByLoc, qty, loc?.id);
-      info[x.id] = {
-        aset,
-        code,
-        loc,
-        saldo,
-        total,
-        qty,
-        kurang: Math.max(0, qty - saldo),
-        breakdown: stockBreakdown(x.item_id, locations, stockByLoc),
-        suggestedAset: alt ? ASET_BY_LOCATION_CODE[alt.l.code.toUpperCase()] : undefined,
-      };
-    }
-    return info;
-  }, [pendingItems, locations, stock, stockByLoc, shipQty]);
+  // Item yang bisa dikirim cepat: belum terkirim & tidak ditolak.
+  const quickItems = useMemo(
+    () => items.filter((x) => !["terkirim", "ditolak"].includes(x.item_status ?? "")),
+    [items]
+  );
 
-  // Baris yang qty kirimnya melebihi saldo lokasi pemotong (akan ditolak DB).
-  const shortLines = pendingItems.filter((x) => (shipInfo[x.id]?.kurang ?? 0) > 0);
+  // ---------- KIRIM CEPAT 1 PINTU (super admin) ----------
+  const submitQuickShip = async () => {
+    if (!req || !id) return;
+    const lines = quickItems
+      .map((x) => ({
+        request_item_id: x.id,
+        qty: Number(quickQty[x.id] || 0),
+        resi: (quickResi[x.id] || "").trim(),
+      }))
+      .filter((l) => l.qty > 0);
+    if (lines.length === 0) {
+      toast.error("Isi qty kirim minimal satu item.");
+      return;
+    }
+    for (const l of lines) {
+      const x = quickItems.find((p) => p.id === l.request_item_id)!;
+      const sisa = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
+      if (l.qty > sisa) {
+        toast.error(`Qty kirim "${x.inventory_items?.name}" melebihi sisa ${fmt(sisa)}.`);
+        return;
+      }
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.rpc("quick_ship_request", {
+        p_request_id: id,
+        p_lines: lines,
+        p_notes: `Kirim cepat ${req.request_number} ke ${req.branch_name}`,
+      });
+      if (error) throw new Error(error.message);
+      toast.success("Berhasil disetujui & dikirim sekaligus.");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal kirim cepat.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // ---------- REVIEW (admin gudang) ----------
   const submitReview = async (decision: "approve" | "reject") => {
@@ -313,98 +301,81 @@ export function RequestDetailPage() {
           .eq("request_id", id);
         if (itemErr) throw new Error(itemErr.message);
       } else {
-        const plan = buildRequestReviewPlan(
-          items.map((x) => ({ ...x, name: x.inventory_items?.name })),
-          approved,
-          warehouseNote,
-        );
-        for (const update of plan.updates) {
-          const { error } = await supabase
-            .from("request_items")
-            .update(update.values)
-            .eq("id", update.itemId);
-          if (error) throw new Error(error.message);
+        // Validasi qty approve per item.
+        let needNote = false;
+        for (const x of items) {
+          const q = Number(approved[x.id]);
+          if (!(q >= 0) || q > Number(x.qty_requested)) {
+            throw new Error(`Qty setuju "${x.inventory_items?.name}" harus 0–${fmt(Number(x.qty_requested))}.`);
+          }
+          if (q > 0 && q < Number(x.qty_requested)) needNote = true;
         }
-        if (plan.pendingStockInserts.length > 0) {
-          const { error } = await supabase.from("request_items").insert(plan.pendingStockInserts);
-          if (error) throw new Error(error.message);
+        if (needNote && !warehouseNote.trim()) {
+          throw new Error("Keterangan gudang wajib diisi bila ada item yang disetujui sebagian.");
         }
+        for (const x of items) {
+          const q = Number(approved[x.id]);
+          const minta = Number(x.qty_requested);
+          if (q > 0 && q < minta) {
+            // Approve sebagian: baris asli jadi qty yg disetujui,
+            // sisanya jadi baris pending "menunggu_stok" + keterangan gudang.
+            const sisaQty = minta - q;
+            const { error: updErr } = await supabase
+              .from("request_items")
+              .update({
+                qty_requested: q,
+                qty_approved: q,
+                item_status: "disetujui",
+              })
+              .eq("id", x.id);
+            if (updErr) throw new Error(updErr.message);
+            const { error: insErr } = await supabase.from("request_items").insert({
+              request_id: x.request_id,
+              item_id: x.item_id,
+              qty_requested: sisaQty,
+              qty_approved: null,
+              qty_shipped: 0,
+              item_type: x.item_type ?? null,
+              status_aset: x.status_aset ?? null,
+              item_status: "menunggu_stok",
+              notes: `Menunggu stok: ${warehouseNote.trim()}`,
+            });
+            if (insErr) throw new Error(insErr.message);
+          } else {
+            const { error } = await supabase
+              .from("request_items")
+              .update({
+                qty_approved: q,
+                item_status: q > 0 ? "disetujui" : "ditolak",
+              })
+              .eq("id", x.id);
+            if (error) throw new Error(error.message);
+          }
+        }
+        const allFull = items.every((x) => Number(approved[x.id]) >= Number(x.qty_requested));
+        const anyApproved = items.some((x) => Number(approved[x.id]) > 0);
+        const status = !anyApproved ? "ditolak" : allFull ? "disetujui" : "disetujui_sebagian";
         const { error } = await supabase
           .from("requests")
           .update({
-            status: plan.requestStatus,
+            status,
             reviewed_by: user?.id ?? null,
             reviewed_at: new Date().toISOString(),
           })
           .eq("id", id);
         if (error) throw new Error(error.message);
         toast.success(
-          plan.requestStatus === "disetujui"
+          status === "disetujui"
             ? "Permintaan disetujui penuh."
-            : "Review tersimpan — item yang belum tersedia masuk Menunggu Stok / Sisa Belum Terkirim."
+            : status === "disetujui_sebagian"
+              ? "Disetujui sebagian — sisa masuk dashboard Sisa Belum Terkirim."
+              : "Permintaan ditolak (semua qty 0)."
         );
       }
       await load();
       setShowReject(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menyimpan review.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Pulihkan item qty 0 yang ditolak oleh alur review lama karena stok kosong.
-  const restoreRejectedZeroItem = async () => {
-    if (!req || !restoreStockItem) return;
-    const note = restoreStockNote.trim();
-    if (!note) {
-      toast.error("Keterangan gudang wajib diisi.");
-      return;
-    }
-    if (!canRecoverZeroQtyItem(restoreStockItem, req)) {
-      toast.error("Item ini tidak lagi memenuhi syarat untuk dipulihkan. Muat ulang tiket.");
-      setRestoreStockItem(null);
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const { data: changedItem, error: itemError } = await supabase
-        .from("request_items")
-        .update({
-          qty_approved: null,
-          item_status: "menunggu_stok",
-          notes: withWaitingStockNote(restoreStockItem.notes, note),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", restoreStockItem.id)
-        .eq("request_id", req.id)
-        .eq("item_status", "ditolak")
-        .eq("qty_approved", 0)
-        .select("id")
-        .maybeSingle();
-      if (itemError) throw new Error(itemError.message);
-      if (!changedItem) throw new Error("Data item sudah berubah. Muat ulang tiket lalu coba lagi.");
-
-      const now = new Date().toISOString();
-      const { error: requestError } = await supabase
-        .from("requests")
-        .update({
-          status: "disetujui_sebagian",
-          reviewed_by: user?.id ?? req.reviewed_by,
-          reviewed_at: now,
-          updated_at: now,
-          ...(req.status === "ditolak" ? { rejection_reason: null } : {}),
-        })
-        .eq("id", req.id);
-      if (requestError) throw new Error(requestError.message);
-
-      toast.success("Item dipulihkan ke Menunggu Stok dan akan tampil di Sisa Belum Terkirim.");
-      setRestoreStockItem(null);
-      setRestoreStockNote("");
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal memulihkan item.");
     } finally {
       setBusy(false);
     }
@@ -545,14 +516,7 @@ export function RequestDetailPage() {
       toast.success(`Berhasil dikirim. Transaksi tercatat (ID: ${String(data).slice(0, 8)}…).`);
       await load();
     } catch (e) {
-      toast.error(
-        formatShipError(e instanceof Error ? e.message : "Gagal mengirim.", {
-          items,
-          locations,
-          stock,
-          stockByLoc,
-        })
-      );
+      toast.error(formatShipError(e instanceof Error ? e.message : "Gagal mengirim.", items));
     } finally {
       setBusy(false);
     }
@@ -610,121 +574,26 @@ export function RequestDetailPage() {
       for (const k of eKet.split("\n").map((v) => v.trim()).filter(Boolean)) {
         notesLines.push(k);
       }
-
-      // Kolom non-kunci; item_id & status_aset ditangani khusus di bawah.
-      const restFields = {
-        barcode: eBarcode.trim() || null,
-        serial_number: snValues.join("\n") || null,
-        resi: eResi.trim() || null,
-        notes: notesLines.join("\n") || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      const newItemId = eItemId || editItem.item_id;
-      const oldStatus = parseStatusAset(editItem.status_aset);
-      const qtyShipped = Number(editItem.qty_shipped ?? 0);
-      const change = {
-        oldItemId: editItem.item_id,
-        newItemId,
-        oldStatus,
-        newStatus: eStatusAset,
-        qtyShipped,
-      };
-
-      if (needsStockMove(change)) {
-        // Baris sudah terkirim: stok WAJIB ikut dipindahkan, kalau tidak barang
-        // lama menyimpan saldo minus walau tiketnya sudah diganti.
-        const oldName = editItem.inventory_items?.name ?? "barang lama";
-        const newName = masterItems.find((m) => m.id === newItemId)?.name ?? oldName;
-        if (
-          !window.confirm(
-            describeItemChange({ ...change, oldName, newName })
-          )
-        ) {
-          setESaving(false);
-          return;
-        }
-        const { data, error } = await supabase.rpc("admin_change_request_item", {
-          p_request_item_id: editItem.id,
-          p_new_item_id: newItemId,
-          p_new_status_aset: eStatusAset,
-          p_reason: `Ubah dari tiket ${req?.ticket_no ?? req?.request_number ?? ""}`.trim(),
-        });
-        if (error) {
-          if (isMissingRpcError(error.message)) {
-            throw new Error(
-              "Fitur koreksi stok belum aktif di database. Jalankan docs/sql/admin_change_request_item.sql di Supabase SQL Editor, lalu ulangi."
-            );
-          }
-          throw new Error(error.message);
-        }
-        const { error: restErr } = await supabase
-          .from("request_items")
-          .update(restFields)
-          .eq("id", editItem.id);
-        if (restErr) throw new Error(restErr.message);
-        toast.success(formatStockMoveResult(data, newName));
-      } else {
-        // Belum ada pengiriman (atau tidak ada perubahan barang/status):
-        // cukup update baris seperti sebelumnya.
-        const { error } = await supabase
-          .from("request_items")
-          .update({
-            item_id: newItemId,
-            status_aset: eStatusAset,
-            ...restFields,
-          })
-          .eq("id", editItem.id);
-        if (error) throw new Error(error.message);
-        toast.success("Data item diperbarui.");
-      }
+      const { error } = await supabase
+        .from("request_items")
+        .update({
+          item_id: eItemId || editItem.item_id,
+          barcode: eBarcode.trim() || null,
+          serial_number: snValues.join("\n") || null,
+          resi: eResi.trim() || null,
+          status_aset: eStatusAset,
+          notes: notesLines.join("\n") || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editItem.id);
+      if (error) throw new Error(error.message);
+      toast.success("Data item diperbarui.");
       setEditItem(null);
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
     } finally {
       setESaving(false);
-    }
-  };
-
-  // Hapus SATU baris Item Permintaan (khusus Super Admin, status apa pun).
-  // Baris terkirim -> RPC mengembalikan stok sebagai transaksi IN koreksi;
-  // baris belum terkirim -> hapus polos tanpa efek stok.
-  const deleteItemEdit = async () => {
-    if (!editItem || !isSuperAdmin) return;
-    const name = editItem.inventory_items?.name ?? "barang";
-    if (items.length <= 1) {
-      toast.error(
-        "Ini baris terakhir permintaan. Untuk membuang seluruh tiket, hapus permintaannya dari menu Permintaan."
-      );
-      return;
-    }
-    const qty = Number(editItem.qty_shipped ?? 0);
-    const { code } = targetLocationOf(editItem, locations);
-    if (!window.confirm(describeItemDelete({ name, qtyShipped: qty, locationCode: code }))) {
-      return;
-    }
-    setEDeleting(true);
-    try {
-      const { data, error } = await supabase.rpc("admin_delete_request_item", {
-        p_request_item_id: editItem.id,
-        p_reason: `Hapus baris dari tiket ${req?.ticket_no ?? req?.request_number ?? ""}`.trim(),
-      });
-      if (error) {
-        if (isMissingRpcError(error.message)) {
-          throw new Error(
-            "Fitur hapus item belum aktif di database. Jalankan docs/sql/admin_delete_request_item.sql di Supabase SQL Editor, lalu ulangi."
-          );
-        }
-        throw new Error(error.message);
-      }
-      toast.success(formatDeleteItemResult(data, name));
-      setEditItem(null);
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus baris.");
-    } finally {
-      setEDeleting(false);
     }
   };
 
@@ -869,29 +738,77 @@ export function RequestDetailPage() {
         {req.notes && <span className="text-sm text-ink-500">Catatan: {req.notes}</span>}
       </div>
 
+      {/* ===== PANEL KIRIM CEPAT 1 PINTU (Super Admin) ===== */}
+      {isSuperAdmin && quickItems.length > 0 && (
+        <Card className="mb-4 border-brand-200">
+          <CardHeader>
+            <CardTitle className="font-display text-base text-ink-800">
+              Kirim Cepat — setujui & kirim sekaligus
+            </CardTitle>
+            <p className="mt-0.5 text-xs text-ink-500">
+              Satu langkah untuk super admin: tanpa review, tanpa proses helper. Lokasi stok
+              otomatis mengikuti jenis stok tiap barang (Baru / Retur / Unready).
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {quickItems.map((x) => {
+              const sisa = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
+              return (
+                <div
+                  key={x.id}
+                  className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
+                >
+                  <div className="sm:col-span-5">
+                    <div className="font-medium">{x.inventory_items?.name}</div>
+                    <div className="text-xs text-ink-500">
+                      Minta: {fmt(Number(x.qty_requested ?? 0))} • Sisa: {fmt(sisa)} • Terkirim:{" "}
+                      {fmt(Number(x.qty_shipped ?? 0))}
+                      {x.status_aset && <span className="ml-1 font-medium">• {x.status_aset}</span>}
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label>Qty kirim</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={quickQty[x.id] ?? ""}
+                      onChange={(e) => setQuickQty((p) => ({ ...p, [x.id]: e.target.value }))}
+                    />
+                  </div>
+                  <div className="sm:col-span-5">
+                    <Label>No resi</Label>
+                    <Input
+                      value={quickResi[x.id] ?? ""}
+                      onChange={(e) => setQuickResi((p) => ({ ...p, [x.id]: e.target.value }))}
+                      placeholder="No resi pengiriman (opsional)"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            <Button onClick={submitQuickShip} disabled={busy}>
+              <Send className="mr-1 h-4 w-4" /> Setujui & Kirim Semua
+            </Button>
+            <p className="text-xs text-ink-500">
+              Sekali klik: permintaan disetujui, transaksi barang keluar dicatat, dan stok
+              berkurang dari lokasi yang tepat.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ===== PANEL REVIEW (Admin Gudang) ===== */}
-      {isReviewable && (
+      {!isSuperAdmin && isReviewable && (
         <Card className="mb-4 border-info-100">
           <CardHeader>
             <CardTitle className="font-display text-base text-ink-800">
               Review Admin Gudang — cek stok & tentukan qty yang disetujui
             </CardTitle>
-            <p className="mt-1 text-xs text-ink-500">
-              Isi qty yang tersedia atau tekan Isi Sesuai Stok untuk mengisi otomatis berdasarkan Status Asset.
-              Untuk barang yang stoknya kosong, tekan Tunggu Stok; qty 0 dan sisa persetujuan sebagian akan
-              masuk menu Sisa Belum Terkirim. Tolak Semua hanya untuk seluruh tiket.
-            </p>
           </CardHeader>
           <CardContent className="space-y-3">
             {items.map((x) => {
               const tersedia = stock[x.item_id] ?? 0;
               const minta = Number(x.qty_requested);
-              const qtyDisetujui = Number(approved[x.id] ?? x.qty_requested);
-              const targetReviewLocation = targetLocationOf(x, locations);
-              const stokLokasiAset = targetReviewLocation.loc
-                ? stockByLoc[locKey(x.item_id, targetReviewLocation.loc.id)] ?? 0
-                : 0;
-              const qtySesuaiStok = Math.max(0, Math.min(minta, stokLokasiAset));
               return (
                 <div
                   key={x.id}
@@ -904,13 +821,7 @@ export function RequestDetailPage() {
                       <span className="text-ink-500">Minta: {fmt(minta)}</span>
                       {" • "}
                       <span className={tersedia >= minta ? "text-brand-700" : "text-warn-600"}>
-                        Stok total: {fmt(tersedia)}
-                        {stockBreakdown(x.item_id, locations, stockByLoc) &&
-                          ` (${stockBreakdown(x.item_id, locations, stockByLoc)})`}
-                      </span>
-                      {" • "}
-                      <span className={stokLokasiAset >= minta ? "text-brand-700" : "text-warn-600"}>
-                        {targetReviewLocation.code}: {fmt(stokLokasiAset)}
+                        Stok tersedia: {fmt(tersedia)}
                       </span>
                     </div>
                   </div>
@@ -922,39 +833,17 @@ export function RequestDetailPage() {
                       value={approved[x.id] ?? ""}
                       onChange={(e) => setApproved((p) => ({ ...p, [x.id]: e.target.value }))}
                     />
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setApproved((p) => ({ ...p, [x.id]: String(qtySesuaiStok) }))
-                        }
-                      >
-                        Isi Sesuai Stok
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setApproved((p) => ({ ...p, [x.id]: "0" }))}
-                      >
-                        <Hourglass className="mr-1 h-3.5 w-3.5" /> Tunggu Stok
-                      </Button>
-                    </div>
                   </div>
                   <div className="sm:col-span-4 text-xs text-ink-500">
-                    {qtyDisetujui === 0
-                      ? "Qty 0 akan masuk Menunggu Stok / Sisa Belum Terkirim, bukan ditolak."
-                      : tersedia < minta
-                        ? `Stok kurang ${fmt(minta - tersedia)} — sisa qty otomatis masuk Sisa Belum Terkirim.`
-                        : "Stok cukup untuk permintaan penuh."}
+                    {tersedia < minta
+                      ? `Stok kurang ${fmt(minta - tersedia)} — setujui sebagian, sisa otomatis masuk Sisa Belum Terkirim.`
+                      : "Stok cukup untuk permintaan penuh."}
                   </div>
                 </div>
               );
             })}
             <div className="space-y-1.5 pt-2">
-              <Label>Keterangan Gudang <span className="text-ink-500">(wajib bila ada qty menunggu stok)</span></Label>
+              <Label>Keterangan Gudang <span className="text-ink-500">(wajib bila ada yang disetujui sebagian)</span></Label>
               <Textarea
                 rows={2}
                 value={warehouseNote}
@@ -990,7 +879,7 @@ export function RequestDetailPage() {
       )}
 
       {/* ===== PANEL SETUJUI MENUNGGU STOK ===== */}
-      {canReview && items.some((x) => x.item_status === "menunggu_stok") && (
+      {!isSuperAdmin && canReview && items.some((x) => x.item_status === "menunggu_stok") && (
         <Card className="mb-4 border-info-100">
           <CardHeader>
             <CardTitle className="font-display text-base text-ink-800">
@@ -1026,17 +915,20 @@ export function RequestDetailPage() {
       )}
 
       {/* ===== PANEL PROSES (Helper) ===== */}
-      {isProcessable && (
+      {!isSuperAdmin && isProcessable && (
         <Card className="mb-4 border-warn-100 print:hidden">
-          <CardHeader>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <div>
               <CardTitle className="font-display text-base text-ink-800">
                 Proses Helper — isi barcode/SN lalu tandai siap
               </CardTitle>
               <p className="mt-0.5 text-xs text-ink-500">
-                Tips scanner USB: isi SN lalu scan Barcode — tekan Enter setelah SN untuk pindah ke Barcode, dan setelah scan Barcode untuk langsung ke baris berikutnya.
+                Tips scanner USB: tekan Enter setelah scan Barcode untuk otomatis pindah ke kolom SN / baris berikutnya.
               </p>
             </div>
+            <Button size="sm" onClick={saveAllProcessItems} disabled={busy}>
+              <CheckCircle2 className="mr-1 h-4 w-4" /> Simpan Semua & Siap Kirim
+            </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {items
@@ -1056,23 +948,6 @@ export function RequestDetailPage() {
                         {x.status_aset && <span className="ml-2 text-info-600">• {x.status_aset}</span>}
                       </div>
                     </div>
-                    <div className="sm:col-span-2">
-                      <Label>SN (opsional)</Label>
-                      <Input
-                        id={`proc-sn-${x.id}`}
-                        value={p.sn}
-                        onChange={(e) =>
-                          setProc((prev) => ({ ...prev, [x.id]: { ...p, sn: e.target.value } }))
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            document.getElementById(`proc-bc-${x.id}`)?.focus();
-                          }
-                        }}
-                        placeholder="Serial number"
-                      />
-                    </div>
                     <div className="sm:col-span-3">
                       <Label>Barcode (wajib)</Label>
                       <Input
@@ -1084,12 +959,30 @@ export function RequestDetailPage() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            if (nextId) {
-                              document.getElementById(`proc-sn-${nextId}`)?.focus();
-                            }
+                            const snEl = document.getElementById(`proc-sn-${x.id}`);
+                            snEl?.focus();
                           }
                         }}
                         placeholder="Scan / ketik barcode"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label>SN (opsional)</Label>
+                      <Input
+                        id={`proc-sn-${x.id}`}
+                        value={p.sn}
+                        onChange={(e) =>
+                          setProc((prev) => ({ ...prev, [x.id]: { ...p, sn: e.target.value } }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (nextId) {
+                              document.getElementById(`proc-bc-${nextId}`)?.focus();
+                            }
+                          }
+                        }}
+                        placeholder="Serial number"
                       />
                     </div>
                     <div className="sm:col-span-2">
@@ -1126,20 +1019,12 @@ export function RequestDetailPage() {
                   </div>
                 );
               })}
-
-            {/* Tombol aksi di bawah kiri: daftar item bisa panjang, jadi tombol
-                wajib dekat baris terakhir yang sedang diisi helper. */}
-            <div className="flex justify-start pt-1">
-              <Button onClick={saveAllProcessItems} disabled={busy}>
-                <CheckCircle2 className="mr-1 h-4 w-4" /> Simpan Semua & Siap Kirim
-              </Button>
-            </div>
           </CardContent>
         </Card>
       )}
 
       {/* ===== PANEL KIRIM (Admin Gudang) ===== */}
-      {isShippable && pendingItems.length > 0 && (
+      {!isSuperAdmin && isShippable && pendingItems.length > 0 && (
         <Card className="mb-4 border-brand-200">
           <CardHeader>
             <CardTitle className="font-display text-base text-ink-800">
@@ -1162,36 +1047,14 @@ export function RequestDetailPage() {
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-ink-500">
-                  Lokasi pemotongan stok mengikuti Status Aset tiap baris: ASSET BARU →{" "}
-                  <span className="font-mono">STOK-BARU</span>, ASSET RETUR →{" "}
-                  <span className="font-mono">STOK-RETUR</span>, UNREADY →{" "}
-                  <span className="font-mono">STOK-UNREADY</span>.
-                </p>
               </div>
             </div>
-            {shortLines.length > 0 && (
-              <div className="rounded-lg border border-warn-100 bg-warn-50 p-3 text-sm text-warn-700">
-                <div className="font-semibold">
-                  {shortLines.length} baris belum bisa dikirim: saldo lokasi pemotong kurang.
-                </div>
-                <p className="mt-1 text-xs">
-                  Angka di menu Persediaan adalah TOTAL semua lokasi, sedangkan pengiriman hanya
-                  memotong satu lokasi sesuai Status Aset. Ikuti saran pada baris yang ditandai di
-                  bawah.
-                </p>
-              </div>
-            )}
             {pendingItems.map((x) => {
               const sisa = (x.qty_approved ?? 0) - (x.qty_shipped ?? 0);
-              const info = shipInfo[x.id];
-              const kurang = info?.kurang ?? 0;
               return (
                 <div
                   key={x.id}
-                  className={`grid gap-3 rounded-lg border p-3 sm:grid-cols-12 sm:items-end ${
-                    kurang > 0 ? "border-warn-100 bg-warn-50" : "border-ink-200 bg-ink-50"
-                  }`}
+                  className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
                 >
                   <div className="sm:col-span-5">
                     <div className="font-medium">{x.inventory_items?.name}</div>
@@ -1199,25 +1062,6 @@ export function RequestDetailPage() {
                       Sisa: {fmt(sisa)} • Terkirim: {fmt(Number(x.qty_shipped ?? 0))}
                       {x.barcode && <span className="font-mono"> • {x.barcode}</span>}
                     </div>
-                    <div className="mt-1 text-xs">
-                      <span className="text-ink-500">Stok total: {fmt(info?.total ?? 0)}</span>
-                      {" • "}
-                      <span className={kurang > 0 ? "text-warn-600" : "text-brand-700"}>
-                        Saldo {info?.code ?? "—"}: {fmt(info?.saldo ?? 0)}
-                      </span>
-                      {info?.breakdown && (
-                        <span className="text-ink-500"> ({info.breakdown})</span>
-                      )}
-                    </div>
-                    {kurang > 0 && (
-                      <div className="mt-2 rounded-md border border-warn-100 bg-white p-2 text-xs text-warn-700">
-                        Qty kirim {fmt(info?.qty ?? 0)} melebihi saldo {info?.code} sebesar{" "}
-                        {fmt(kurang)}.{" "}
-                        {info?.suggestedAset
-                          ? `Stok ada di lokasi lain — ubah Status Aset baris ini ke ${info.suggestedAset} (Edit Item, Super Admin), atau pindahkan stoknya ke ${info.code}.`
-                          : `Pindahkan stok dari lokasi lain ke ${info?.code} (Transfers/Stock Opname), atau kurangi qty kirim.`}
-                      </div>
-                    )}
                   </div>
                   <div className="sm:col-span-2">
                     <Label>Qty kirim</Label>
@@ -1270,7 +1114,7 @@ export function RequestDetailPage() {
                   <th className="pb-2 pr-3">Status Request</th>
                   <th className="pb-2 pr-3">Status Asset</th>
                   <th className="pb-2 pr-3">Keterangan</th>
-                  {(isSuperAdmin || canReview) && <th className="pb-2">Aksi</th>}
+                  {isSuperAdmin && <th className="pb-2"></th>}
                 </tr>
               </thead>
               <tbody>
@@ -1355,40 +1199,24 @@ export function RequestDetailPage() {
                         </div>
                       ) : "—"}
                     </td>
-                    {(isSuperAdmin || canReview) && (
+                    {isSuperAdmin && (
                       <td className="py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {isSuperAdmin && (
-                            <>
-                              {Math.round(Number(x.qty_approved ?? x.qty_requested ?? 0)) > 1 &&
-                                Number(x.qty_shipped ?? 0) === 0 && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => splitItemRow(x)}
-                                    disabled={splitting}
-                                    title="Split menjadi 1 baris per satuan"
-                                  >
-                                    <Scissors className="mr-1 h-3 w-3" /> Split
-                                  </Button>
-                                )}
-                              <Button variant="outline" size="sm" onClick={() => openItemEdit(x)}>
-                                <Pencil className="mr-1 h-3 w-3" /> Edit
+                        <div className="flex gap-1">
+                          {Math.round(Number(x.qty_approved ?? x.qty_requested ?? 0)) > 1 &&
+                            Number(x.qty_shipped ?? 0) === 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => splitItemRow(x)}
+                                disabled={splitting}
+                                title="Split menjadi 1 baris per satuan"
+                              >
+                                <Scissors className="mr-1 h-3 w-3" /> Split
                               </Button>
-                            </>
-                          )}
-                          {canReview && canRecoverZeroQtyItem(x, req) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setRestoreStockItem(x);
-                                setRestoreStockNote("");
-                              }}
-                            >
-                              <Hourglass className="mr-1 h-3 w-3" /> Pulihkan ke Menunggu Stok
-                            </Button>
-                          )}
+                            )}
+                          <Button variant="outline" size="sm" onClick={() => openItemEdit(x)}>
+                            <Pencil className="mr-1 h-3 w-3" /> Edit
+                          </Button>
                         </div>
                       </td>
                     )}
@@ -1407,13 +1235,6 @@ export function RequestDetailPage() {
           <DialogTitle>Edit — {editItem?.inventory_items?.name}</DialogTitle>
           <DialogDescription>
             Revisi data item. Satu nilai per baris untuk Barcode, SN, Resi, Keterangan.
-            {Number(editItem?.qty_shipped ?? 0) > 0 && (
-              <span className="mt-1 block text-warn-700">
-                Baris ini sudah dikirim {fmt(Number(editItem?.qty_shipped ?? 0))} unit — mengubah
-                Nama Barang atau Status Asset akan memindahkan stok {fmt(Number(editItem?.qty_shipped ?? 0))}{" "}
-                unit tersebut ke barang/lokasi baru (tercatat sebagai transaksi koreksi).
-              </span>
-            )}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 px-1 py-2 sm:grid-cols-2">
@@ -1485,62 +1306,11 @@ export function RequestDetailPage() {
           </div>
         </div>
         <DialogFooter>
-          {isSuperAdmin && (
-            <Button
-              variant="destructive"
-              className="sm:mr-auto"
-              onClick={deleteItemEdit}
-              disabled={eSaving || eDeleting}
-            >
-              <Trash2 className="mr-1 h-4 w-4" /> {eDeleting ? "Menghapus…" : "Hapus Item"}
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => setEditItem(null)} disabled={eSaving || eDeleting}>
+          <Button variant="outline" onClick={() => setEditItem(null)} disabled={eSaving}>
             Batal
           </Button>
-          <Button onClick={saveItemEdit} disabled={eSaving || eDeleting}>
+          <Button onClick={saveItemEdit} disabled={eSaving}>
             {eSaving ? "Menyimpan…" : "Simpan"}
-          </Button>
-        </DialogFooter>
-      </Dialog>
-
-      {/* Pulihkan baris qty 0 lama yang keliru tertandai ditolak karena stok kosong. */}
-      <Dialog
-        open={!!restoreStockItem}
-        onOpenChange={(open) => {
-          if (!open && !busy) {
-            setRestoreStockItem(null);
-            setRestoreStockNote("");
-          }
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>Pulihkan — {restoreStockItem?.inventory_items?.name}</DialogTitle>
-          <DialogDescription>
-            Qty 0 dari review lama tersimpan sebagai ditolak. Jika penyebabnya stok kosong, ubah baris ini ke
-            Menunggu Stok agar muncul di menu Sisa Belum Terkirim.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-1.5 px-1 py-2">
-          <Label htmlFor="restore-stock-note">Keterangan Gudang (wajib)</Label>
-          <Textarea
-            id="restore-stock-note"
-            rows={3}
-            value={restoreStockNote}
-            onChange={(e) => setRestoreStockNote(e.target.value)}
-            placeholder="cth: stok mouse kosong, menunggu restock"
-          />
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setRestoreStockItem(null)}
-            disabled={busy}
-          >
-            Batal
-          </Button>
-          <Button onClick={restoreRejectedZeroItem} disabled={busy || !restoreStockNote.trim()}>
-            {busy ? "Memulihkan…" : "Pulihkan ke Menunggu Stok"}
           </Button>
         </DialogFooter>
       </Dialog>
