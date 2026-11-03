@@ -804,16 +804,6 @@ export function RequestDetailPage() {
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <Label>Barcode (satu per baris)</Label>
-                  <Textarea
-                    rows={4}
-                    className="mt-1 font-mono text-xs"
-                    placeholder={"A0700026412\nA1100034380\nA0900011040"}
-                    value={bulkBarcode}
-                    onChange={(e) => setBulkBarcode(e.target.value)}
-                  />
-                </div>
-                <div>
                   <Label>SN (opsional, satu per baris)</Label>
                   <Textarea
                     rows={4}
@@ -821,6 +811,16 @@ export function RequestDetailPage() {
                     placeholder={"21043B16261\n5J2021031387"}
                     value={bulkSn}
                     onChange={(e) => setBulkSn(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Barcode (satu per baris)</Label>
+                  <Textarea
+                    rows={4}
+                    className="mt-1 font-mono text-xs"
+                    placeholder={"A0700026412\nA1100034380\nA0900011040"}
+                    value={bulkBarcode}
+                    onChange={(e) => setBulkBarcode(e.target.value)}
                   />
                 </div>
               </div>
