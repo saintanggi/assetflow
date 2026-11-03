@@ -142,6 +142,9 @@ export function PendingPartialPage() {
             const approved = Number(x.qty_approved ?? 0);
             const shipped = Number(x.qty_shipped ?? 0);
             const requested = Number(x.qty_requested ?? 0);
+            // Untuk pending_sebagian yang belum pernah disetujui (qty_approved NULL),
+            // pakai qty_requested sebagai dasar sisa.
+            const dasar = isMenungguStok ? requested : (x.qty_approved != null ? approved : requested);
             return {
               id: x.id,
               request_id: x.request_id,
@@ -152,7 +155,7 @@ export function PendingPartialPage() {
               qty_requested: requested,
               qty_approved: approved,
               qty_shipped: shipped,
-              sisa: isMenungguStok ? requested : approved - shipped,
+              sisa: dasar - shipped,
               resi: x.resi,
               jenis: (isMenungguStok ? "Menunggu Stok" : "Belum Terkirim") as PendingRow["jenis"],
               keterangan: x.notes,
