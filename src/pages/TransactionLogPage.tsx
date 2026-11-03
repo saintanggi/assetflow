@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Download, Pencil } from "lucide-react";
+import { Download, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { formatDate, formatQty } from "../lib/format";
@@ -67,6 +67,9 @@ export function TransactionLogPage() {
   const [editJenis, setEditJenis] = useState("");
   const [editReason, setEditReason] = useState("");
   const [editBusy, setEditBusy] = useState(false);
+  // Hapus log transaksi + kembalikan stok (khusus super admin).
+  const [deleteRow, setDeleteRow] = useState<LogRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -302,18 +305,29 @@ export function TransactionLogPage() {
             header: "Aksi",
             id: "aksi",
             cell: ({ row }: { row: { original: LogRow } }) => (
-              <Button
-                variant="outline"
-                size="sm"
-                title="Koreksi jenis stok"
-                onClick={() => {
-                  setEditRow(row.original);
-                  setEditJenis("");
-                  setEditReason("");
-                }}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Koreksi jenis stok"
+                  onClick={() => {
+                    setEditRow(row.original);
+                    setEditJenis("");
+                    setEditReason("");
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Hapus log transaksi (stok dikembalikan)"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={() => setDeleteRow(row.original)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             ),
           } as ColumnDef<LogRow, unknown>,
         ]
@@ -347,6 +361,25 @@ export function TransactionLogPage() {
       toast.error(e instanceof Error ? e.message : "Gagal mengoreksi.");
     } finally {
       setEditBusy(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteRow) return;
+    setDeleteBusy(true);
+    try {
+      const { data, error } = await supabase.rpc("void_inventory_transaction", {
+        p_transaction_id: deleteRow.transactionId,
+      });
+      if (error) throw new Error(error.message);
+      const res = data as { deleted: boolean; doc: string; ledger_rows: number } | null;
+      toast.success(`Log ${res?.doc ?? ""} dihapus, stok dikembalikan.`);
+      setDeleteRow(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menghapus.");
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -521,6 +554,39 @@ export function TransactionLogPage() {
           </Button>
           <Button onClick={saveCorrection} disabled={editBusy || !editJenis}>
             {editBusy ? "Menyimpan…" : "Simpan Koreksi"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Dialog hapus log transaksi (khusus super admin) */}
+      <Dialog open={!!deleteRow} onOpenChange={(o) => !o && setDeleteRow(null)}>
+        <DialogHeader>
+          <DialogTitle>Hapus Log Transaksi</DialogTitle>
+          <DialogDescription>
+            {deleteRow && (
+              <>
+                {deleteRow.itemName} ({deleteRow.sku}) — {deleteRow.docNumber}
+                <br />
+                <br />
+                Log transaksi ini akan <b>dihapus permanen</b> dan stok akan{" "}
+                <b>dikembalikan</b> seperti sebelum transaksi ini (dibatalkan).
+                <br />
+                <br />
+                Lanjutkan?
+              </>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDeleteRow(null)} disabled={deleteBusy}>
+            Batal
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={confirmDelete}
+            disabled={deleteBusy}
+          >
+            {deleteBusy ? "Menghapus…" : "Ya, Hapus"}
           </Button>
         </DialogFooter>
       </Dialog>
