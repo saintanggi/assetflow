@@ -51,6 +51,19 @@ export function DataTable<TData>({
     state: { globalFilter, sorting },
     onGlobalFilterChange: setGlobalFilter,
     onSortingChange: setSorting,
+    // Filter toleran: abaikan kapital, spasi, dan underscore.
+    // "ac indoor" cocok dengan "AC_Indoor_1.5_PK_Daikin".
+    globalFilterFn: (row, _columnId, filterValue) => {
+      const norm = (s: string) =>
+        s.toLowerCase().replace(/[\s_]+/g, "");
+      const q = norm(String(filterValue ?? ""));
+      if (!q) return true;
+      return row.getAllCells().some((cell) => {
+        const v = cell.getValue();
+        if (v == null) return false;
+        return norm(String(v)).includes(q);
+      });
+    },
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),

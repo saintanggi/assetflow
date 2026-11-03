@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Printer, Plus, X, Search } from "lucide-react";
 import { supabase, publicAssetUrl } from "../lib/supabase";
+import { buildSearchPattern } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -10,22 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { QrLabel } from "../features/barcodes/QrLabel";
 import { BarcodeLabel } from "../features/barcodes/BarcodeLabel";
 import { toast } from "sonner";
-
-import { SerialLabelPanel } from "../features/barcodes/SerialLabelPanel";
-
-export function LabelPrintPage() {
-  const [mode, setMode] = useState<"serial" | "legacy">("serial");
-  return <div className="space-y-6">
-    <div className="no-print">
-      <PageHeader title="Cetak Label" description="Terbitkan nomor QR berurutan atau cetak ulang label yang sudah tersimpan." />
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Mode cetak">
-        <Button variant={mode === "serial" ? "default" : "outline"} onClick={() => setMode("serial")}>QR Berurutan · Kertas 100 × 150 mm</Button>
-        <Button variant={mode === "legacy" ? "default" : "outline"} onClick={() => setMode("legacy")}>Label lama · 90 × 60 mm</Button>
-      </div>
-    </div>
-    {mode === "serial" ? <SerialLabelPanel /> : <LegacyLabelPrintPanel />}
-  </div>;
-}
 
 interface LabelItem {
   kind: "asset" | "item";
@@ -52,7 +37,7 @@ interface ItemSearchRow {
   barcode: string | null;
 }
 
-function LegacyLabelPrintPanel() {
+export function LabelPrintPage() {
   const [searchParams] = useSearchParams();
   const [labels, setLabels] = useState<LabelItem[]>([]);
 
@@ -127,11 +112,12 @@ function LegacyLabelPrintPanel() {
       setAssetResults([]);
       return;
     }
+    const pat = buildSearchPattern(t);
     const { data } = await supabase
       .from("assets")
       .select("id, asset_code, name, public_code")
       .eq("archived", false)
-      .or(`asset_code.ilike.%${t}%,name.ilike.%${t}%`)
+      .or(`asset_code.ilike.${pat},name.ilike.${pat}`)
       .limit(8);
     setAssetResults((data ?? []) as AssetSearchRow[]);
   };
@@ -143,10 +129,11 @@ function LegacyLabelPrintPanel() {
       setItemResults([]);
       return;
     }
+    const pat = buildSearchPattern(t);
     const { data } = await supabase
       .from("inventory_items")
       .select("id, sku, name, barcode")
-      .or(`sku.ilike.%${t}%,name.ilike.%${t}%`)
+      .or(`sku.ilike.${pat},name.ilike.${pat}`)
       .limit(8);
     setItemResults((data ?? []) as ItemSearchRow[]);
   };

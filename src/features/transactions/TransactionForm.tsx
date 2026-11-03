@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
+import { buildSearchPattern } from "../../lib/format";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -120,7 +121,7 @@ export function TransactionForm({
   };
 
   const searchItems = async (key: string, q: string) => {
-    const pattern = `%${q.replace(/[%_]/g, "")}%`;
+    const pattern = buildSearchPattern(q);
     const { data, error } = await supabase
       .from("inventory_items")
       .select("id, sku, name")

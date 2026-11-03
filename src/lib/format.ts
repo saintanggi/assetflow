@@ -61,3 +61,14 @@ export function timeAgo(value: string | Date | null | undefined): string {
   if (hari < 30) return `${hari} hari lalu`;
   return formatDate(d);
 }
+
+/**
+ * Buat pola LIKE untuk pencarian barang yang toleran terhadap:
+ * - huruf kapital (via ilike di query)
+ * - spasi vs underscore (keduanya jadi wildcard %)
+ * Contoh: "ac indoor" → "%ac%indoor%" cocok dengan "AC_Indoor_1.5_PK_Daikin".
+ */
+export function buildSearchPattern(q: string): string {
+  const cleaned = q.replace(/[%]/g, "").trim().replace(/[\s_]+/g, "%");
+  return `%${cleaned}%`;
+}
