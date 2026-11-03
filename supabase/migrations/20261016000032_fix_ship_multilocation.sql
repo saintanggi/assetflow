@@ -7,7 +7,8 @@
 --
 -- PERBAIKAN: baris dikelompokkan per status_aset (dinormalisasi), lalu dibuat
 -- SATU transaksi OUT per lokasi (STOK-BARU / STOK-RETUR / STOK-UNREADY).
--- p_location_id dipertahankan sebagai fallback bila kode lokasi tidak ditemukan.
+-- p_location_id dipertahankan pada signature untuk kompatibilitas pemanggil,
+-- tetapi lokasi kategori yang hilang akan menghasilkan error (tidak fallback).
 -- Return: uuid transaksi pertama (kompatibel dengan pemanggil lama).
 
 CREATE OR REPLACE FUNCTION public.ship_request_items(
@@ -61,7 +62,7 @@ BEGIN
     RAISE EXCEPTION 'Permintaan belum disetujui (status: %)', v_req_status;
   END IF;
 
-  -- Lokasi stok per jenis (kode unik global). Fallback: p_location_id.
+  -- Lokasi stok per jenis (kode unik global); kategori yang hilang harus error.
   SELECT id INTO v_loc_baru    FROM public.locations WHERE code = 'STOK-BARU'    AND is_active LIMIT 1;
   SELECT id INTO v_loc_retur   FROM public.locations WHERE code = 'STOK-RETUR'   AND is_active LIMIT 1;
   SELECT id INTO v_loc_unready FROM public.locations WHERE code = 'STOK-UNREADY' AND is_active LIMIT 1;
@@ -106,10 +107,14 @@ BEGIN
 
     -- Lokasi potong mengikuti jenis stok item, bukan pilihan tunggal admin.
     v_group_loc := CASE v_norm_aset
-      WHEN 'ASSET RETUR' THEN COALESCE(v_loc_retur, p_location_id)
-      WHEN 'UNREADY'     THEN COALESCE(v_loc_unready, p_location_id)
-      ELSE COALESCE(v_loc_baru, p_location_id)
+      WHEN 'ASSET RETUR' THEN v_loc_retur
+      WHEN 'UNREADY'     THEN v_loc_unready
+      ELSE v_loc_baru
     END;
+
+    IF v_group_loc IS NULL THEN
+      RAISE EXCEPTION 'Lokasi stok untuk jenis aset % belum tersedia', v_norm_aset;
+    END IF;
 
     UPDATE public.request_items
        SET qty_shipped = qty_shipped + v_qty,
