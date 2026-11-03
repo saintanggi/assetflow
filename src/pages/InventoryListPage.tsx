@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -156,6 +156,7 @@ export function InventoryListPage() {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors },
   } = useForm<InventoryPageFormValues>({
     resolver: zodResolver(inventoryItemSchema),
@@ -423,24 +424,36 @@ export function InventoryListPage() {
             </div>
             <div>
               <Label htmlFor="inv-category">Kategori</Label>
-              <Select
-                id="inv-category"
-                placeholder="Pilih kategori"
-                options={categories.map((c) => ({ value: c.id, label: c.name }))}
-                {...register("category_id", {
-                  setValueAs: (v: string) => (v === "" ? null : v),
-                })}
+              <Controller
+                name="category_id"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    id="inv-category"
+                    placeholder="Pilih kategori"
+                    options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                    value={field.value ?? ""}
+                    onValueChange={(v) => field.onChange(v === "" ? null : v)}
+                    onBlur={field.onBlur}
+                  />
+                )}
               />
             </div>
             <div>
               <Label htmlFor="inv-unit">Satuan</Label>
-              <Select
-                id="inv-unit"
-                placeholder="Pilih satuan"
-                options={units.map((u) => ({ value: u.id, label: u.code.toUpperCase() }))}
-                {...register("unit_id", {
-                  setValueAs: (v: string) => (v === "" ? null : v),
-                })}
+              <Controller
+                name="unit_id"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    id="inv-unit"
+                    placeholder="Pilih satuan"
+                    options={units.map((u) => ({ value: u.id, label: u.code.toUpperCase() }))}
+                    value={field.value ?? ""}
+                    onValueChange={(v) => field.onChange(v === "" ? null : v)}
+                    onBlur={field.onBlur}
+                  />
+                )}
               />
             </div>
             <div>
@@ -483,27 +496,39 @@ export function InventoryListPage() {
             </div>
             <div>
               <Label htmlFor="inv-location">Lokasi Default</Label>
-              <Select
-                id="inv-location"
-                placeholder="Pilih lokasi"
-                options={locations.map((l) => ({
-                  value: l.id,
-                  label: l.warehouses ? `${l.warehouses.name} — ${l.name}` : l.name,
-                }))}
-                {...register("location_id", {
-                  setValueAs: (v: string) => (v === "" ? null : v),
-                })}
+              <Controller
+                name="location_id"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    id="inv-location"
+                    placeholder="Pilih lokasi"
+                    options={locations.map((l) => ({
+                      value: l.id,
+                      label: l.warehouses ? `${l.warehouses.name} — ${l.name}` : l.name,
+                    }))}
+                    value={field.value ?? ""}
+                    onValueChange={(v) => field.onChange(v === "" ? null : v)}
+                    onBlur={field.onBlur}
+                  />
+                )}
               />
             </div>
             <div>
               <Label htmlFor="inv-supplier">Pemasok</Label>
-              <Select
-                id="inv-supplier"
-                placeholder="Pilih pemasok"
-                options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
-                {...register("supplier_id", {
-                  setValueAs: (v: string) => (v === "" ? null : v),
-                })}
+              <Controller
+                name="supplier_id"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    id="inv-supplier"
+                    placeholder="Pilih pemasok"
+                    options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+                    value={field.value ?? ""}
+                    onValueChange={(v) => field.onChange(v === "" ? null : v)}
+                    onBlur={field.onBlur}
+                  />
+                )}
               />
             </div>
             <div className="sm:col-span-2">
