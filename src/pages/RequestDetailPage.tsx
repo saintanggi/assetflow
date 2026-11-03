@@ -312,10 +312,15 @@ export function RequestDetailPage() {
     }
     setBusy(true);
     try {
+      // Kumpulkan ID item yang tidak dicentang (stok kosong) → masuk Sisa Belum Terkirim.
+      const skipIds = quickItems
+        .filter((x) => quickSelected[x.id] === false)
+        .map((x) => x.id);
       const { error } = await supabase.rpc("quick_ship_request", {
         p_request_id: id,
         p_lines: lines,
         p_notes: `Kirim cepat ${req.request_number} ke ${req.branch_name}`,
+        p_skip_ids: skipIds.length > 0 ? skipIds : null,
       });
       if (error) throw new Error(error.message);
       toast.success("Barang berhasil dikirim.");
