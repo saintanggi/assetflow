@@ -125,6 +125,9 @@ export function RequestDetailPage() {
   const [quickResi, setQuickResi] = useState<Record<string, string>>({});
   const [quickBarcode, setQuickBarcode] = useState<Record<string, string>>({});
   const [quickSn, setQuickSn] = useState<Record<string, string>>({});
+  // Checkbox pilih barang yang mau dikirim. Default: semua tercentang.
+  // Yang tidak dicentang = tidak dikirim (stok kosong) → masuk Sisa Belum Terkirim.
+  const [quickSelected, setQuickSelected] = useState<Record<string, boolean>>({});
   // Bulk paste barcode/SN sekaligus (satu per baris).
   const [bulkBarcode, setBulkBarcode] = useState("");
   const [bulkSn, setBulkSn] = useState("");
@@ -275,7 +278,10 @@ export function RequestDetailPage() {
   // Langsung kirim tanpa step setujui terpisah. Resi & barcode wajib, SN opsional.
   const submitQuickShip = async () => {
     if (!req || !id) return;
+    // Hanya item yang dicentang yang dikirim. Yang tidak dicentang = stok kosong → sisa belum terkirim.
+    const isSelected = (itemId: string) => quickSelected[itemId] !== false;
     const lines = quickItems
+      .filter((x) => isSelected(x.id))
       .map((x) => ({
         request_item_id: x.id,
         qty: Number(quickQty[x.id] || 0),
@@ -838,17 +844,36 @@ export function RequestDetailPage() {
             </div>
             {quickItems.map((x) => {
               const sisa = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
+              const selected = quickSelected[x.id] !== false;
               return (
                 <div
                   key={x.id}
-                  className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
+                  className={`grid gap-3 rounded-lg border p-3 sm:grid-cols-12 sm:items-end ${
+                    selected ? "border-ink-200 bg-ink-50" : "border-amber-200 bg-amber-50/50 opacity-75"
+                  }`}
                 >
-                  <div className="sm:col-span-12">
-                    <div className="font-medium">{x.inventory_items?.name}</div>
-                    <div className="text-xs text-ink-500">
-                      Minta: {fmt(Number(x.qty_requested ?? 0))} • Sisa: {fmt(sisa)} • Terkirim:{" "}
-                      {fmt(Number(x.qty_shipped ?? 0))}
-                      {x.status_aset && <span className="ml-1 font-medium">• {x.status_aset}</span>}
+                  <div className="sm:col-span-12 flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={(e) =>
+                        setQuickSelected((p) => ({ ...p, [x.id]: e.target.checked }))
+                      }
+                      className="mt-1 h-4 w-4 shrink-0 accent-brand-600"
+                      title={selected ? "Kirim barang ini" : "Jangan kirim (stok kosong) → Sisa Belum Terkirim"}
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium">{x.inventory_items?.name}</div>
+                      <div className="text-xs text-ink-500">
+                        Minta: {fmt(Number(x.qty_requested ?? 0))} • Sisa: {fmt(sisa)} • Terkirim:{" "}
+                        {fmt(Number(x.qty_shipped ?? 0))}
+                        {x.status_aset && <span className="ml-1 font-medium">• {x.status_aset}</span>}
+                      </div>
+                      {!selected && (
+                        <div className="mt-1 text-xs font-medium text-amber-700">
+                          ⏳ Tidak dikirim — masuk Sisa Belum Terkirim
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="sm:col-span-2">
@@ -856,6 +881,7 @@ export function RequestDetailPage() {
                     <Input
                       type="number"
                       min="0"
+                      disabled={!selected}
                       value={quickQty[x.id] ?? ""}
                       onChange={(e) => setQuickQty((p) => ({ ...p, [x.id]: e.target.value }))}
                     />
@@ -864,6 +890,7 @@ export function RequestDetailPage() {
                     <Label>SN (opsional)</Label>
                     <Input
                       value={quickSn[x.id] ?? ""}
+                      disabled={!selected}
                       onChange={(e) => setQuickSn((p) => ({ ...p, [x.id]: e.target.value }))}
                       placeholder="Opsional"
                       className="font-mono"
@@ -873,6 +900,7 @@ export function RequestDetailPage() {
                     <Label>No resi *</Label>
                     <Input
                       value={quickResi[x.id] ?? ""}
+                      disabled={!selected}
                       onChange={(e) => setQuickResi((p) => ({ ...p, [x.id]: e.target.value }))}
                       placeholder="Wajib diisi"
                     />
@@ -881,6 +909,7 @@ export function RequestDetailPage() {
                     <Label>Barcode *</Label>
                     <Input
                       value={quickBarcode[x.id] ?? ""}
+                      disabled={!selected}
                       onChange={(e) => setQuickBarcode((p) => ({ ...p, [x.id]: e.target.value }))}
                       placeholder="Wajib diisi"
                       className="font-mono"
@@ -893,7 +922,9 @@ export function RequestDetailPage() {
               <Send className="mr-1 h-4 w-4" /> Kirim
             </Button>
             <p className="text-xs text-ink-500">
-              Sekali klik: transaksi barang keluar dicatat dan stok berkurang dari lokasi yang tepat.
+              Centang barang yang mau dikirim. Yang tidak dicentang (stok kosong) tidak wajib diisi
+              dan otomatis masuk Sisa Belum Terkirim. Sekali klik: transaksi barang keluar dicatat
+              dan stok berkurang dari lokasi yang tepat.
             </p>
           </CardContent>
         </Card>
