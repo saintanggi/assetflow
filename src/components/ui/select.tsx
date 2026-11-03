@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import type { SelectHTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 
@@ -13,17 +14,21 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 /** Select native yang di-style — andal & mudah diuji. */
-export function Select({
-  className,
-  options,
-  placeholder,
-  onValueChange,
-  onChange,
-  value,
-  ...props
-}: SelectProps) {
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
+  {
+    className,
+    options,
+    placeholder,
+    onValueChange,
+    onChange,
+    value,
+    ...props
+  },
+  ref
+) {
   return (
     <select
+      ref={ref}
       value={value ?? ""}
       onChange={(e) => {
         onChange?.(e);
@@ -46,4 +51,4 @@ export function Select({
       ))}
     </select>
   );
-}
+});
