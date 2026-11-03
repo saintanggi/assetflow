@@ -3,12 +3,10 @@
 -- Latar: operasional dijalankan 1 user (super admin) sehingga alur 3 langkah
 -- (review admin gudang → proses helper → kirim) terlalu bertele-tele.
 -- Fungsi ini menggabungkan semuanya dalam 1 panggilan:
---   1. Setujui item otomatis (qty_approved = qty kirim, item_status = 'disetujui')
---   2. Simpan resi (wajib), barcode (wajib), SN (opsional)
---   3. Delegasi ke ship_request_items yang sudah multi-lokasi per status_aset
+--   1. Setujui item (qty_approved = qty kirim, item_status = 'disetujui')
+--   2. Delegasi ke ship_request_items yang sudah multi-lokasi per status_aset
 --      (migrasi 20261016000032) → tiap jenis stok dipotong dari lokasi yang benar.
 -- p_location_id = NULL: lokasi ditentukan otomatis dari status_aset tiap item.
--- p_lines: [{request_item_id, qty, resi, barcode, serial_number}]
 
 CREATE OR REPLACE FUNCTION public.quick_ship_request(
   p_request_id uuid,
@@ -25,8 +23,6 @@ DECLARE
   v_ri_id uuid;
   v_qty   numeric;
   v_resi  text;
-  v_barcode text;
-  v_sn    text;
   v_txn   uuid;
   v_count int := 0;
 BEGIN
@@ -38,30 +34,20 @@ BEGIN
     RAISE EXCEPTION 'Tidak ada item untuk dikirim';
   END IF;
 
-  -- 1) Approve otomatis + simpan resi/barcode/SN.
+  -- 1) Approve langsung semua baris yang dikirim.
   FOR v_line IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
     v_ri_id := (v_line->>'request_item_id')::uuid;
     v_qty   := (v_line->>'qty')::numeric;
     v_resi  := NULLIF(btrim(COALESCE(v_line->>'resi', '')), '');
-    v_barcode := NULLIF(btrim(COALESCE(v_line->>'barcode', '')), '');
-    v_sn    := NULLIF(btrim(COALESCE(v_line->>'serial_number', '')), '');
 
     IF v_qty IS NULL OR v_qty <= 0 THEN
       RAISE EXCEPTION 'Qty kirim harus lebih dari 0';
-    END IF;
-    IF v_resi IS NULL THEN
-      RAISE EXCEPTION 'No resi wajib diisi';
-    END IF;
-    IF v_barcode IS NULL THEN
-      RAISE EXCEPTION 'Barcode wajib diisi';
     END IF;
 
     UPDATE public.request_items
        SET qty_approved = v_qty,
            item_status  = 'disetujui',
-           resi         = v_resi,
-           barcode      = v_barcode,
-           serial_number = COALESCE(v_sn, serial_number),
+           resi         = COALESCE(v_resi, resi),
            updated_at   = now()
      WHERE id = v_ri_id
        AND request_id = p_request_id

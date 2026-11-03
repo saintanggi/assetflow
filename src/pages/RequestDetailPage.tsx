@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, Scissors, Send, XCircle } from "lucide-react";
+import { CheckCircle2, PackageCheck, Pencil, Printer, Scissors, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -123,38 +123,6 @@ export function RequestDetailPage() {
   // Kirim cepat 1 pintu (super admin) — setujui + kirim sekaligus.
   const [quickQty, setQuickQty] = useState<Record<string, string>>({});
   const [quickResi, setQuickResi] = useState<Record<string, string>>({});
-  const [quickBarcode, setQuickBarcode] = useState<Record<string, string>>({});
-  const [quickSn, setQuickSn] = useState<Record<string, string>>({});
-  // Checkbox pilih barang yang mau dikirim. Default: semua tercentang.
-  // Yang tidak dicentang = tidak dikirim (stok kosong) → masuk Sisa Belum Terkirim.
-  const [quickSelected, setQuickSelected] = useState<Record<string, boolean>>({});
-  // Bulk paste barcode/SN sekaligus (satu per baris).
-  const [bulkBarcode, setBulkBarcode] = useState("");
-  const [bulkSn, setBulkSn] = useState("");
-
-  const applyBulk = () => {
-    const barcodes = bulkBarcode.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-    const sns = bulkSn.split(/\r?\n/).map((s) => s.trim());
-    if (barcodes.length === 0) {
-      toast.error("Tempel dulu daftar barcode (satu per baris).");
-      return;
-    }
-    if (barcodes.length > quickItems.length) {
-      toast.error(`Barcode ${barcodes.length} melebihi jumlah baris (${quickItems.length}).`);
-      return;
-    }
-    const nb: Record<string, string> = { ...quickBarcode };
-    const ns: Record<string, string> = { ...quickSn };
-    quickItems.forEach((x, i) => {
-      if (i < barcodes.length) {
-        nb[x.id] = barcodes[i];
-        if (i < sns.length && sns[i]) ns[x.id] = sns[i];
-      }
-    });
-    setQuickBarcode(nb);
-    setQuickSn(ns);
-    toast.success(`${barcodes.length} barcode ditempel ke baris 1-${barcodes.length}.`);
-  };
 
   const canReview = hasPermission("requests.review");
   const canProcess = hasPermission("requests.process");
@@ -228,8 +196,6 @@ export function RequestDetailPage() {
       const p: Record<string, { barcode: string; sn: string; type: string }> = {};
       const q: Record<string, string> = {};
       const qq: Record<string, string> = {};
-      const qb: Record<string, string> = {};
-      const qs: Record<string, string> = {};
       for (const x of its) {
         a[x.id] = x.qty_approved != null ? String(x.qty_approved) : String(x.qty_requested);
         p[x.id] = {
@@ -242,15 +208,11 @@ export function RequestDetailPage() {
         // Kirim cepat: default qty = sisa permintaan (belum terkirim).
         const sisaReq = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
         qq[x.id] = sisaReq > 0 ? String(sisaReq) : "";
-        qb[x.id] = x.barcode ?? "";
-        qs[x.id] = x.serial_number ?? "";
       }
       setApproved(a);
       setProc(p);
       setShipQty(q);
       setQuickQty(qq);
-      setQuickBarcode(qb);
-      setQuickSn(qs);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memuat permintaan.");
     } finally {
@@ -275,19 +237,13 @@ export function RequestDetailPage() {
   );
 
   // ---------- KIRIM CEPAT 1 PINTU (super admin) ----------
-  // Langsung kirim tanpa step setujui terpisah. Resi & barcode wajib, SN opsional.
   const submitQuickShip = async () => {
     if (!req || !id) return;
-    // Hanya item yang dicentang yang dikirim. Yang tidak dicentang = stok kosong → sisa belum terkirim.
-    const isSelected = (itemId: string) => quickSelected[itemId] !== false;
     const lines = quickItems
-      .filter((x) => isSelected(x.id))
       .map((x) => ({
         request_item_id: x.id,
         qty: Number(quickQty[x.id] || 0),
         resi: (quickResi[x.id] || "").trim(),
-        barcode: (quickBarcode[x.id] || "").trim(),
-        serial_number: (quickSn[x.id] || "").trim(),
       }))
       .filter((l) => l.qty > 0);
     if (lines.length === 0) {
@@ -301,14 +257,6 @@ export function RequestDetailPage() {
         toast.error(`Qty kirim "${x.inventory_items?.name}" melebihi sisa ${fmt(sisa)}.`);
         return;
       }
-      if (!l.resi) {
-        toast.error(`No resi wajib diisi untuk "${x.inventory_items?.name}".`);
-        return;
-      }
-      if (!l.barcode) {
-        toast.error(`Barcode wajib diisi untuk "${x.inventory_items?.name}".`);
-        return;
-      }
     }
     setBusy(true);
     try {
@@ -318,7 +266,7 @@ export function RequestDetailPage() {
         p_notes: `Kirim cepat ${req.request_number} ke ${req.branch_name}`,
       });
       if (error) throw new Error(error.message);
-      toast.success("Barang berhasil dikirim.");
+      toast.success("Berhasil disetujui & dikirim sekaligus.");
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal kirim cepat.");
@@ -795,85 +743,27 @@ export function RequestDetailPage() {
         <Card className="mb-4 border-brand-200">
           <CardHeader>
             <CardTitle className="font-display text-base text-ink-800">
-              Kirim Barang
+              Kirim Cepat — setujui & kirim sekaligus
             </CardTitle>
             <p className="mt-0.5 text-xs text-ink-500">
-              Langsung kirim tanpa proses setujui. Lokasi stok otomatis mengikuti jenis stok
-              tiap barang (Baru / Retur / Unready). Kolom bertanda * wajib diisi.
+              Satu langkah untuk super admin: tanpa review, tanpa proses helper. Lokasi stok
+              otomatis mengikuti jenis stok tiap barang (Baru / Retur / Unready).
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
-            {/* Tempel banyak barcode/SN sekaligus */}
-            <div className="rounded-lg border border-dashed border-brand-300 bg-brand-50 p-3">
-              <div className="mb-2 text-sm font-medium text-ink-700">
-                Tempel banyak sekaligus (satu barcode per baris)
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label>SN (opsional, satu per baris)</Label>
-                  <Textarea
-                    rows={4}
-                    className="mt-1 font-mono text-xs"
-                    placeholder={"21043B16261\n5J2021031387"}
-                    value={bulkSn}
-                    onChange={(e) => setBulkSn(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Barcode (satu per baris)</Label>
-                  <Textarea
-                    rows={4}
-                    className="mt-1 font-mono text-xs"
-                    placeholder={"A0700026412\nA1100034380\nA0900011040"}
-                    value={bulkBarcode}
-                    onChange={(e) => setBulkBarcode(e.target.value)}
-                  />
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={applyBulk}
-              >
-                <ClipboardPaste className="mr-1 h-4 w-4" /> Tempel ke baris
-              </Button>
-              <p className="mt-1 text-xs text-ink-500">
-                Barcode ke-1 → baris 1, ke-2 → baris 2, dst. Qty tiap baris tetap 1.
-              </p>
-            </div>
             {quickItems.map((x) => {
               const sisa = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
-              const selected = quickSelected[x.id] !== false;
               return (
                 <div
                   key={x.id}
-                  className={`grid gap-3 rounded-lg border p-3 sm:grid-cols-12 sm:items-end ${
-                    selected ? "border-ink-200 bg-ink-50" : "border-amber-200 bg-amber-50/50 opacity-75"
-                  }`}
+                  className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
                 >
-                  <div className="sm:col-span-12 flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={(e) =>
-                        setQuickSelected((p) => ({ ...p, [x.id]: e.target.checked }))
-                      }
-                      className="mt-1 h-4 w-4 shrink-0 accent-brand-600"
-                      title={selected ? "Kirim barang ini" : "Jangan kirim (stok kosong) → Sisa Belum Terkirim"}
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium">{x.inventory_items?.name}</div>
-                      <div className="text-xs text-ink-500">
-                        Minta: {fmt(Number(x.qty_requested ?? 0))} • Sisa: {fmt(sisa)} • Terkirim:{" "}
-                        {fmt(Number(x.qty_shipped ?? 0))}
-                        {x.status_aset && <span className="ml-1 font-medium">• {x.status_aset}</span>}
-                      </div>
-                      {!selected && (
-                        <div className="mt-1 text-xs font-medium text-amber-700">
-                          ⏳ Tidak dikirim — masuk Sisa Belum Terkirim
-                        </div>
-                      )}
+                  <div className="sm:col-span-5">
+                    <div className="font-medium">{x.inventory_items?.name}</div>
+                    <div className="text-xs text-ink-500">
+                      Minta: {fmt(Number(x.qty_requested ?? 0))} • Sisa: {fmt(sisa)} • Terkirim:{" "}
+                      {fmt(Number(x.qty_shipped ?? 0))}
+                      {x.status_aset && <span className="ml-1 font-medium">• {x.status_aset}</span>}
                     </div>
                   </div>
                   <div className="sm:col-span-2">
@@ -881,50 +771,27 @@ export function RequestDetailPage() {
                     <Input
                       type="number"
                       min="0"
-                      disabled={!selected}
                       value={quickQty[x.id] ?? ""}
                       onChange={(e) => setQuickQty((p) => ({ ...p, [x.id]: e.target.value }))}
                     />
                   </div>
-                  <div className="sm:col-span-3">
-                    <Label>SN (opsional)</Label>
-                    <Input
-                      value={quickSn[x.id] ?? ""}
-                      disabled={!selected}
-                      onChange={(e) => setQuickSn((p) => ({ ...p, [x.id]: e.target.value }))}
-                      placeholder="Opsional"
-                      className="font-mono"
-                    />
-                  </div>
-                  <div className="sm:col-span-3">
-                    <Label>No resi *</Label>
+                  <div className="sm:col-span-5">
+                    <Label>No resi</Label>
                     <Input
                       value={quickResi[x.id] ?? ""}
-                      disabled={!selected}
                       onChange={(e) => setQuickResi((p) => ({ ...p, [x.id]: e.target.value }))}
-                      placeholder="Wajib diisi"
-                    />
-                  </div>
-                  <div className="sm:col-span-4">
-                    <Label>Barcode *</Label>
-                    <Input
-                      value={quickBarcode[x.id] ?? ""}
-                      disabled={!selected}
-                      onChange={(e) => setQuickBarcode((p) => ({ ...p, [x.id]: e.target.value }))}
-                      placeholder="Wajib diisi"
-                      className="font-mono"
+                      placeholder="No resi pengiriman (opsional)"
                     />
                   </div>
                 </div>
               );
             })}
             <Button onClick={submitQuickShip} disabled={busy}>
-              <Send className="mr-1 h-4 w-4" /> Kirim
+              <Send className="mr-1 h-4 w-4" /> Setujui & Kirim Semua
             </Button>
             <p className="text-xs text-ink-500">
-              Centang barang yang mau dikirim. Yang tidak dicentang (stok kosong) tidak wajib diisi
-              dan otomatis masuk Sisa Belum Terkirim. Sekali klik: transaksi barang keluar dicatat
-              dan stok berkurang dari lokasi yang tepat.
+              Sekali klik: permintaan disetujui, transaksi barang keluar dicatat, dan stok
+              berkurang dari lokasi yang tepat.
             </p>
           </CardContent>
         </Card>
@@ -1241,7 +1108,6 @@ export function RequestDetailPage() {
                   <th className="pb-2 pr-3 text-right">Request</th>
                   <th className="pb-2 pr-3 text-right">Disetujui</th>
                   <th className="pb-2 pr-3 text-right">Terkirim</th>
-                  <th className="pb-2 pr-3 text-right">Sisa</th>
                   <th className="pb-2 pr-3">Barcode</th>
                   <th className="pb-2 pr-3">SN</th>
                   <th className="pb-2 pr-3">Resi</th>
@@ -1252,16 +1118,7 @@ export function RequestDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {(() => {
-                  // Pisahkan: sudah terkirim vs sisa belum terkirim.
-                  const terkirim = items.filter(
-                    (x) => Number(x.qty_shipped ?? 0) > 0
-                  );
-                  const belum = items.filter(
-                    (x) => Number(x.qty_shipped ?? 0) === 0
-                  );
-                  const colSpan = isSuperAdmin ? 12 : 11;
-                  const renderRow = (x: (typeof items)[number]) => {
+                {items.map((x) => {
                   // Parse notes: "Ket: <SN> | Status request: <SR>" per baris.
                   const snList: string[] = [];
                   const srList: string[] = [];
@@ -1285,7 +1142,6 @@ export function RequestDetailPage() {
                       snList.push(s);
                     }
                   }
-                  const sisa = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
                   return (
                   <tr key={x.id} className="border-b border-ink-200 transition-colors hover:bg-brand-50/40">
                     <td className="py-2 pr-3">
@@ -1297,9 +1153,6 @@ export function RequestDetailPage() {
                       {x.qty_approved != null ? fmt(Number(x.qty_approved)) : "—"}
                     </td>
                     <td className="tnum py-2 pr-3 text-right">{fmt(Number(x.qty_shipped))}</td>
-                    <td className={`tnum py-2 pr-3 text-right font-semibold ${sisa > 0 ? "text-warn-700" : "text-ink-400"}`}>
-                      {fmt(sisa)}
-                    </td>
                     <td className="py-2 pr-3 font-mono text-xs">
                       {x.barcode ? (
                         <div className="space-y-0.5">
@@ -1369,32 +1222,7 @@ export function RequestDetailPage() {
                     )}
                   </tr>
                   );
-                  };
-                  return (
-                    <>
-                      {terkirim.length > 0 && (
-                        <tr className="bg-emerald-50">
-                          <td colSpan={colSpan} className="py-2 pr-3">
-                            <span className="text-xs font-bold uppercase tracking-wide text-emerald-700">
-                              ✅ Sudah Terkirim ({terkirim.length} item)
-                            </span>
-                          </td>
-                        </tr>
-                      )}
-                      {terkirim.map(renderRow)}
-                      {belum.length > 0 && (
-                        <tr className="bg-amber-50">
-                          <td colSpan={colSpan} className="py-2 pr-3">
-                            <span className="text-xs font-bold uppercase tracking-wide text-amber-700">
-                              ⏳ Sisa Belum Terkirim ({belum.length} item)
-                            </span>
-                          </td>
-                        </tr>
-                      )}
-                      {belum.map(renderRow)}
-                    </>
-                  );
-                })()}
+                })}
               </tbody>
             </table>
           </div>
