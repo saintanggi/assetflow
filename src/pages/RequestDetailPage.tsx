@@ -1210,6 +1210,7 @@ export function RequestDetailPage() {
                   <th className="pb-2 pr-3 text-right">Request</th>
                   <th className="pb-2 pr-3 text-right">Disetujui</th>
                   <th className="pb-2 pr-3 text-right">Terkirim</th>
+                  <th className="pb-2 pr-3 text-right">Sisa</th>
                   <th className="pb-2 pr-3">Barcode</th>
                   <th className="pb-2 pr-3">SN</th>
                   <th className="pb-2 pr-3">Resi</th>
@@ -1220,7 +1221,16 @@ export function RequestDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((x) => {
+                {(() => {
+                  // Pisahkan: sudah terkirim vs sisa belum terkirim.
+                  const terkirim = items.filter(
+                    (x) => Number(x.qty_shipped ?? 0) > 0
+                  );
+                  const belum = items.filter(
+                    (x) => Number(x.qty_shipped ?? 0) === 0
+                  );
+                  const colSpan = isSuperAdmin ? 12 : 11;
+                  const renderRow = (x: (typeof items)[number]) => {
                   // Parse notes: "Ket: <SN> | Status request: <SR>" per baris.
                   const snList: string[] = [];
                   const srList: string[] = [];
@@ -1244,6 +1254,7 @@ export function RequestDetailPage() {
                       snList.push(s);
                     }
                   }
+                  const sisa = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
                   return (
                   <tr key={x.id} className="border-b border-ink-200 transition-colors hover:bg-brand-50/40">
                     <td className="py-2 pr-3">
@@ -1255,6 +1266,9 @@ export function RequestDetailPage() {
                       {x.qty_approved != null ? fmt(Number(x.qty_approved)) : "—"}
                     </td>
                     <td className="tnum py-2 pr-3 text-right">{fmt(Number(x.qty_shipped))}</td>
+                    <td className={`tnum py-2 pr-3 text-right font-semibold ${sisa > 0 ? "text-warn-700" : "text-ink-400"}`}>
+                      {fmt(sisa)}
+                    </td>
                     <td className="py-2 pr-3 font-mono text-xs">
                       {x.barcode ? (
                         <div className="space-y-0.5">
@@ -1324,7 +1338,32 @@ export function RequestDetailPage() {
                     )}
                   </tr>
                   );
-                })}
+                  };
+                  return (
+                    <>
+                      {terkirim.length > 0 && (
+                        <tr className="bg-emerald-50">
+                          <td colSpan={colSpan} className="py-2 pr-3">
+                            <span className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                              ✅ Sudah Terkirim ({terkirim.length} item)
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      {terkirim.map(renderRow)}
+                      {belum.length > 0 && (
+                        <tr className="bg-amber-50">
+                          <td colSpan={colSpan} className="py-2 pr-3">
+                            <span className="text-xs font-bold uppercase tracking-wide text-amber-700">
+                              ⏳ Sisa Belum Terkirim ({belum.length} item)
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      {belum.map(renderRow)}
+                    </>
+                  );
+                })()}
               </tbody>
             </table>
           </div>
