@@ -14,6 +14,7 @@ interface PendingRow {
   id: string;
   request_id: string;
   request_number: string;
+  ticket_no: string;
   branch_name: string;
   sku: string;
   name: string;
@@ -39,6 +40,13 @@ const columns: ColumnDef<PendingRow, unknown>[] = [
       >
         {row.original.request_number}
       </Link>
+    ),
+  },
+  {
+    header: "No. Tiket",
+    accessorKey: "ticket_no",
+    cell: ({ row }) => (
+      <span className="font-mono text-sm">{row.original.ticket_no}</span>
     ),
   },
   { header: "Cabang / Gerai", accessorKey: "branch_name" },
@@ -114,7 +122,7 @@ export function PendingPartialPage() {
       const { data, error } = await supabase
         .from("request_items")
         .select(
-          "id, request_id, qty_requested, qty_approved, qty_shipped, resi, item_status, notes, inventory_items(sku, name), requests(request_number, branch_name)"
+          "id, request_id, qty_requested, qty_approved, qty_shipped, resi, item_status, notes, inventory_items(sku, name), requests(request_number, ticket_no, branch_name)"
         )
         .in("item_status", ["pending_sebagian", "menunggu_stok"])
         .order("updated_at", { ascending: false })
@@ -135,7 +143,7 @@ export function PendingPartialPage() {
           item_status: string;
           notes: string | null;
           inventory_items: { sku: string; name: string } | { sku: string; name: string }[] | null;
-          requests: { request_number: string; branch_name: string } | { request_number: string; branch_name: string }[] | null;
+          requests: { request_number: string; ticket_no: string; branch_name: string } | { request_number: string; ticket_no: string; branch_name: string }[] | null;
         }[])
           .map((x) => {
             const isMenungguStok = x.item_status === "menunggu_stok";
@@ -149,6 +157,7 @@ export function PendingPartialPage() {
               id: x.id,
               request_id: x.request_id,
               request_number: one(x.requests)?.request_number ?? "—",
+              ticket_no: one(x.requests)?.ticket_no ?? "—",
               branch_name: one(x.requests)?.branch_name ?? "—",
               sku: one(x.inventory_items)?.sku ?? "—",
               name: one(x.inventory_items)?.name ?? "—",
@@ -178,6 +187,7 @@ export function PendingPartialPage() {
     }
     const headers = [
       "NO. PERMINTAAN",
+      "NO. TIKET",
       "CABANG / GERAI",
       "KODE BARANG",
       "NAMA BARANG",
@@ -193,6 +203,7 @@ export function PendingPartialPage() {
       headers,
       ...rows.map((r) => [
         r.request_number,
+        r.ticket_no,
         r.branch_name,
         r.sku,
         r.name,
