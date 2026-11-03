@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, PackageCheck, Pencil, Printer, Scissors, Send, XCircle } from "lucide-react";
+import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, Scissors, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -125,6 +125,33 @@ export function RequestDetailPage() {
   const [quickResi, setQuickResi] = useState<Record<string, string>>({});
   const [quickBarcode, setQuickBarcode] = useState<Record<string, string>>({});
   const [quickSn, setQuickSn] = useState<Record<string, string>>({});
+  // Bulk paste barcode/SN sekaligus (satu per baris).
+  const [bulkBarcode, setBulkBarcode] = useState("");
+  const [bulkSn, setBulkSn] = useState("");
+
+  const applyBulk = () => {
+    const barcodes = bulkBarcode.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const sns = bulkSn.split(/\r?\n/).map((s) => s.trim());
+    if (barcodes.length === 0) {
+      toast.error("Tempel dulu daftar barcode (satu per baris).");
+      return;
+    }
+    if (barcodes.length > quickItems.length) {
+      toast.error(`Barcode ${barcodes.length} melebihi jumlah baris (${quickItems.length}).`);
+      return;
+    }
+    const nb: Record<string, string> = { ...quickBarcode };
+    const ns: Record<string, string> = { ...quickSn };
+    quickItems.forEach((x, i) => {
+      if (i < barcodes.length) {
+        nb[x.id] = barcodes[i];
+        if (i < sns.length && sns[i]) ns[x.id] = sns[i];
+      }
+    });
+    setQuickBarcode(nb);
+    setQuickSn(ns);
+    toast.success(`${barcodes.length} barcode ditempel ke baris 1-${barcodes.length}.`);
+  };
 
   const canReview = hasPermission("requests.review");
   const canProcess = hasPermission("requests.process");
@@ -770,6 +797,45 @@ export function RequestDetailPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
+            {/* Tempel banyak barcode/SN sekaligus */}
+            <div className="rounded-lg border border-dashed border-brand-300 bg-brand-50 p-3">
+              <div className="mb-2 text-sm font-medium text-ink-700">
+                Tempel banyak sekaligus (satu barcode per baris)
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>Barcode (satu per baris)</Label>
+                  <Textarea
+                    rows={4}
+                    className="mt-1 font-mono text-xs"
+                    placeholder={"A0700026412\nA1100034380\nA0900011040"}
+                    value={bulkBarcode}
+                    onChange={(e) => setBulkBarcode(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>SN (opsional, satu per baris)</Label>
+                  <Textarea
+                    rows={4}
+                    className="mt-1 font-mono text-xs"
+                    placeholder={"21043B16261\n5J2021031387"}
+                    value={bulkSn}
+                    onChange={(e) => setBulkSn(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={applyBulk}
+              >
+                <ClipboardPaste className="mr-1 h-4 w-4" /> Tempel ke baris
+              </Button>
+              <p className="mt-1 text-xs text-ink-500">
+                Barcode ke-1 → baris 1, ke-2 → baris 2, dst. Qty tiap baris tetap 1.
+              </p>
+            </div>
             {quickItems.map((x) => {
               const sisa = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
               return (
