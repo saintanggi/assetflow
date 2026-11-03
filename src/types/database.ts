@@ -288,6 +288,8 @@ export interface PublicInventoryItem {
   unit: string | null;
   photo_url: string | null;
   total_stock: number;
+  stock_baru: number;
+  stock_retur: number;
 }
 
 export interface PublicInventoryItem {
@@ -299,6 +301,8 @@ export interface PublicInventoryItem {
   unit: string | null;
   photo_url: string | null;
   total_stock: number;
+  stock_baru: number;
+  stock_retur: number;
 }
 
 export interface PublicAsset {
