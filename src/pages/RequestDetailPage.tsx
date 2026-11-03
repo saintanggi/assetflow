@@ -123,6 +123,8 @@ export function RequestDetailPage() {
   // Kirim cepat 1 pintu (super admin) — setujui + kirim sekaligus.
   const [quickQty, setQuickQty] = useState<Record<string, string>>({});
   const [quickResi, setQuickResi] = useState<Record<string, string>>({});
+  const [quickBarcode, setQuickBarcode] = useState<Record<string, string>>({});
+  const [quickSn, setQuickSn] = useState<Record<string, string>>({});
 
   const canReview = hasPermission("requests.review");
   const canProcess = hasPermission("requests.process");
@@ -196,6 +198,8 @@ export function RequestDetailPage() {
       const p: Record<string, { barcode: string; sn: string; type: string }> = {};
       const q: Record<string, string> = {};
       const qq: Record<string, string> = {};
+      const qb: Record<string, string> = {};
+      const qs: Record<string, string> = {};
       for (const x of its) {
         a[x.id] = x.qty_approved != null ? String(x.qty_approved) : String(x.qty_requested);
         p[x.id] = {
@@ -208,11 +212,15 @@ export function RequestDetailPage() {
         // Kirim cepat: default qty = sisa permintaan (belum terkirim).
         const sisaReq = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
         qq[x.id] = sisaReq > 0 ? String(sisaReq) : "";
+        qb[x.id] = x.barcode ?? "";
+        qs[x.id] = x.serial_number ?? "";
       }
       setApproved(a);
       setProc(p);
       setShipQty(q);
       setQuickQty(qq);
+      setQuickBarcode(qb);
+      setQuickSn(qs);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memuat permintaan.");
     } finally {
@@ -237,6 +245,7 @@ export function RequestDetailPage() {
   );
 
   // ---------- KIRIM CEPAT 1 PINTU (super admin) ----------
+  // Langsung kirim tanpa step setujui terpisah. Resi & barcode wajib, SN opsional.
   const submitQuickShip = async () => {
     if (!req || !id) return;
     const lines = quickItems
@@ -244,6 +253,8 @@ export function RequestDetailPage() {
         request_item_id: x.id,
         qty: Number(quickQty[x.id] || 0),
         resi: (quickResi[x.id] || "").trim(),
+        barcode: (quickBarcode[x.id] || "").trim(),
+        serial_number: (quickSn[x.id] || "").trim(),
       }))
       .filter((l) => l.qty > 0);
     if (lines.length === 0) {
@@ -257,6 +268,14 @@ export function RequestDetailPage() {
         toast.error(`Qty kirim "${x.inventory_items?.name}" melebihi sisa ${fmt(sisa)}.`);
         return;
       }
+      if (!l.resi) {
+        toast.error(`No resi wajib diisi untuk "${x.inventory_items?.name}".`);
+        return;
+      }
+      if (!l.barcode) {
+        toast.error(`Barcode wajib diisi untuk "${x.inventory_items?.name}".`);
+        return;
+      }
     }
     setBusy(true);
     try {
@@ -266,7 +285,7 @@ export function RequestDetailPage() {
         p_notes: `Kirim cepat ${req.request_number} ke ${req.branch_name}`,
       });
       if (error) throw new Error(error.message);
-      toast.success("Berhasil disetujui & dikirim sekaligus.");
+      toast.success("Barang berhasil dikirim.");
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal kirim cepat.");
@@ -743,11 +762,11 @@ export function RequestDetailPage() {
         <Card className="mb-4 border-brand-200">
           <CardHeader>
             <CardTitle className="font-display text-base text-ink-800">
-              Kirim Cepat — setujui & kirim sekaligus
+              Kirim Barang
             </CardTitle>
             <p className="mt-0.5 text-xs text-ink-500">
-              Satu langkah untuk super admin: tanpa review, tanpa proses helper. Lokasi stok
-              otomatis mengikuti jenis stok tiap barang (Baru / Retur / Unready).
+              Langsung kirim tanpa proses setujui. Lokasi stok otomatis mengikuti jenis stok
+              tiap barang (Baru / Retur / Unready). Kolom bertanda * wajib diisi.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -758,7 +777,7 @@ export function RequestDetailPage() {
                   key={x.id}
                   className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
                 >
-                  <div className="sm:col-span-5">
+                  <div className="sm:col-span-12">
                     <div className="font-medium">{x.inventory_items?.name}</div>
                     <div className="text-xs text-ink-500">
                       Minta: {fmt(Number(x.qty_requested ?? 0))} • Sisa: {fmt(sisa)} • Terkirim:{" "}
@@ -775,23 +794,40 @@ export function RequestDetailPage() {
                       onChange={(e) => setQuickQty((p) => ({ ...p, [x.id]: e.target.value }))}
                     />
                   </div>
-                  <div className="sm:col-span-5">
-                    <Label>No resi</Label>
+                  <div className="sm:col-span-3">
+                    <Label>No resi *</Label>
                     <Input
                       value={quickResi[x.id] ?? ""}
                       onChange={(e) => setQuickResi((p) => ({ ...p, [x.id]: e.target.value }))}
-                      placeholder="No resi pengiriman (opsional)"
+                      placeholder="Wajib diisi"
+                    />
+                  </div>
+                  <div className="sm:col-span-4">
+                    <Label>Barcode *</Label>
+                    <Input
+                      value={quickBarcode[x.id] ?? ""}
+                      onChange={(e) => setQuickBarcode((p) => ({ ...p, [x.id]: e.target.value }))}
+                      placeholder="Wajib diisi"
+                      className="font-mono"
+                    />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <Label>SN (opsional)</Label>
+                    <Input
+                      value={quickSn[x.id] ?? ""}
+                      onChange={(e) => setQuickSn((p) => ({ ...p, [x.id]: e.target.value }))}
+                      placeholder="Opsional"
+                      className="font-mono"
                     />
                   </div>
                 </div>
               );
             })}
             <Button onClick={submitQuickShip} disabled={busy}>
-              <Send className="mr-1 h-4 w-4" /> Setujui & Kirim Semua
+              <Send className="mr-1 h-4 w-4" /> Kirim
             </Button>
             <p className="text-xs text-ink-500">
-              Sekali klik: permintaan disetujui, transaksi barang keluar dicatat, dan stok
-              berkurang dari lokasi yang tepat.
+              Sekali klik: transaksi barang keluar dicatat dan stok berkurang dari lokasi yang tepat.
             </p>
           </CardContent>
         </Card>
