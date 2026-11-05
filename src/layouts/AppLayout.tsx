@@ -168,7 +168,7 @@ function NavEntry({
           type="button"
           onClick={() => setOpen((v) => !v)}
           className={cn(
-            "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-800",
+            "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-ink-200 transition-colors hover:bg-white/10 hover:text-white",
             collapsed && "justify-center px-2"
           )}
           title={collapsed ? item.label : undefined}
@@ -176,11 +176,11 @@ function NavEntry({
           <item.icon className="h-[18px] w-[18px] shrink-0" />
           {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
           {!collapsed && (
-            <ChevronDown className={cn("h-4 w-4 text-ink-500 transition-transform", open && "rotate-180")} />
+            <ChevronDown className={cn("h-4 w-4 text-ink-300 transition-transform", open && "rotate-180")} />
           )}
         </button>
         {open && !collapsed && (
-          <div className="ml-5 mt-1 space-y-0.5 border-l border-ink-200 pl-2">
+          <div className="ml-5 mt-1 space-y-0.5 border-l border-white/10 pl-2">
             {item.children.map((c) => (
               <NavLink
                 key={c.to}
@@ -188,8 +188,8 @@ function NavEntry({
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800",
-                    isActive && "bg-brand-50 font-medium text-brand-700 hover:bg-brand-50 hover:text-brand-700"
+                    "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-300 transition-colors hover:bg-white/10 hover:text-white",
+                    isActive && "bg-brand-600/25 font-medium text-white hover:bg-brand-600/25 hover:text-white"
                   )
                 }
               >
@@ -208,8 +208,8 @@ function NavEntry({
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-800",
-          isActive && "bg-brand-50 text-brand-700 hover:bg-brand-50 hover:text-brand-700",
+          "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-ink-200 transition-colors hover:bg-white/10 hover:text-white",
+          isActive && "bg-brand-600/25 text-white hover:bg-brand-600/25 hover:text-white",
           collapsed && "justify-center px-2"
         )
       }
@@ -304,7 +304,7 @@ function SidebarContent({
         to="/dashboard"
         onClick={onNavigate}
         className={cn(
-          "flex items-center gap-3 border-b border-ink-200 px-4 py-[18px]",
+          "flex items-center gap-3 border-b border-white/10 px-4 py-[18px]",
           collapsed && "justify-center px-2"
         )}
       >
@@ -315,10 +315,10 @@ function SidebarContent({
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate font-display text-[15px] font-bold leading-tight text-ink-800">
+            <p className="truncate font-display text-[15px] font-bold leading-tight text-white">
               Inventory Warehouse
             </p>
-            <p className="text-xs uppercase tracking-widest text-ink-500">
+            <p className="text-xs uppercase tracking-widest text-ink-300">
               Command Center
             </p>
           </div>
@@ -337,7 +337,7 @@ function SidebarContent({
         ))}
       </nav>
 
-      <div className="border-t border-ink-200 p-3">
+      <div className="border-t border-white/10 p-3">
         {!collapsed && (
           <div className="mb-2 flex items-center gap-2.5 px-2">
             <span className="relative flex h-2 w-2">
@@ -345,10 +345,10 @@ function SidebarContent({
               <span className="relative inline-flex h-2 w-2 rounded-full bg-ok-500" />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink-800">
+              <p className="truncate text-sm font-medium text-white">
                 {displayName}
               </p>
-              <p className="truncate text-xs text-ink-500">
+              <p className="truncate text-xs text-ink-300">
                 {roleLabel} • Online
               </p>
             </div>
@@ -357,7 +357,7 @@ function SidebarContent({
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start text-ink-600 hover:bg-ink-100 hover:text-ink-800"
+          className="w-full justify-start text-ink-200 hover:bg-white/10 hover:text-white"
           onClick={async () => {
             await signOut();
             navigate("/login");
@@ -409,13 +409,13 @@ function GlobalSearch() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Cari barang, permintaan, SKU…"
-        className="h-9 w-full rounded-lg border border-ink-200 bg-white pl-9 pr-16 text-sm text-ink-800 placeholder:text-ink-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/25"
+        className="h-9 w-full rounded-lg border border-white/15 bg-white/10 pl-9 pr-16 text-sm text-white placeholder:text-ink-300 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25"
       />
-      <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-300" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />
       </svg>
-      <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 font-mono text-xs text-ink-500 lg:inline-flex">
+      <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded border border-white/15 bg-white/10 px-1.5 py-0.5 font-mono text-xs text-ink-300 lg:inline-flex">
         Ctrl K
       </kbd>
     </form>
@@ -498,7 +498,7 @@ function BottomNav({
   return (
     <nav
       aria-label="Menu utama"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-200 bg-white/95 backdrop-blur lg:hidden print:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-ink-800/85 backdrop-blur-xl lg:hidden print:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="flex">
@@ -511,7 +511,7 @@ function BottomNav({
               aria-current={isActive ? "page" : undefined}
               className={cn(
                 "relative flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium",
-                isActive ? "text-brand-700" : "text-ink-500"
+                isActive ? "text-white" : "text-ink-300"
               )}
             >
               <span className="relative">
@@ -629,11 +629,14 @@ export function AppLayout(): ReactNode {
   const totalNotif = queueCounts.diajukan + queueCounts.aktif + queueCounts.sisa + queueCounts.lowStock;
 
   return (
-    <div className="flex min-h-screen bg-ink-50">
+    <div className="relative flex min-h-screen overflow-x-clip bg-ink-800 bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.14),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.12),transparent)]">
+      {/* Cahaya latar kaca (oranye + biru), diam di belakang seluruh aplikasi */}
+      <div className="pointer-events-none fixed -right-24 -top-24 h-96 w-96 rounded-full bg-warn-500/10 blur-3xl" />
+      <div className="pointer-events-none fixed -bottom-24 -left-24 h-96 w-96 rounded-full bg-info-500/10 blur-3xl" />
       {/* Sidebar desktop */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 border-r border-ink-200 bg-white transition-all duration-200 lg:block print:hidden",
+          "sticky top-0 hidden h-screen shrink-0 border-r border-white/10 bg-ink-800/60 backdrop-blur-xl transition-all duration-200 lg:block print:hidden",
           collapsed ? "w-[76px]" : "w-[252px]"
         )}
       >
@@ -643,12 +646,12 @@ export function AppLayout(): ReactNode {
       {/* Sidebar mobile */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden print:hidden">
-          <div className="absolute inset-0 bg-ink-950/40 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-[272px] border-r border-ink-200 bg-white shadow-pop">
+          <div className="absolute inset-0 bg-ink-800/60 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-[272px] border-r border-white/10 bg-ink-800/95 backdrop-blur-xl shadow-pop">
             <button
               type="button"
               aria-label="Tutup menu"
-              className="absolute right-3 top-4 rounded-md p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-800"
+              className="absolute right-3 top-4 rounded-md p-1.5 text-ink-300 hover:bg-white/10 hover:text-white"
               onClick={() => setMobileOpen(false)}
             >
               <X className="h-5 w-5" />
@@ -663,11 +666,11 @@ export function AppLayout(): ReactNode {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-ink-200 bg-white px-4 md:px-6 print:hidden">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/10 bg-ink-800/70 backdrop-blur-xl px-4 md:px-6 print:hidden">
           <button
             type="button"
             aria-label="Menu"
-            className="rounded-lg p-2 text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-800 lg:hidden"
+            className="rounded-lg p-2 text-ink-200 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
             onClick={() => setMobileOpen(true)}
           >
             <Menu className="h-5 w-5" />
@@ -675,7 +678,7 @@ export function AppLayout(): ReactNode {
           <button
             type="button"
             aria-label="Ciutkan sidebar"
-            className="hidden rounded-lg p-2 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 lg:block"
+            className="hidden rounded-lg p-2 text-ink-300 transition-colors hover:bg-white/10 hover:text-white lg:block"
             onClick={() => setCollapsed((v) => !v)}
           >
             <Menu className="h-5 w-5" />
@@ -686,11 +689,11 @@ export function AppLayout(): ReactNode {
           >
             {crumbs.map((c, i) => (
               <span key={c} className="flex min-w-0 items-center gap-1.5">
-                {i > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-400" />}
+                {i > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-300" />}
                 <span
                   className={cn(
                     "truncate",
-                    i === crumbs.length - 1 ? "font-medium text-ink-800" : "text-ink-500"
+                    i === crumbs.length - 1 ? "font-medium text-white" : "text-ink-300"
                   )}
                 >
                   {c}
@@ -703,7 +706,7 @@ export function AppLayout(): ReactNode {
             <Link
               to="/publik"
               target="_blank"
-              className="hidden rounded-lg px-3 py-2 text-sm text-ink-500 transition-colors hover:bg-ink-100 hover:text-brand-700 sm:block"
+              className="hidden rounded-lg px-3 py-2 text-sm text-ink-300 transition-colors hover:bg-white/10 hover:text-white sm:block"
             >
               Lihat situs publik
             </Link>
@@ -712,23 +715,23 @@ export function AppLayout(): ReactNode {
                 type="button"
                 aria-label="Notifikasi"
                 onClick={() => setNotifOpen((v) => !v)}
-                className="relative rounded-lg p-2 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800"
+                className="relative rounded-lg p-2 text-ink-300 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <Bell className="h-5 w-5" />
                 {totalNotif > 0 && (
-                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-600 ring-2 ring-white" />
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-600 ring-2 ring-ink-800" />
                 )}
               </button>
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-72 rounded-xl border border-ink-200 bg-white p-3 shadow-pop">
+                <div className="absolute right-0 mt-2 w-72 rounded-xl border border-white/15 bg-ink-800/95 p-3 shadow-pop backdrop-blur-xl">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-ink-300">
                       Antrean Operasional
                     </span>
                     <button
                       type="button"
                       onClick={() => setNotifOpen(false)}
-                      className="text-xs text-ink-500 hover:text-ink-700"
+                      className="text-xs text-ink-300 hover:text-white"
                     >
                       Tutup
                     </button>
@@ -737,40 +740,40 @@ export function AppLayout(): ReactNode {
                     <Link
                       to="/permintaan"
                       onClick={() => setNotifOpen(false)}
-                      className="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 hover:bg-ink-100"
+                      className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 hover:bg-white/10"
                     >
-                      <span className="text-ink-700">Perlu Direview</span>
-                      <span className="tnum font-semibold text-info-700">
+                      <span className="text-white">Perlu Direview</span>
+                      <span className="tnum font-semibold text-info-500">
                         {queueCounts.diajukan}
                       </span>
                     </Link>
                     <Link
                       to="/permintaan"
                       onClick={() => setNotifOpen(false)}
-                      className="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 hover:bg-ink-100"
+                      className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 hover:bg-white/10"
                     >
-                      <span className="text-ink-700">Aktif (Proses/Kirim)</span>
-                      <span className="tnum font-semibold text-warn-700">
+                      <span className="text-white">Aktif (Proses/Kirim)</span>
+                      <span className="tnum font-semibold text-warn-500">
                         {queueCounts.aktif}
                       </span>
                     </Link>
                     <Link
                       to="/permintaan/sisa"
                       onClick={() => setNotifOpen(false)}
-                      className="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 hover:bg-ink-100"
+                      className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 hover:bg-white/10"
                     >
-                      <span className="text-ink-700">Sisa Belum Terkirim</span>
-                      <span className="tnum font-semibold text-brand-700">
+                      <span className="text-white">Sisa Belum Terkirim</span>
+                      <span className="tnum font-semibold text-brand-200">
                         {queueCounts.sisa}
                       </span>
                     </Link>
                     <Link
                       to="/persediaan/peringatan-stok"
                       onClick={() => setNotifOpen(false)}
-                      className="flex items-center justify-between rounded-lg bg-warn-50 px-3 py-2 hover:bg-warn-100"
+                      className="flex items-center justify-between rounded-lg bg-warn-500/15 px-3 py-2 hover:bg-warn-500/25"
                     >
-                      <span className="text-ink-700">Stok Menipis / Habis</span>
-                      <span className="tnum font-semibold text-warn-700">
+                      <span className="text-white">Stok Menipis / Habis</span>
+                      <span className="tnum font-semibold text-warn-500">
                         {queueCounts.lowStock}
                       </span>
                     </Link>
@@ -778,38 +781,38 @@ export function AppLayout(): ReactNode {
                 </div>
               )}
             </div>
-            <div className="mx-1 hidden h-8 w-px bg-ink-200 sm:block" />
+            <div className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
             <div className="relative" ref={accountRef}>
               <button
                 type="button"
                 onClick={() => setAccountOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={accountOpen}
-                className="flex items-center gap-2 rounded-lg py-1.5 pl-1.5 pr-2 transition-colors hover:bg-ink-100"
+                className="flex items-center gap-2 rounded-lg py-1.5 pl-1.5 pr-2 transition-colors hover:bg-white/10"
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
                   {(displayName ?? "?").charAt(0).toUpperCase()}
                 </span>
                 <span className="hidden text-left sm:block">
-                  <span className="block max-w-40 truncate text-sm font-medium leading-tight text-ink-800">
+                  <span className="block max-w-40 truncate text-sm font-medium leading-tight text-white">
                     {displayName}
                   </span>
-                  <span className="block text-xs leading-tight text-ink-500">{roleLabel}</span>
+                  <span className="block text-xs leading-tight text-ink-300">{roleLabel}</span>
                 </span>
-                <ChevronDown className={cn("hidden h-4 w-4 text-ink-500 transition-transform sm:block", accountOpen && "rotate-180")} />
+                <ChevronDown className={cn("hidden h-4 w-4 text-ink-300 transition-transform sm:block", accountOpen && "rotate-180")} />
               </button>
               {accountOpen && (
-                <div className="absolute right-0 mt-2 w-56 rounded-xl border border-ink-200 bg-white p-1.5 shadow-pop">
-                  <div className="border-b border-ink-200 px-3 py-2">
-                    <p className="truncate text-sm font-medium text-ink-800">{displayName}</p>
-                    <p className="truncate text-xs text-ink-500">{user?.email}</p>
+                <div className="absolute right-0 mt-2 w-56 rounded-xl border border-white/15 bg-ink-800/95 p-1.5 shadow-pop backdrop-blur-xl">
+                  <div className="border-b border-white/10 px-3 py-2">
+                    <p className="truncate text-sm font-medium text-white">{displayName}</p>
+                    <p className="truncate text-xs text-ink-300">{user?.email}</p>
                   </div>
                   <Link
                     to="/pengaturan"
                     onClick={() => setAccountOpen(false)}
-                    className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-700 transition-colors hover:bg-ink-100"
+                    className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-200 transition-colors hover:bg-white/10"
                   >
-                    <Settings className="h-4 w-4 text-ink-500" /> Pengaturan
+                    <Settings className="h-4 w-4 text-ink-300" /> Pengaturan
                   </Link>
                   <button
                     type="button"
@@ -818,7 +821,7 @@ export function AppLayout(): ReactNode {
                       await signOut();
                       navigate("/login");
                     }}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-brand-700 transition-colors hover:bg-brand-50"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-brand-200 transition-colors hover:bg-brand-600/20"
                   >
                     <LogOut className="h-4 w-4" /> Keluar
                   </button>
@@ -828,9 +831,11 @@ export function AppLayout(): ReactNode {
           </div>
         </header>
 
-        <main className="flex-1 p-4 pb-24 md:p-6 md:pb-24 lg:p-8">
+        <main className="relative flex-1 p-4 pb-24 md:p-6 md:pb-24 lg:p-8">
           <div className="mx-auto max-w-[1400px]">
-            <Outlet />
+            <div key={location.pathname} className="animate-page-in">
+              <Outlet />
+            </div>
           </div>
         </main>
       </div>

@@ -5,7 +5,8 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-ink-200 bg-white shadow-card",
+        // Kaca frosted terang: konten tetap terbaca, latar gelap aplikasi tembus samar.
+        "rounded-xl border border-white/60 bg-white/80 shadow-[0_8px_32px_rgba(2,6,23,0.10)] backdrop-blur-xl",
         className
       )}
       {...props}

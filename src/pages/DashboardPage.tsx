@@ -411,7 +411,7 @@ export function DashboardPage() {
 
   if (loading || !data) {
     return (
-      <div className="space-y-4 rounded-3xl bg-ink-800 p-5 sm:p-6">
+      <div className="space-y-4 p-5 sm:p-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-20 w-full bg-white/10" />
@@ -439,7 +439,7 @@ export function DashboardPage() {
   });
 
   return (
-    <div className="relative space-y-5 overflow-hidden rounded-3xl bg-ink-800 bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.20),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.16),transparent)] p-5 sm:p-6">
+    <div className="relative space-y-5 overflow-hidden rounded-3xl bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.20),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.16),transparent)] p-5 sm:p-6">
       {/* Cahaya latar ala video (oranye + biru, blur) */}
       <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-warn-500/20 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-info-500/15 blur-3xl" />
