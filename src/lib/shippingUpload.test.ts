@@ -15,6 +15,7 @@ import {
   parseSheetLabel,
   parseWorkbook,
   pickNewestSheet,
+  normalizeItemName,
   type ParsedShippingRow,
   applySheetDate,
 } from "./shippingUpload";
@@ -547,5 +548,62 @@ describe("propagasi STATUS ASSET yang di-merge per blok", () => {
     const lines = aggregateGroup(parsed, NAME_KEY);
     expect(lines.find((l) => l.itemKey === "KOMPUTER RAKITAN")?.kodeKondisi).toBe("STOK-RETUR");
     expect(lines.find((l) => l.itemKey === "KEYBOARD")?.kodeKondisi).toBe("STOK-BARU");
+  });
+});
+
+describe("File lapangan: header 'In Progres' + nama ber-underscore", () => {
+  const HEADER_LAPANGAN = [
+    "In Progres", "NO TICKET", "CABANG/GERAI", "KODE GERAI", "NAMA BARANG", "QTY",
+    "KETERANGAN", "RESI", "BARCODE", "TYPE BARANG", "STATUS REQUEST", "STATUS ASSET", "STATUS TERKIRIM",
+  ];
+
+  /** Baca sheet dengan header kustom (seperti file lapangan) lewat round-trip XLSX. */
+  function readSheetCustom(header: string[], rows: (string | number | Date | "")[][]) {
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "PENGIRIMAN");
+    const raw = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const wb2 = XLSX.read(raw, { cellDates: true });
+    const aoaBack = XLSX.utils.sheet_to_json<unknown[]>(wb2.Sheets["PENGIRIMAN"], { header: 1, defval: "" });
+    return parseShippingSheet(aoaBack);
+  }
+
+  const barisLapangan: (string | number)[][] = [
+    ["04-Nov-26", "A2611040365", "SiCepat Ekspres Lampung Kedaton", "T1001051", "IP CAMERA_OUTDOOR_EZVIZ", "", "BK8601152", "", "124379", "( TANPA SD CARD)", "", "ASSET BARU", ""],
+    ["04-Nov-26", "A2611040365", "SiCepat Ekspres Lampung Kedaton", "T1001051", "MONITOR_PC_LG 19M38A", 2, "102INWA49737", "999007078343", "A1100027165", "LG", "PENAMBAHAN", "ASSET RETUR", ""],
+  ];
+
+  it("header 'In Progres' dikenali sebagai kolom tanggal (bukan tanggal hari ini)", () => {
+    const { rows } = readSheetCustom(HEADER_LAPANGAN, barisLapangan);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].date).toBe("2026-11-04");
+    expect(rows[0].dateExplicit).toBe(true);
+    expect(rows[1].date).toBe("2026-11-04");
+  });
+
+  it("header 'In Progress' (tanpa 'Date') juga dikenali", () => {
+    const header = HEADER_LAPANGAN.map((h) => (h === "In Progres" ? "In Progress" : h));
+    const { rows } = readSheetCustom(header, barisLapangan);
+    expect(rows[0].date).toBe("2026-11-04");
+  });
+
+  it("nama ber-underscore cocok dengan nama master ber-spasi", () => {
+    expect(normalizeItemName("IP CAMERA_OUTDOOR_EZVIZ")).toBe("IP CAMERA OUTDOOR EZVIZ");
+    expect(normalizeItemName("Monitor_PC_LG 19M38A")).toBe("MONITOR PC LG 19M38A");
+    expect(normalizeItemName("MODEM_WIFI_TP-LINK")).toBe("MODEM WIFI TP LINK");
+    expect(normalizeItemName("DISPENSER_KECIL")).toBe("DISPENSER KECIL");
+    expect(normalizeItemName("  Scanner   Wireless_WC220SWG ")).toBe("SCANNER WIRELESS WC220SWG");
+  });
+
+  it("baris lapangan teragregasi dengan kunci nama ternormalisasi", () => {
+    const { rows } = readSheetCustom(HEADER_LAPANGAN, barisLapangan);
+    const keyOf = (r: ParsedShippingRow) => normalizeItemName(r.itemName);
+    const lines = aggregateGroup(rows, keyOf);
+    const kamera = lines.find((l) => l.itemKey === "IP CAMERA OUTDOOR EZVIZ")!;
+    const monitor = lines.find((l) => l.itemKey === "MONITOR PC LG 19M38A")!;
+    expect(kamera.qty).toBe(1); // QTY kosong + barcode = 1 unit
+    expect(kamera.kodeKondisi).toBe("STOK-BARU");
+    expect(monitor.qty).toBe(2);
+    expect(monitor.kodeKondisi).toBe("STOK-RETUR");
   });
 });

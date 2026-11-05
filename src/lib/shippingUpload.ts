@@ -105,6 +105,16 @@ export const toText = (v: unknown): string => {
   return String(v).trim();
 };
 
+/**
+ * Normalisasi nama barang untuk pencocokan toleran — aturan yang sama dengan
+ * pencarian di aplikasi: huruf besar/kecil, spasi, underscore, dan strip
+ * dianggap sama. "MONITOR_PC_LG 19M38A" == "Monitor PC LG 19M38A".
+ * Dipakai saat mencocokkan NAMA BARANG file upload dengan master barang.
+ */
+export function normalizeItemName(name: string): string {
+  return name.toUpperCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 /** Kode/nomor (resi, barcode, kode gerai) — angka besar tidak boleh jadi notasi ilmiah. */
 export const toCode = (v: unknown): string => {
   if (v === null || v === undefined || v === "") return "";
@@ -276,7 +286,10 @@ export function parseShippingSheet(aoa: unknown[][]): ParsedSheet {
     }
     return -1;
   };
-  const cDate = col("IN PROGRESS DATE", "TANGGAL");
+  const cDate =
+    col("IN PROGRESS DATE", "IN PROGRESS", "IN PROGRES", "TANGGAL", "TANGGAL KIRIM", "TANGGAL PENGIRIMAN") >= 0
+      ? col("IN PROGRESS DATE", "IN PROGRESS", "IN PROGRES", "TANGGAL", "TANGGAL KIRIM", "TANGGAL PENGIRIMAN")
+      : headers.findIndex((h) => h.startsWith("IN PROGRES"));
   const cTicket = col("NO TICKET");
   const cBranch = col("CABANG/GERAI", "GERAI");
   const cBranchCode = col("KODE GERAI");

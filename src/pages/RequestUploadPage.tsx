@@ -22,6 +22,7 @@ import {
   parseWorkbook,
   pickNewestSheet,
   applySheetDate,
+  normalizeItemName,
   type AggLine,
   type DupIndex,
   type KodeKondisi,
@@ -119,7 +120,7 @@ export function RequestUploadPage() {
         [""],
         ["1. Isi data pada sheet PENGIRIMAN mulai baris 3 (baris 1 header, baris 2 contoh — contoh boleh dihapus)."],
         ["2. In Progress Date: tanggal pengiriman (format YYYY-MM-DD, dd/mm/yyyy, atau 14-Oct-26)."],
-        ["3. NAMA BARANG: samakan dengan sheet DAFTAR BARANG (huruf besar/kecil bebas)."],
+        ["3. NAMA BARANG: samakan dengan sheet DAFTAR BARANG (huruf besar/kecil, spasi, dan underscore bebas — sistem mencocokkan nama secara toleran)."],
         ["4. QTY = jumlah barang pada baris itu dan dianggap paling benar (mis. 23 kursi → tulis 23)."],
         ["5. Baris lanjutan (mis. 1 sel QTY di-merge untuk beberapa baris/resi): biarkan QTY kosong — baris tanpa QTY dan tanpa BARCODE tidak menambah qty, hanya mencatat RESI/KETERANGAN."],
         ["6. QTY kosong tetapi BARCODE terisi = dihitung 1 unit."],
@@ -211,13 +212,13 @@ export function RequestUploadPage() {
       const idByName = new Map<string, string>();
       const nameById = new Map<string, string>();
       for (const it of (items ?? []) as { id: string; name: string }[]) {
-        idByName.set(it.name.trim().toUpperCase(), it.id);
+        idByName.set(normalizeItemName(it.name), it.id);
         nameById.set(it.id, it.name);
       }
       const keyOf = (r: ParsedShippingRow): string =>
-        idByName.get(r.itemName.toUpperCase()) ?? `NAME:${r.itemName.toUpperCase()}`;
+        idByName.get(normalizeItemName(r.itemName)) ?? `NAME:${normalizeItemName(r.itemName)}`;
       const unmatched = [
-        ...new Set(rows.filter((r) => !idByName.has(r.itemName.toUpperCase())).map((r) => r.itemName)),
+        ...new Set(rows.filter((r) => !idByName.has(normalizeItemName(r.itemName))).map((r) => r.itemName)),
       ];
 
       // Baris yang sudah pernah masuk (upload ulang file yang sama) dibuang.
@@ -309,12 +310,12 @@ export function RequestUploadPage() {
       const byName = new Map<string, string>();
       const itemNameById = new Map<string, string>();
       for (const it of (items ?? []) as { id: string; name: string }[]) {
-        byName.set(it.name.trim().toUpperCase(), it.id);
+        byName.set(normalizeItemName(it.name), it.id);
         itemNameById.set(it.id, it.name);
       }
 
       if (autoCreate) {
-        const missing = [...new Set(preview.rows.map((r) => r.itemName).filter((n) => !byName.has(n.toUpperCase())))];
+        const missing = [...new Set(preview.rows.map((r) => r.itemName).filter((n) => !byName.has(normalizeItemName(n))))];
         const { data: units } = await supabase.from("units").select("id, code").limit(50);
         const pcsUnit = ((units ?? []) as { id: string; code: string }[]).find((u) => u.code.toUpperCase() === "PCS")
           ?? (units?.[0] as { id: string } | undefined);
@@ -330,7 +331,7 @@ export function RequestUploadPage() {
           const { data: created, error } = await supabase.from("inventory_items").insert(withSku).select("id, name");
           if (error) throw new Error(`Gagal membuat barang: ${error.message}`);
           for (const c of (created ?? []) as { id: string; name: string }[])
-            byName.set(c.name.trim().toUpperCase(), c.id);
+            byName.set(normalizeItemName(c.name), c.id);
           setProgress(`Membuat barang baru… ${Math.min(i + 50, missing.length)}/${missing.length}`);
         }
       } else if (preview.unmatched.length > 0) {
@@ -343,7 +344,7 @@ export function RequestUploadPage() {
       // 2) Buang baris duplikat (dihitung ulang dari seluruh baris file, urutannya sama
       //    seperti pratinjau supaya hasilnya konsisten).
       setProgress("Mengecek duplikat…");
-      const keyOf = (r: ParsedShippingRow): string => byName.get(r.itemName.toUpperCase()) ?? "";
+      const keyOf = (r: ParsedShippingRow): string => byName.get(normalizeItemName(r.itemName)) ?? "";
       const { index } = await loadExisting(preview.rows);
       const { kept: filteredRows, skipped } = filterDuplicateRows(preview.rows, keyOf, index);
       const skippedDup = skipped.length;
@@ -385,7 +386,7 @@ export function RequestUploadPage() {
         try {
           // Baris per barang + kondisi aset + status terkirim.
           const lines = aggregateGroup(rs, (r) => {
-            const id = byName.get(r.itemName.toUpperCase());
+            const id = byName.get(normalizeItemName(r.itemName));
             if (!id) throw new Error(`Barang tidak ditemukan: ${r.itemName}`);
             return id;
           });
@@ -618,7 +619,7 @@ export function RequestUploadPage() {
                         <tr key={`${l.itemKey}-${l.kodeKondisi}-${l.isPending}-${i}`} className="border-t border-ink-200 transition-colors hover:bg-brand-50/40">
                           <td className="px-2 py-1.5 text-ink-800">
                             {nameOf(l)}
-                            {!preview.idByName.has(l.itemName.toUpperCase()) && (
+                            {!preview.idByName.has(normalizeItemName(l.itemName)) && (
                               <span className="ml-1 text-warn-600">(baru)</span>
                             )}
                           </td>
