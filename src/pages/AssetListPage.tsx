@@ -3,36 +3,18 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, Pencil, Eye } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { assetConditionVariant, assetStatusVariant } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { DataTable } from "../components/DataTable";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import type {
-  Asset,
-  AssetCondition,
-  AssetStatus,
-} from "../types/database";
+import type { Asset } from "../types/database";
 import { ASSET_STATUS_LABELS, ASSET_CONDITION_LABELS } from "../types/database";
 import { toast } from "sonner";
 
 const ASSET_SELECT =
   "*, asset_categories(code,name), locations(code,name,warehouses(code,name)), departments(code,name)";
-
-const STATUS_VARIANT: Record<AssetStatus, "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info"> = {
-  tersedia: "success",
-  digunakan: "info",
-  dipinjamkan: "warning",
-  perbaikan: "warning",
-  rusak: "destructive",
-  dipensiunkan: "secondary",
-};
-
-const CONDITION_VARIANT: Record<AssetCondition, "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info"> = {
-  baik: "success",
-  rusak_ringan: "warning",
-  rusak_berat: "destructive",
-};
 
 export function AssetListPage() {
   const { hasPermission } = useAuth();
@@ -123,7 +105,7 @@ export function AssetListPage() {
         header: "Kondisi",
         accessorKey: "condition",
         cell: ({ row }) => (
-          <Badge variant={CONDITION_VARIANT[row.original.condition]}>
+          <Badge variant={assetConditionVariant[row.original.condition]}>
             {ASSET_CONDITION_LABELS[row.original.condition]}
           </Badge>
         ),
@@ -132,7 +114,7 @@ export function AssetListPage() {
         header: "Status",
         accessorKey: "status",
         cell: ({ row }) => (
-          <Badge variant={STATUS_VARIANT[row.original.status]}>
+          <Badge variant={assetStatusVariant[row.original.status]}>
             {ASSET_STATUS_LABELS[row.original.status]}
           </Badge>
         ),

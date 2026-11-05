@@ -5,8 +5,10 @@ import * as XLSX from "xlsx";
 import { Download, Hourglass } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { pendingJenisVariant } from "../lib/statusColors";
 import { buildSearchPattern } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
+import { Badge } from "../components/ui/badge";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -86,15 +88,7 @@ export function PendingPartialPage() {
     header: "Jenis",
     accessorKey: "jenis",
     cell: ({ row }) => (
-      <span
-        className={`rounded-full px-2 py-0.5 text-xs ${
-          row.original.jenis === "Menunggu Stok"
-            ? "bg-info-100 text-info-600"
-            : "bg-warn-100 text-warn-600"
-        }`}
-      >
-        {row.original.jenis}
-      </span>
+      <Badge variant={pendingJenisVariant[row.original.jenis]}>{row.original.jenis}</Badge>
     ),
   },
   {
@@ -405,15 +399,9 @@ export function PendingPartialPage() {
                   {row.ticket_no} • {row.branch_name}
                 </div>
               </div>
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
-                  row.jenis === "Menunggu Stok"
-                    ? "bg-info-100 text-info-600"
-                    : "bg-warn-100 text-warn-600"
-                }`}
-              >
+              <Badge variant={pendingJenisVariant[row.jenis]} className="shrink-0">
                 {row.jenis}
-              </span>
+              </Badge>
             </div>
             <div>
               <div className="font-medium">{row.name}</div>

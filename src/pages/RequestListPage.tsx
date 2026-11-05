@@ -14,6 +14,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { DataTable } from "../components/DataTable";
+import { requestStatusVariant } from "../lib/statusColors";
 import {
   Dialog,
   DialogDescription,
@@ -24,17 +25,7 @@ import {
 import {
   REQUEST_STATUS_LABELS,
   type Request,
-  type RequestStatus,
 } from "../types/database";
-
-const STATUS_VARIANT: Record<RequestStatus, "default" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
-  diajukan: "info",
-  disetujui: "success",
-  disetujui_sebagian: "warning",
-  ditolak: "destructive",
-  diproses: "warning",
-  selesai: "secondary",
-};
 
 type Tab = "semua" | "diajukan" | "aktif" | "selesai" | "ditolak";
 
@@ -353,7 +344,7 @@ export function RequestListPage() {
       header: "Status",
       accessorKey: "status",
       cell: ({ row }) => (
-        <Badge variant={STATUS_VARIANT[row.original.status]}>
+        <Badge variant={requestStatusVariant[row.original.status]}>
           {REQUEST_STATUS_LABELS[row.original.status]}
         </Badge>
       ),
@@ -531,7 +522,7 @@ export function RequestListPage() {
                   {row.ticket_no} • {row.request_date}
                 </div>
               </div>
-              <Badge variant={STATUS_VARIANT[row.status]}>
+              <Badge variant={requestStatusVariant[row.status]}>
                 {REQUEST_STATUS_LABELS[row.status]}
               </Badge>
             </div>

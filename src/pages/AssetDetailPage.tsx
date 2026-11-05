@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Pencil, Archive, ArchiveRestore, Globe, Globe2, Printer, ArrowLeft } from "lucide-react";
 import { supabase, publicAssetUrl } from "../lib/supabase";
+import { assetStatusVariant } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { formatDate, formatDateTime, formatRupiah } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
@@ -34,15 +35,6 @@ interface MovementRow extends AssetMovement {
 }
 
 type ConfirmKind = "archive" | "publish" | null;
-
-const STATUS_VARIANT: Record<AssetStatus, "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info"> = {
-  tersedia: "success",
-  digunakan: "info",
-  dipinjamkan: "warning",
-  perbaikan: "warning",
-  rusak: "destructive",
-  dipensiunkan: "secondary",
-};
 
 export function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -271,7 +263,7 @@ export function AssetDetailPage() {
               ))}
             </dl>
             <div className="mt-6 flex flex-wrap gap-2">
-              <Badge variant={STATUS_VARIANT[asset.status]}>
+              <Badge variant={assetStatusVariant[asset.status]}>
                 {ASSET_STATUS_LABELS[asset.status]}
               </Badge>
               <Badge variant="outline">{ASSET_CONDITION_LABELS[asset.condition]}</Badge>

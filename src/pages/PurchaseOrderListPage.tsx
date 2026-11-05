@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { poStatusVariant } from "../lib/statusColors";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -17,14 +18,6 @@ export const PO_STATUS_LABELS: Record<PoStatus, string> = {
   received_partial: "Diterima Sebagian",
   received: "Diterima Penuh",
   cancelled: "Dibatalkan",
-};
-
-const STATUS_VARIANT: Record<PoStatus, "default" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
-  draft: "secondary",
-  ordered: "info",
-  received_partial: "warning",
-  received: "success",
-  cancelled: "destructive",
 };
 
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
@@ -63,7 +56,7 @@ const poColumns: ColumnDef<PoRow, unknown>[] = [
     header: "Status",
     accessorKey: "status",
     cell: ({ row }) => (
-      <Badge variant={STATUS_VARIANT[row.original.status]}>{PO_STATUS_LABELS[row.original.status]}</Badge>
+      <Badge variant={poStatusVariant[row.original.status]}>{PO_STATUS_LABELS[row.original.status]}</Badge>
     ),
   },
   {

@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { PackageCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { poStatusVariant } from "../lib/statusColors";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -14,14 +15,6 @@ import { PO_STATUS_LABELS, type PoStatus } from "./PurchaseOrderListPage";
 
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 const fmt = (n: number) => n.toLocaleString("id-ID", { maximumFractionDigits: 3 });
-
-const STATUS_VARIANT: Record<PoStatus, "default" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
-  draft: "secondary",
-  ordered: "info",
-  received_partial: "warning",
-  received: "success",
-  cancelled: "destructive",
-};
 
 interface PoItem {
   id: string;
@@ -212,7 +205,7 @@ export function PurchaseOrderDetailPage() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Badge variant={STATUS_VARIANT[po.status]}>{PO_STATUS_LABELS[po.status]}</Badge>
+        <Badge variant={poStatusVariant[po.status]}>{PO_STATUS_LABELS[po.status]}</Badge>
         {po.expected_date && (
           <span className="text-sm text-ink-500">
             Estimasi datang: {new Date(po.expected_date).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}

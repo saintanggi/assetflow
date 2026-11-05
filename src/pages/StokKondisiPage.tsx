@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { ArrowRightLeft, Download, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { kondisiStatusVariant } from "../lib/statusColors";
 import { formatQty } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
 import { useAuth } from "../context/AuthContext";
@@ -199,11 +200,9 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
     );
   }, [rows]);
 
-  const statusBadge = (s: StokRow["status"]) => {
-    if (s === "AMAN") return <Badge variant="success">AMAN</Badge>;
-    if (s === "KRITIS") return <Badge variant="destructive">KRITIS</Badge>;
-    return <Badge variant="secondary">HABIS</Badge>;
-  };
+  const statusBadge = (s: StokRow["status"]) => (
+    <Badge variant={kondisiStatusVariant[s]}>{s}</Badge>
+  );
 
   const openEdit = (row: StokRow) => {
     setEditRow(row);

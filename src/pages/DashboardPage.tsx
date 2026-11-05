@@ -19,7 +19,12 @@ import {
   ArrowUpFromLine,
   Banknote,
   Boxes,
+  CheckCircle2,
+  ChevronRight,
+  Hourglass,
+  Inbox,
   Package,
+  PackageCheck,
   Warehouse,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -59,6 +64,9 @@ interface DashboardState {
   totalSku: number;
   totalValue: number;
   lowStockCount: number;
+  reviewCount: number;
+  activeCount: number;
+  pendingCount: number;
   inboundToday: number;
   outboundToday: number;
   tx14: TxDay[];
@@ -87,7 +95,7 @@ const TX_ICON: Record<TransactionType, typeof ArrowDownToLine> = {
 
 const TX_COLOR: Record<TransactionType, string> = {
   in: "text-ok-700 bg-ok-50 border-ok-100",
-  out: "text-brand-700 bg-brand-50 border-brand-200",
+  out: "text-info-700 bg-info-50 border-info-100",
   transfer: "text-info-700 bg-info-50 border-info-100",
   adjust: "text-warn-700 bg-warn-50 border-warn-100",
   opname: "text-warn-700 bg-warn-50 border-warn-100",
@@ -151,6 +159,60 @@ function StatTile({
   );
 }
 
+type ActionTone = "amber" | "blue" | "red";
+
+const ACTION_TONE: Record<
+  ActionTone | "green",
+  { chip: string; count: string }
+> = {
+  amber: { chip: "bg-warn-50 text-warn-600 ring-warn-100", count: "text-warn-700" },
+  blue: { chip: "bg-info-50 text-info-600 ring-info-100", count: "text-info-700" },
+  red: { chip: "bg-rose-50 text-brand-700 ring-brand-200", count: "text-brand-700" },
+  green: { chip: "bg-ok-50 text-ok-700 ring-ok-100", count: "text-ok-700" },
+};
+
+/** Kartu antrean "Perlu Tindakan" — jumlahnya merah/kuning kalau ada yang menunggu, hijau kalau beres. */
+function ActionCard({
+  to,
+  icon: Icon,
+  label,
+  sub,
+  count,
+  tone,
+}: {
+  to: string;
+  icon: typeof Boxes;
+  label: string;
+  sub: string;
+  count: number;
+  tone: ActionTone;
+}) {
+  const effectiveTone = count > 0 ? tone : "green";
+  const styles = ACTION_TONE[effectiveTone];
+  const DisplayIcon = count > 0 ? Icon : CheckCircle2;
+  return (
+    <Link to={to} className="block transition hover:-translate-y-0.5">
+      <Card>
+        <CardContent className="flex items-center gap-3 p-4">
+          <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1", styles.chip)}>
+            <DisplayIcon className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-ink-800">{label}</span>
+            <span className="block truncate text-xs text-ink-500">
+              {count > 0 ? sub : "Tidak ada antrean"}
+            </span>
+          </span>
+          <span className={cn("tnum text-3xl font-bold tracking-tight", styles.count)}>
+            {count.toLocaleString("id-ID")}
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-ink-400" />
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
+
 export function DashboardPage() {
   const [data, setData] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -169,6 +231,9 @@ export function DashboardPage() {
           txRecentRes,
           recentListRes,
           locRes,
+          reviewRes,
+          activeRes,
+          pendingRes,
         ] = await Promise.all([
           supabase.from("assets").select("status").eq("archived", false),
           supabase.from("inventory_items").select("id, min_stock, purchase_price").eq("is_active", true),
@@ -188,6 +253,19 @@ export function DashboardPage() {
             .order("created_at", { ascending: false })
             .limit(8),
           supabase.from("locations").select("id, code, name"),
+          // Antrean "Perlu Tindakan" (definisi sama seperti badge di sidebar).
+          supabase
+            .from("requests")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "diajukan"),
+          supabase
+            .from("requests")
+            .select("id", { count: "exact", head: true })
+            .in("status", ["disetujui", "disetujui_sebagian", "diproses"]),
+          supabase
+            .from("request_items")
+            .select("id", { count: "exact", head: true })
+            .in("item_status", ["pending_sebagian", "menunggu_stok"]),
         ]);
         const failures = [
           statusesRes,
@@ -197,6 +275,9 @@ export function DashboardPage() {
           txRecentRes,
           recentListRes,
           locRes,
+          reviewRes,
+          activeRes,
+          pendingRes,
         ].filter((r) => r.error);
         if (failures.length > 0) throw new Error("Gagal memuat data dashboard");
 
@@ -275,6 +356,9 @@ export function DashboardPage() {
           totalSku: items.length,
           totalValue,
           lowStockCount,
+          reviewCount: reviewRes.count ?? 0,
+          activeCount: activeRes.count ?? 0,
+          pendingCount: pendingRes.count ?? 0,
           inboundToday: txToday.filter((t) => t.type === "in").length,
           outboundToday: txToday.filter((t) => t.type === "out").length,
           tx14,
@@ -297,8 +381,13 @@ export function DashboardPage() {
   if (loading || !data) {
     return (
       <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-32 w-full" />
           ))}
         </div>
@@ -336,6 +425,48 @@ export function DashboardPage() {
             </span>
           </div>
           <p className="mt-1 text-sm text-ink-500">{now} — pantauan operasional gudang real-time</p>
+        </div>
+      </div>
+
+      {/* Perlu Tindakan — antrean yang butuh tindak lanjut, klik kartu untuk membuka */}
+      <div>
+        <div className="mb-3 flex items-baseline justify-between gap-2">
+          <h2 className="font-display text-base font-bold text-ink-800">Perlu Tindakan</h2>
+          <p className="text-xs text-ink-500">Antrean yang butuh tindak lanjut hari ini</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ActionCard
+            to="/permintaan?tab=diajukan"
+            icon={Inbox}
+            label="Perlu Direview"
+            sub="tiket menunggu direview"
+            count={data.reviewCount}
+            tone="amber"
+          />
+          <ActionCard
+            to="/permintaan?tab=aktif"
+            icon={PackageCheck}
+            label="Sedang Diproses"
+            sub="tiket proses / kirim"
+            count={data.activeCount}
+            tone="blue"
+          />
+          <ActionCard
+            to="/permintaan/sisa"
+            icon={Hourglass}
+            label="Sisa Belum Terkirim"
+            sub="baris barang belum terkirim"
+            count={data.pendingCount}
+            tone="amber"
+          />
+          <ActionCard
+            to="/persediaan/peringatan-stok"
+            icon={AlertTriangle}
+            label="Stok Menipis / Habis"
+            sub="SKU di bawah stok minimum"
+            count={data.lowStockCount}
+            tone="red"
+          />
         </div>
       </div>
 

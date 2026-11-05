@@ -3,6 +3,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { AlertTriangle, Siren } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { alertLevelVariant } from "../lib/statusColors";
 import { PageHeader } from "../components/PageHeader";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -53,12 +54,11 @@ const alertColumns: ColumnDef<AlertRow, unknown>[] = [
   {
     header: "Status",
     accessorKey: "level",
-    cell: ({ row }) =>
-      row.original.level === "kritis" ? (
-        <Badge variant="destructive">Kritis</Badge>
-      ) : (
-        <Badge variant="warning">Waspada</Badge>
-      ),
+    cell: ({ row }) => (
+      <Badge variant={alertLevelVariant[row.original.level]}>
+        {row.original.level === "kritis" ? "Kritis" : "Waspada"}
+      </Badge>
+    ),
   },
 ];
 
@@ -256,11 +256,9 @@ export function StockAlertsPage() {
                     <div className="text-xs text-ink-500">{row.brand}</div>
                   )}
                 </div>
-                {row.level === "kritis" ? (
-                  <Badge variant="destructive">Kritis</Badge>
-                ) : (
-                  <Badge variant="warning">Waspada</Badge>
-                )}
+                <Badge variant={alertLevelVariant[row.level]}>
+                  {row.level === "kritis" ? "Kritis" : "Waspada"}
+                </Badge>
               </div>
               <div className="text-xs text-ink-500">{row.locations}</div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">

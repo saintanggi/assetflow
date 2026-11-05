@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ImageOff, Plus, ScanLine } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { stockStatusVariant } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { formatQty } from "../lib/format";
 import { DataTable } from "../components/DataTable";
@@ -291,16 +292,11 @@ export function InventoryListPage() {
     }
   };
 
-  const stockBadge = (row: ItemRow) => {
-    switch (row.stock_status) {
-      case "habis":
-        return <Badge variant="destructive">Habis</Badge>;
-      case "menipis":
-        return <Badge variant="warning">Menipis</Badge>;
-      default:
-        return <Badge variant="success">Aman</Badge>;
-    }
-  };
+  const stockBadge = (row: ItemRow) => (
+    <Badge variant={stockStatusVariant[row.stock_status]}>
+      {row.stock_status === "habis" ? "Habis" : row.stock_status === "menipis" ? "Menipis" : "Aman"}
+    </Badge>
+  );
 
   const columns: ColumnDef<ItemRow>[] = useMemo(
     () => [

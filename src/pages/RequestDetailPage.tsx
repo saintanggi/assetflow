@@ -1,3 +1,4 @@
+import { requestItemStatusVariant, requestStatusVariant } from "../lib/statusColors";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, ScanLine, Scissors, Send, XCircle } from "lucide-react";
@@ -33,7 +34,6 @@ import {
   type ExcelStatusAset,
   type Request,
   type RequestItem,
-  type RequestStatus,
   type StatusRequest,
 } from "../types/database";
 import {
@@ -41,26 +41,6 @@ import {
   parseRequestStatus,
   parseStatusAset,
 } from "../lib/requestStatus";
-
-const STATUS_VARIANT: Record<RequestStatus, "default" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
-  diajukan: "info",
-  disetujui: "success",
-  disetujui_sebagian: "warning",
-  ditolak: "destructive",
-  diproses: "warning",
-  selesai: "secondary",
-};
-
-const ITEM_VARIANT: Record<string, "default" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
-  menunggu: "info",
-  disetujui: "success",
-  ditolak: "destructive",
-  diproses: "warning",
-  siap: "success",
-  terkirim: "secondary",
-  pending_sebagian: "warning",
-  menunggu_stok: "warning",
-};
 
 const fmt = (n: number) => Number(n).toLocaleString("id-ID", { maximumFractionDigits: 3 });
 
@@ -899,7 +879,7 @@ export function RequestDetailPage() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Badge variant={STATUS_VARIANT[req.status]}>{REQUEST_STATUS_LABELS[req.status]}</Badge>
+        <Badge variant={requestStatusVariant[req.status]}>{REQUEST_STATUS_LABELS[req.status]}</Badge>
         {req.status === "ditolak" && req.rejection_reason && (
           <span className="text-sm text-brand-600">Alasan: {req.rejection_reason}</span>
         )}
@@ -1465,7 +1445,7 @@ export function RequestDetailPage() {
                           {[...new Set(srList)].map((s, i) => <div key={i} className="text-warn-700">{s}</div>)}
                         </div>
                       ) : (
-                        <Badge variant={ITEM_VARIANT[x.item_status] ?? "default"}>
+                        <Badge variant={requestItemStatusVariant[x.item_status] ?? "default"}>
                           {REQUEST_ITEM_STATUS_LABELS[x.item_status]}
                         </Badge>
                       )}
