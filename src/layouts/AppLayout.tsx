@@ -36,6 +36,7 @@ import {
   ClipboardList,
   Activity,
   Siren,
+  Clock,
   Inbox,
   Hourglass,
   FileUp,
@@ -74,6 +75,7 @@ const NAV: NavItem[] = [
       { to: "/persediaan/unready", label: "Asset Unready", icon: PackageX, permission: "inventory.view" },
       { to: "/persediaan", label: "Master Barang", icon: Boxes, permission: "inventory.view" },
       { to: "/persediaan/peringatan-stok", label: "Peringatan Stok", icon: Siren, permission: "inventory.view" },
+      { to: "/persediaan/dead-stock", label: "Dead Stock", icon: Clock, permission: "inventory.view" },
     ],
   },
   {

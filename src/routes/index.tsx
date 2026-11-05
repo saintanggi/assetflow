@@ -26,6 +26,7 @@ import { StokKondisiPage } from "../pages/StokKondisiPage";
 import { KartuStokPage } from "../pages/KartuStokPage";
 import { LiveStockPage } from "../pages/LiveStockPage";
 import { StockAlertsPage } from "../pages/StockAlertsPage";
+import { DeadStockPage } from "../pages/DeadStockPage";
 import { RequestListPage } from "../pages/RequestListPage";
 import { UserManagementPage } from "../pages/UserManagementPage";
 import { RequestFormPage } from "../pages/RequestFormPage";
@@ -225,6 +226,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission code="inventory.view">
             <StockAlertsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/persediaan/dead-stock",
+        element: (
+          <RequirePermission code="inventory.view">
+            <DeadStockPage />
           </RequirePermission>
         ),
       },
