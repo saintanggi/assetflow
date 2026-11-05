@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Boxes,
   Bell,
@@ -422,6 +422,118 @@ function GlobalSearch() {
   );
 }
 
+interface BottomNavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  permission?: string;
+  badge?: number;
+  active: (pathname: string, tab: string | null) => boolean;
+}
+
+/**
+ * Navigasi bawah khusus HP (tampil < lg) — menu utama yang paling sering
+ * dipakai staf gudang sambil jalan, dalam jangkauan jempol. "Kirim" membuka
+ * daftar permintaan aktif (tab Aktif) supaya langsung ke antrean kirim.
+ */
+function BottomNav({
+  permintaanBadge,
+  sisaBadge,
+}: {
+  permintaanBadge: number;
+  sisaBadge: number;
+}) {
+  const { hasPermission } = useAuth();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const tab = searchParams.get("tab");
+  const pathname = location.pathname;
+
+  const items: BottomNavItem[] = [
+    {
+      to: "/dashboard",
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      active: (p) => p === "/dashboard",
+    },
+    {
+      to: "/persediaan",
+      label: "Master",
+      icon: Boxes,
+      permission: "inventory.view",
+      active: (p) => p === "/persediaan" || p.startsWith("/persediaan/"),
+    },
+    {
+      to: "/permintaan",
+      label: "Permintaan",
+      icon: Inbox,
+      permission: "requests.view",
+      badge: permintaanBadge,
+      active: (p, t) =>
+        (p === "/permintaan" && t !== "aktif") ||
+        (p.startsWith("/permintaan/") && p !== "/permintaan/sisa"),
+    },
+    {
+      to: "/permintaan?tab=aktif",
+      label: "Kirim",
+      icon: PackageCheck,
+      permission: "requests.view",
+      active: (p, t) => p === "/permintaan" && t === "aktif",
+    },
+    {
+      to: "/permintaan/sisa",
+      label: "Sisa",
+      icon: Hourglass,
+      permission: "requests.view",
+      badge: sisaBadge,
+      active: (p) => p === "/permintaan/sisa",
+    },
+  ];
+
+  const visible = items.filter(
+    (i) => !i.permission || hasPermission(i.permission)
+  );
+  if (visible.length === 0) return null;
+
+  return (
+    <nav
+      aria-label="Menu utama"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-200 bg-white/95 backdrop-blur lg:hidden print:hidden"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
+      <div className="flex">
+        {visible.map((item) => {
+          const isActive = item.active(pathname, tab);
+          return (
+            <Link
+              key={item.to + item.label}
+              to={item.to}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "relative flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium",
+                isActive ? "text-brand-700" : "text-ink-500"
+              )}
+            >
+              <span className="relative">
+                <item.icon className="h-5 w-5" />
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold leading-none text-white">
+                    {item.badge > 99 ? "99+" : item.badge}
+                  </span>
+                )}
+              </span>
+              {item.label}
+              {isActive && (
+                <span className="absolute inset-x-6 top-0 h-0.5 rounded-b-full bg-brand-600" />
+              )}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 export function AppLayout(): ReactNode {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -716,12 +828,13 @@ export function AppLayout(): ReactNode {
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-6 lg:p-8">
+        <main className="flex-1 p-4 pb-24 md:p-6 md:pb-24 lg:p-8">
           <div className="mx-auto max-w-[1400px]">
             <Outlet />
           </div>
         </main>
       </div>
+      <BottomNav permintaanBadge={permintaanBadge} sisaBadge={queueCounts.sisa} />
       <Toaster richColors position="top-right" />
     </div>
   );

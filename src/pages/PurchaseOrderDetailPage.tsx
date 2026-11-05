@@ -9,13 +9,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
+import { Select } from "../components/ui/select";
 import { PO_STATUS_LABELS, type PoStatus } from "./PurchaseOrderListPage";
 
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
@@ -288,18 +282,15 @@ export function PurchaseOrderDetailPage() {
             <div className="mt-4 flex flex-wrap items-end gap-3 border-t pt-4">
               <div className="min-w-48">
                 <Label>Lokasi Tujuan *</Label>
-                <Select value={locationId} onValueChange={setLocationId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih lokasi…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.code} — {l.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Select
+                  value={locationId}
+                  onValueChange={setLocationId}
+                  placeholder="Pilih lokasi…"
+                  options={locations.map((l) => ({
+                    value: l.id,
+                    label: `${l.code} — ${l.name}`,
+                  }))}
+                />
               </div>
               <Button disabled={receiving} onClick={doReceive}>
                 <PackageCheck className="mr-2 h-4 w-4" />

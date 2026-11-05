@@ -4,11 +4,12 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { ColumnDef } from "@tanstack/react-table";
-import { ImageOff, Plus } from "lucide-react";
+import { ImageOff, Plus, ScanLine } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { formatQty } from "../lib/format";
 import { DataTable } from "../components/DataTable";
+import { BarcodeScanner } from "../components/BarcodeScanner";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -380,6 +381,10 @@ export function InventoryListPage() {
   );
 
   const [onlyNoPhoto, setOnlyNoPhoto] = useState(false);
+  // Pencarian terkontrol (dipegang halaman) agar hasil scan barcode bisa
+  // langsung mengisi kolom pencarian DataTable.
+  const [search, setSearch] = useState("");
+  const [scanOpen, setScanOpen] = useState(false);
 
   const filteredItems = useMemo(
     () => (onlyNoPhoto ? items.filter((i) => !i.photo_url) : items),
@@ -424,6 +429,65 @@ export function InventoryListPage() {
         pageSize={15}
         emptyTitle="Tidak ada barang"
         emptyDescription="Belum ada barang persediaan yang terdaftar."
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchActions={
+          <Button variant="outline" onClick={() => setScanOpen(true)}>
+            <ScanLine className="mr-2 h-4 w-4" /> Scan Barcode
+          </Button>
+        }
+        renderCard={(row) => (
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <Link
+                to={`/persediaan/${row.id}`}
+                className="font-medium text-brand-700 hover:underline"
+              >
+                {row.name}
+              </Link>
+              {stockBadge(row)}
+            </div>
+            <div className="text-xs text-ink-500">
+              <span className="font-mono">{row.sku}</span>
+              {row.brand ? ` • ${row.brand}` : ""}
+              {row.asset_categories?.name ? ` • ${row.asset_categories.name}` : ""}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <span>
+                Baru:{" "}
+                <span className="tnum font-semibold text-ok-600">
+                  {formatQty(row.stock_baru)}
+                </span>
+              </span>
+              <span>
+                Retur:{" "}
+                <span className="tnum font-semibold text-warn-600">
+                  {formatQty(row.stock_retur)}
+                </span>
+              </span>
+              <span>
+                Min: <span className="tnum">{formatQty(row.min_stock)}</span>
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => openAdjust(row)}
+            >
+              Atur Stok
+            </Button>
+          </div>
+        )}
+      />
+
+      <BarcodeScanner
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        onScan={(code) => {
+          setSearch(code);
+          toast.success(`Hasil scan "${code}" masuk ke pencarian.`);
+        }}
       />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

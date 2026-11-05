@@ -246,6 +246,34 @@ export function StockAlertsPage() {
           pageSize={15}
           emptyTitle="Tidak ada peringatan"
           emptyDescription="Semua barang berada di atas ambang waspada."
+          renderCard={(row) => (
+            <div className="space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{row.name}</div>
+                  <div className="font-mono text-xs text-ink-500">{row.sku}</div>
+                  {row.brand && (
+                    <div className="text-xs text-ink-500">{row.brand}</div>
+                  )}
+                </div>
+                {row.level === "kritis" ? (
+                  <Badge variant="destructive">Kritis</Badge>
+                ) : (
+                  <Badge variant="warning">Waspada</Badge>
+                )}
+              </div>
+              <div className="text-xs text-ink-500">{row.locations}</div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                <span>
+                  Stok:{" "}
+                  <span className="tnum font-semibold">{fmt(row.totalStock)}</span>
+                </span>
+                <span>
+                  Min: <span className="tnum">{fmt(row.minStock)}</span>
+                </span>
+              </div>
+            </div>
+          )}
         />
       </div>
     </div>

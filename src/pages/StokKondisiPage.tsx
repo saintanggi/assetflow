@@ -524,6 +524,52 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
             pageSize={15}
             emptyTitle="Tidak ada data"
             emptyDescription={`Belum ada barang pada kondisi ${cfg.badge}.`}
+            renderCard={(row) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium">{row.itemName}</div>
+                    <div className="text-xs text-ink-500">{row.satuan}</div>
+                  </div>
+                  {statusBadge(row.status)}
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs text-ink-500">Stok Akhir</span>
+                  <span className="tnum text-lg font-bold">{formatQty(row.stokAkhir)}</span>
+                  <span className="tnum text-xs text-ink-500">
+                    (Awal {formatQty(row.stokAwal)} • In +{formatQty(row.totalIn)} • Out -
+                    {formatQty(row.totalOut)})
+                  </span>
+                </div>
+                <div className="text-xs text-ink-500">
+                  Buffer minimum: <span className="tnum">{formatQty(row.buffer)}</span>
+                </div>
+                {(isSuperAdmin || (kondisi === "unready" && canTransfer)) && (
+                  <div className="flex gap-2">
+                    {kondisi === "unready" && canTransfer && row.stokAkhir > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => openMoveToReturn(row)}
+                      >
+                        <ArrowRightLeft className="mr-1 h-3 w-3" /> Ke Return
+                      </Button>
+                    )}
+                    {isSuperAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => openEdit(row)}
+                      >
+                        <Pencil className="mr-1 h-3 w-3" /> Ubah
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           />
         </CardContent>
       </Card>

@@ -45,6 +45,27 @@ h3,
   background: rgba(198, 40, 40, 0.15);
 }
 
+/* Cegah konten meluber ke samping di layar HP (tanpa merusak sticky header) */
+body {
+  overflow-x: clip;
+}
+
+/* HP: target sentuh minimal 44px (WCAG 2.5.5) + font input 16px agar iOS
+ * tidak auto-zoom saat kolom disentuh. Checkbox/radio dikecualikan. */
+@media (max-width: 767px) {
+  button,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* Print: hanya area label yang dicetak */
 @media print {
   body * {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import * as XLSX from "xlsx";
 import { Download, Pencil, Plus, Search, Trash2, X } from "lucide-react";
@@ -50,7 +50,16 @@ export function RequestListPage() {
   const { hasPermission, isSuperAdmin } = useAuth();
   const [rows, setRows] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("semua");
+  // Tab awal boleh datang dari URL (?tab=aktif) — dipakai menu "Kirim" di
+  // navigasi bawah HP supaya langsung membuka antrean kirim.
+  const [searchParams] = useSearchParams();
+  const initialTab: Tab = (() => {
+    const t = searchParams.get("tab");
+    return (["semua", "diajukan", "aktif", "selesai", "ditolak"] as Tab[]).includes(t as Tab)
+      ? (t as Tab)
+      : "semua";
+  })();
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   // Filter tanggal & pencarian database (tiket, gerai, resi, barcode, SN).
   const [dateFrom, setDateFrom] = useState("");
@@ -508,6 +517,52 @@ export function RequestListPage() {
         pageSize={15}
         emptyTitle="Belum ada permintaan"
         emptyDescription="Permintaan yang dibuat akan muncul di sini."
+        renderCard={(row) => (
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <Link
+                  to={`/permintaan/${row.id}`}
+                  className="font-mono text-sm font-medium text-brand-700 hover:underline"
+                >
+                  {row.request_number}
+                </Link>
+                <div className="truncate text-xs text-ink-500">
+                  {row.ticket_no} • {row.request_date}
+                </div>
+              </div>
+              <Badge variant={STATUS_VARIANT[row.status]}>
+                {REQUEST_STATUS_LABELS[row.status]}
+              </Badge>
+            </div>
+            <div>
+              <div className="font-medium">{row.branch_name}</div>
+              {row.branch_code && (
+                <div className="font-mono text-xs text-ink-500">{row.branch_code}</div>
+              )}
+            </div>
+            {isSuperAdmin && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => openEdit(row)}
+                >
+                  <Pencil className="mr-1 h-3 w-3" /> Ubah
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 text-brand-600 hover:text-brand-700"
+                  onClick={() => setDelReq(row)}
+                >
+                  <Trash2 className="mr-1 h-3 w-3" /> Hapus
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       />
 
       {/* Dialog edit (superadmin) */}

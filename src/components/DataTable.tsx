@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -30,6 +31,20 @@ interface DataTableProps<TData> {
   pageSize?: number;
   emptyTitle?: string;
   emptyDescription?: string;
+  /**
+   * Bila diisi, di layar HP (< md) baris dirender sebagai kartu vertikal
+   * (bukan tabel yang harus di-scroll ke samping). Tabel tetap dipakai di
+   * layar ≥ md. Pencarian & paginasi tetap sama untuk kedua tampilan.
+   */
+  renderCard?: (row: TData) => ReactNode;
+  /** Aksi tambahan di samping kolom pencarian (mis. tombol Scan Barcode). */
+  searchActions?: ReactNode;
+  /**
+   * Pencarian terkontrol (opsional). Bila diisi, halaman induk memegang nilai
+   * pencarian — mis. agar hasil scan barcode bisa langsung mengisi pencarian.
+   */
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
 }
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -42,8 +57,15 @@ export function DataTable<TData>({
   pageSize = 10,
   emptyTitle = "Tidak ada data",
   emptyDescription = "Belum ada data yang cocok dengan filter saat ini.",
+  renderCard,
+  searchActions,
+  searchValue,
+  onSearchChange,
 }: DataTableProps<TData>) {
-  const [globalFilter, setGlobalFilter] = useState("");
+  const [internalFilter, setInternalFilter] = useState("");
+  // Pencarian terkontrol bila induk menyediakan nilai + handler.
+  const globalFilter = searchValue ?? internalFilter;
+  const setGlobalFilter = onSearchChange ?? setInternalFilter;
   const [sorting, setSorting] = useState<SortingState>([]);
   const table = useReactTable({
     data,
@@ -89,15 +111,18 @@ export function DataTable<TData>({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
-          <Input
-            placeholder={searchPlaceholder}
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-9"
-            aria-label={searchPlaceholder}
-          />
+        <div className="flex w-full flex-col gap-2 sm:max-w-md sm:flex-row">
+          <div className="relative w-full">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
+            <Input
+              placeholder={searchPlaceholder}
+              value={globalFilter}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              className="pl-9"
+              aria-label={searchPlaceholder}
+            />
+          </div>
+          {searchActions}
         </div>
         <div className="flex items-center gap-2 text-sm text-ink-500">
           <label htmlFor="dt-page-size" className="whitespace-nowrap">
@@ -118,40 +143,63 @@ export function DataTable<TData>({
         </div>
       </div>
 
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((hg) => (
-            <TableRow key={hg.id} className="hover:bg-ink-50">
-              {hg.headers.map((h) => (
-                <TableHead key={h.id}>
-                  {h.isPlaceholder
-                    ? null
-                    : flexRender(h.column.columnDef.header, h.getContext())}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
+      {/* Tampilan kartu untuk HP — hanya bila halaman menyediakan renderCard. */}
+      {renderCard && (
+        <div className="space-y-3 md:hidden">
           {table.getRowModel().rows.length === 0 ? (
-            <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={columns.length}>
-                <EmptyState title={emptyTitle} description={emptyDescription} />
-              </TableCell>
-            </TableRow>
+            <div className="rounded-xl border border-ink-200 bg-white">
+              <EmptyState title={emptyTitle} description={emptyDescription} />
+            </div>
           ) : (
             table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
+              <div
+                key={row.id}
+                className="rounded-xl border border-ink-200 bg-white p-4 shadow-card"
+              >
+                {renderCard(row.original)}
+              </div>
             ))
           )}
-        </TableBody>
-      </Table>
+        </div>
+      )}
+
+      {/* Tabel desktop — disembunyikan di HP bila ada tampilan kartu. */}
+      <div className={renderCard ? "hidden md:block" : undefined}>
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((hg) => (
+              <TableRow key={hg.id} className="hover:bg-ink-50">
+                {hg.headers.map((h) => (
+                  <TableHead key={h.id}>
+                    {h.isPlaceholder
+                      ? null
+                      : flexRender(h.column.columnDef.header, h.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.length === 0 ? (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={columns.length}>
+                  <EmptyState title={emptyTitle} description={emptyDescription} />
+                </TableCell>
+              </TableRow>
+            ) : (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-sm text-ink-500">

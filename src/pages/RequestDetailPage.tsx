@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, Scissors, Send, XCircle } from "lucide-react";
+import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, ScanLine, Scissors, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { buildSearchPattern } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
+import { BarcodeScanner } from "../components/BarcodeScanner";
 import { EmptyState } from "../components/EmptyState";
 import { Skeleton } from "../components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -132,6 +133,8 @@ export function RequestDetailPage() {
   // Bulk paste barcode/SN sekaligus (satu per baris).
   const [bulkBarcode, setBulkBarcode] = useState("");
   const [bulkSn, setBulkSn] = useState("");
+  // Scan kamera HP: "quick" = panel Kirim Cepat, "proc" = panel Proses Helper.
+  const [scanTarget, setScanTarget] = useState<"quick" | "proc" | null>(null);
 
   // Tambah barang ke tiket yang masih diajukan (sering ada yang kelewat input).
   const [showAddItem, setShowAddItem] = useState(false);
@@ -165,6 +168,43 @@ export function RequestDetailPage() {
     setQuickBarcode(nb);
     setQuickSn(ns);
     toast.success(`${barcodes.length} barcode ditempel ke baris 1-${barcodes.length}.`);
+  };
+
+  // Hasil scan kamera → isi barcode baris kosong pertama (Kirim Cepat).
+  // Kalau semua baris sudah terisi, barcode ditampung ke kotak tempel massal.
+  const handleScanQuick = (code: string) => {
+    const target = quickItems.find(
+      (x) => quickSelected[x.id] !== false && !(quickBarcode[x.id] ?? "").trim()
+    );
+    if (target) {
+      setQuickBarcode((p) => ({ ...p, [target.id]: code }));
+      toast.success(`Barcode masuk ke "${target.inventory_items?.name}".`);
+    } else {
+      setBulkBarcode((prev) => (prev.trim() ? `${prev.trim()}\n${code}` : code));
+      toast.success(`Semua baris terisi — barcode ditampung ke kotak tempel.`);
+    }
+  };
+
+  // Hasil scan kamera → isi barcode baris kosong pertama (Proses Helper).
+  const handleScanProc = (code: string) => {
+    const processable = items.filter((x) =>
+      ["disetujui", "diproses", "siap", "pending_sebagian"].includes(x.item_status)
+    );
+    const target = processable.find((x) => !(proc[x.id]?.barcode ?? "").trim());
+    if (!target) {
+      toast.error("Semua baris proses sudah terisi barcode.");
+      return;
+    }
+    setProc((prev) => ({
+      ...prev,
+      [target.id]: { ...(prev[target.id] ?? { barcode: "", sn: "", type: "" }), barcode: code },
+    }));
+    toast.success(`Barcode masuk ke "${target.inventory_items?.name}".`);
+  };
+
+  const handleScan = (code: string) => {
+    if (scanTarget === "quick") handleScanQuick(code);
+    else if (scanTarget === "proc") handleScanProc(code);
   };
 
   // Cari barang untuk ditambahkan ke tiket (toleran kapital/spasi/underscore).
@@ -911,14 +951,22 @@ export function RequestDetailPage() {
                   />
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={applyBulk}
-              >
-                <ClipboardPaste className="mr-1 h-4 w-4" /> Tempel ke baris
-              </Button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={applyBulk}
+                >
+                  <ClipboardPaste className="mr-1 h-4 w-4" /> Tempel ke baris
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setScanTarget("quick")}
+                >
+                  <ScanLine className="mr-1 h-4 w-4" /> Scan Barcode
+                </Button>
+              </div>
               <p className="mt-1 text-xs text-ink-500">
                 Barcode ke-1 → baris 1, ke-2 → baris 2, dst. Qty tiap baris tetap 1.
               </p>
@@ -1140,9 +1188,14 @@ export function RequestDetailPage() {
                 Tips scanner USB: tekan Enter setelah scan Barcode untuk otomatis pindah ke kolom SN / baris berikutnya.
               </p>
             </div>
-            <Button size="sm" onClick={saveAllProcessItems} disabled={busy}>
-              <CheckCircle2 className="mr-1 h-4 w-4" /> Simpan Semua & Siap Kirim
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setScanTarget("proc")}>
+                <ScanLine className="mr-1 h-4 w-4" /> Scan Barcode
+              </Button>
+              <Button size="sm" onClick={saveAllProcessItems} disabled={busy}>
+                <CheckCircle2 className="mr-1 h-4 w-4" /> Simpan Semua & Siap Kirim
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {items
@@ -1481,6 +1534,15 @@ export function RequestDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Modal scan barcode kamera HP (Kirim Cepat & Proses Helper) */}
+      <BarcodeScanner
+        open={scanTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setScanTarget(null);
+        }}
+        onScan={handleScan}
+      />
 
       {/* Dialog tambah barang ke tiket yang masih diajukan */}
       <Dialog open={showAddItem} onOpenChange={setShowAddItem}>

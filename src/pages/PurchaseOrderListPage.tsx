@@ -162,11 +162,11 @@ export function PurchaseOrderListPage() {
         title="Purchase Order"
         description="Pesanan pembelian ke supplier — buat PO, kirim ke supplier, terima barang masuk gudang."
         actions={
-          <Button asChild>
-            <Link to="/pembelian/baru">
+          <Link to="/pembelian/baru">
+            <Button>
               <Plus className="mr-2 h-4 w-4" /> Buat PO
-            </Link>
-          </Button>
+            </Button>
+          </Link>
         }
       />
 

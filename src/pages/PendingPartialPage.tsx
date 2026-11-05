@@ -391,6 +391,66 @@ export function PendingPartialPage() {
         pageSize={15}
         emptyTitle="Tidak ada sisa pending"
         emptyDescription="Tidak ada item yang menunggu stok atau kiriman susulan."
+        renderCard={(row) => (
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <Link
+                  to={`/permintaan/${row.request_id}`}
+                  className="font-mono text-sm font-medium text-brand-700 hover:underline"
+                >
+                  {row.request_number}
+                </Link>
+                <div className="truncate text-xs text-ink-500">
+                  {row.ticket_no} • {row.branch_name}
+                </div>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
+                  row.jenis === "Menunggu Stok"
+                    ? "bg-info-100 text-info-600"
+                    : "bg-warn-100 text-warn-600"
+                }`}
+              >
+                {row.jenis}
+              </span>
+            </div>
+            <div>
+              <div className="font-medium">{row.name}</div>
+              <div className="font-mono text-xs text-ink-500">{row.sku}</div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-xs text-ink-500">Sisa belum terkirim</span>
+              <span className="tnum text-lg font-bold text-warn-600">{fmt(row.sisa)}</span>
+              <span className="tnum text-xs text-ink-500">
+                ({fmt(row.qty_requested)} / {fmt(row.qty_approved)} / {fmt(row.qty_shipped)})
+              </span>
+            </div>
+            {row.keterangan && (
+              <p className="text-xs text-ink-500">{row.keterangan}</p>
+            )}
+            <div className="flex gap-2">
+              <Link to={`/permintaan/${row.request_id}`} className="flex-1">
+                <Button size="sm" variant="outline" className="w-full">
+                  {row.jenis === "Menunggu Stok" ? "Setujui" : "Kirim Susulan"}
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setGantiRow(row);
+                  setGantiQuery("");
+                  setGantiResults([]);
+                  setGantiItem(null);
+                }}
+              >
+                Ganti Barang
+              </Button>
+            </div>
+          </div>
+        )}
       />
 
       {/* Dialog ganti barang (stok kosong → ganti jenis barang) */}

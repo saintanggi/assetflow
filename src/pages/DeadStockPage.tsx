@@ -168,17 +168,16 @@ export function DeadStockPage() {
     }
     exportToCsv(
       `dead-stock-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["SKU", "NAMA BARANG", "MEREK", "STOK", "HARGA BELI", "NILAI STOK", "TERAKHIR KELUAR", "TIDAK BERGERAK (HARI)"],
-      rows.map((r) => [
-        r.sku,
-        r.name,
-        r.brand ?? "",
-        String(r.totalStock),
-        String(r.purchasePrice),
-        String(r.value),
-        r.lastOut ?? "Belum pernah keluar",
-        r.daysIdle !== null ? String(r.daysIdle) : "",
-      ])
+      rows.map((r) => ({
+        SKU: r.sku,
+        "NAMA BARANG": r.name,
+        MEREK: r.brand ?? "",
+        STOK: r.totalStock,
+        "HARGA BELI": r.purchasePrice,
+        "NILAI STOK": r.value,
+        "TERAKHIR KELUAR": r.lastOut ?? "Belum pernah keluar",
+        "TIDAK BERGERAK (HARI)": r.daysIdle !== null ? r.daysIdle : "",
+      }))
     );
   };
 

@@ -10,13 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
+import { Select } from "../components/ui/select";
 
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 
@@ -265,18 +259,12 @@ export function PurchaseOrderFormPage() {
           <CardContent className="space-y-4">
             <div>
               <Label>Supplier *</Label>
-              <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih supplier…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Select
+                value={supplierId}
+                onValueChange={setSupplierId}
+                placeholder="Pilih supplier…"
+                options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+              />
               {suppliers.length === 0 && (
                 <p className="mt-1 text-xs text-ink-500">
                   Belum ada supplier aktif — tambahkan dulu di menu Master Data → Pemasok.
