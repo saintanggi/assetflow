@@ -433,7 +433,8 @@ export function AppLayout(): ReactNode {
     diajukan: number;
     aktif: number;
     sisa: number;
-  }>({ diajukan: 0, aktif: 0, sisa: 0 });
+    lowStock: number;
+  }>({ diajukan: 0, aktif: 0, sisa: 0, lowStock: 0 });
   const { profile, user, isSuperAdmin, hasPermission, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -463,7 +464,7 @@ export function AppLayout(): ReactNode {
     if (!user || !hasPermission("requests.view")) return;
     let cancelled = false;
     (async () => {
-      const [diajukanRes, aktifRes, sisaRes] = await Promise.all([
+      const [diajukanRes, aktifRes, sisaRes, itemsRes, balancesRes] = await Promise.all([
         supabase
           .from("requests")
           .select("id", { count: "exact", head: true })
@@ -476,12 +477,25 @@ export function AppLayout(): ReactNode {
           .from("request_items")
           .select("id", { count: "exact", head: true })
           .in("item_status", ["pending_sebagian", "menunggu_stok"]),
+        supabase.from("inventory_items").select("id, min_stock").eq("is_active", true),
+        supabase.from("inventory_balances").select("item_id, qty"),
       ]);
       if (cancelled) return;
+      // Hitung SKU di bawah stok minimum (sama seperti Dashboard).
+      const stockByItem = new Map<string, number>();
+      for (const b of (balancesRes.data ?? []) as { item_id: string; qty: number | string }[]) {
+        stockByItem.set(b.item_id, (stockByItem.get(b.item_id) ?? 0) + Number(b.qty));
+      }
+      let lowStock = 0;
+      for (const item of (itemsRes.data ?? []) as { id: string; min_stock: number | null }[]) {
+        if (item.min_stock === null) continue;
+        if ((stockByItem.get(item.id) ?? 0) < item.min_stock) lowStock++;
+      }
       setQueueCounts({
         diajukan: diajukanRes.count ?? 0,
         aktif: aktifRes.count ?? 0,
         sisa: sisaRes.count ?? 0,
+        lowStock,
       });
     })();
     return () => {
@@ -498,8 +512,9 @@ export function AppLayout(): ReactNode {
   const badges: Record<string, number> = {
     "/permintaan": permintaanBadge,
     "/permintaan/sisa": queueCounts.sisa,
+    "/persediaan/peringatan-stok": queueCounts.lowStock,
   };
-  const totalNotif = queueCounts.diajukan + queueCounts.aktif + queueCounts.sisa;
+  const totalNotif = queueCounts.diajukan + queueCounts.aktif + queueCounts.sisa + queueCounts.lowStock;
 
   return (
     <div className="flex min-h-screen bg-ink-50">
@@ -635,6 +650,16 @@ export function AppLayout(): ReactNode {
                       <span className="text-ink-700">Sisa Belum Terkirim</span>
                       <span className="tnum font-semibold text-brand-700">
                         {queueCounts.sisa}
+                      </span>
+                    </Link>
+                    <Link
+                      to="/persediaan/peringatan-stok"
+                      onClick={() => setNotifOpen(false)}
+                      className="flex items-center justify-between rounded-lg bg-warn-50 px-3 py-2 hover:bg-warn-100"
+                    >
+                      <span className="text-ink-700">Stok Menipis / Habis</span>
+                      <span className="tnum font-semibold text-warn-700">
+                        {queueCounts.lowStock}
                       </span>
                     </Link>
                   </div>
