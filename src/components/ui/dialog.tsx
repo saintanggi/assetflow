@@ -28,13 +28,13 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div
-        className="absolute inset-0 bg-ink-800/60 backdrop-blur-[2px]"
+        className="animate-overlay-in absolute inset-0 bg-ink-800/60 backdrop-blur-[2px]"
         onClick={() => onOpenChange(false)}
       />
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-white/60 bg-white/85 p-6 shadow-pop backdrop-blur-xl sm:rounded-xl"
+        className="animate-dialog-in relative z-10 max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-white/60 bg-white/85 p-6 shadow-pop backdrop-blur-xl sm:rounded-xl"
       >
         <button
           type="button"

@@ -121,7 +121,7 @@ function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
         className
       )}
       {...props}
@@ -138,6 +138,28 @@ const DARK_TOOLTIP = {
   fontSize: 12,
 } as const;
 
+/** Angka menghitung naik dari 0 saat muncul (murah: satu requestAnimationFrame per angka). */
+function useCountUp(target: number, duration = 750): number {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setValue(target);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setValue(Math.round(target * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return value;
+}
+
 function StatTile({
   icon: Icon,
   label,
@@ -145,6 +167,7 @@ function StatTile({
   sub,
   tone,
   delay = 0,
+  numeric,
 }: {
   icon: typeof Boxes;
   label: string;
@@ -152,7 +175,9 @@ function StatTile({
   sub: string;
   tone: "teal" | "amber" | "blue" | "violet";
   delay?: number;
+  numeric?: number;
 }) {
+  const animated = useCountUp(numeric ?? 0);
   const toneClass = {
     teal: "text-ok-100",
     amber: "text-warn-100",
@@ -172,7 +197,9 @@ function StatTile({
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-widest text-ink-300">{label}</p>
-            <p className="tnum mt-2 text-4xl font-bold tracking-tight text-white">{value}</p>
+            <p className="tnum mt-2 text-4xl font-bold tracking-tight text-white">
+              {numeric !== undefined ? animated.toLocaleString("id-ID") : value}
+            </p>
             <p className="mt-1.5 text-xs text-ink-300">{sub}</p>
           </div>
           <div className={cn("rounded-xl p-2.5 ring-1", toneRing, toneClass)}>
@@ -217,6 +244,7 @@ function ActionCard({
   const effectiveTone = count > 0 ? tone : "green";
   const styles = ACTION_TONE[effectiveTone];
   const DisplayIcon = count > 0 ? Icon : CheckCircle2;
+  const animated = useCountUp(count);
   return (
     <Link
       to={to}
@@ -235,7 +263,7 @@ function ActionCard({
             </span>
           </span>
           <span className={cn("tnum text-3xl font-bold tracking-tight", styles.count)}>
-            {count.toLocaleString("id-ID")}
+            {animated.toLocaleString("id-ID")}
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-ink-400" />
         </CardContent>
@@ -441,8 +469,8 @@ export function DashboardPage() {
   return (
     <div className="relative space-y-5 overflow-hidden rounded-3xl bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.20),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.16),transparent)] p-5 sm:p-6">
       {/* Cahaya latar ala video (oranye + biru, blur) */}
-      <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-warn-500/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-info-500/15 blur-3xl" />
+      <div className="animate-drift pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-warn-500/20 blur-3xl" />
+      <div className="animate-drift-slow pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-info-500/15 blur-3xl" />
       <div className="relative space-y-5">
       {/* Command header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -518,6 +546,7 @@ export function DashboardPage() {
           sub={`${data.totalSku.toLocaleString("id-ID")} SKU aktif tercatat`}
           tone="teal"
           delay={0}
+          numeric={data.totalStock}
         />
         <StatTile
           icon={Banknote}
@@ -534,6 +563,7 @@ export function DashboardPage() {
           sub="Dokumen barang masuk"
           tone="blue"
           delay={140}
+          numeric={data.inboundToday}
         />
         <StatTile
           icon={ArrowUpFromLine}
@@ -542,6 +572,7 @@ export function DashboardPage() {
           sub="Dokumen barang keluar"
           tone="violet"
           delay={210}
+          numeric={data.outboundToday}
         />
         <Link to="/persediaan/peringatan-stok" className="block transition hover:-translate-y-0.5">
           <StatTile
@@ -551,6 +582,7 @@ export function DashboardPage() {
             sub="SKU di bawah stok minimum — klik untuk detail"
             tone="amber"
             delay={280}
+            numeric={data.lowStockCount}
           />
         </Link>
       </div>

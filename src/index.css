@@ -101,28 +101,113 @@ body {
   }
 }
 .animate-glass-in {
-  animation: glass-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: glass-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
-/* Animasi masuk halaman (dipakai AppLayout saat pindah halaman) — halus dan cepat. */
+/* Animasi masuk halaman — naik + membesar halus dengan efek "settle" di akhir. */
 @keyframes page-in {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.004);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-page-in {
+  /* backwards: setelah selesai tidak ada transform tersisa (aman untuk sticky/fixed di dalam halaman). */
+  animation: page-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* Isi halaman masuk berurutan (cascade) — tiap anak langsung halaman muncul bergelombang. */
+@keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
-.animate-page-in {
-  animation: page-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+.animate-page-in > * {
+  animation: rise-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.animate-page-in > *:nth-child(1) {
+  animation-delay: 0.03s;
+}
+.animate-page-in > *:nth-child(2) {
+  animation-delay: 0.09s;
+}
+.animate-page-in > *:nth-child(3) {
+  animation-delay: 0.15s;
+}
+.animate-page-in > *:nth-child(4) {
+  animation-delay: 0.21s;
+}
+.animate-page-in > *:nth-child(5) {
+  animation-delay: 0.27s;
+}
+.animate-page-in > *:nth-child(n + 6) {
+  animation-delay: 0.3s;
+}
+
+/* Cahaya latar melayang pelan (transform saja — murah, dikerjakan GPU). */
+@keyframes drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(48px, 32px) scale(1.15);
+  }
+}
+.animate-drift {
+  animation: drift 18s ease-in-out infinite alternate;
+}
+.animate-drift-slow {
+  animation: drift 26s ease-in-out infinite alternate-reverse;
+}
+
+/* Dialog masuk: panel membesar halus, latar memudar. */
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-dialog-in {
+  animation: dialog-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-overlay-in {
+  animation: overlay-in 0.2s ease-out backwards;
 }
 
 /* Hormati pengaturan "kurangi gerakan" di perangkat pengguna. */
 @media (prefers-reduced-motion: reduce) {
   .animate-page-in,
-  .animate-glass-in {
+  .animate-page-in > *,
+  .animate-glass-in,
+  .animate-drift,
+  .animate-drift-slow,
+  .animate-dialog-in,
+  .animate-overlay-in {
     animation: none;
   }
   html {

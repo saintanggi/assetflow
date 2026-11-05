@@ -66,8 +66,8 @@ export function PublicAssetDetailPage() {
   return (
     <div className="relative min-h-screen overflow-x-clip bg-ink-800 bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.14),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.12),transparent)]">
       {/* Cahaya latar kaca (oranye + biru) */}
-      <div className="pointer-events-none fixed -right-24 -top-24 h-96 w-96 rounded-full bg-warn-500/10 blur-3xl" />
-      <div className="pointer-events-none fixed -bottom-24 -left-24 h-96 w-96 rounded-full bg-info-500/10 blur-3xl" />
+      <div className="animate-drift pointer-events-none fixed -right-24 -top-24 h-96 w-96 rounded-full bg-warn-500/10 blur-3xl" />
+      <div className="animate-drift-slow pointer-events-none fixed -bottom-24 -left-24 h-96 w-96 rounded-full bg-info-500/10 blur-3xl" />
       <PublicHeader />
       <div className="animate-page-in relative mx-auto max-w-4xl px-4 py-8">
       <Link
