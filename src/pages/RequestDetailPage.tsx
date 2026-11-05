@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, Scissors, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { buildSearchPattern } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
@@ -132,6 +133,16 @@ export function RequestDetailPage() {
   const [bulkBarcode, setBulkBarcode] = useState("");
   const [bulkSn, setBulkSn] = useState("");
 
+  // Tambah barang ke tiket yang masih diajukan (sering ada yang kelewat input).
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [addQuery, setAddQuery] = useState("");
+  const [addResults, setAddResults] = useState<{ id: string; sku: string; name: string }[]>([]);
+  const [addSearching, setAddSearching] = useState(false);
+  const [addItem, setAddItem] = useState<{ id: string; sku: string; name: string } | null>(null);
+  const [addQty, setAddQty] = useState("1");
+  const [addStatusAset, setAddStatusAset] = useState<ExcelStatusAset>("ASSET BARU");
+  const [addSaving, setAddSaving] = useState(false);
+
   const applyBulk = () => {
     const barcodes = bulkBarcode.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     const sns = bulkSn.split(/\r?\n/).map((s) => s.trim());
@@ -154,6 +165,66 @@ export function RequestDetailPage() {
     setQuickBarcode(nb);
     setQuickSn(ns);
     toast.success(`${barcodes.length} barcode ditempel ke baris 1-${barcodes.length}.`);
+  };
+
+  // Cari barang untuk ditambahkan ke tiket (toleran kapital/spasi/underscore).
+  const searchAddItems = async (q: string) => {
+    const pattern = buildSearchPattern(q);
+    const { data, error } = await supabase
+      .from("inventory_items")
+      .select("id, sku, name")
+      .eq("is_active", true)
+      .or(`sku.ilike.${pattern},name.ilike.${pattern}`)
+      .order("name")
+      .limit(15);
+    if (error) {
+      setAddResults([]);
+    } else {
+      setAddResults((data ?? []) as { id: string; sku: string; name: string }[]);
+    }
+    setAddSearching(false);
+  };
+
+  const handleAddQueryChange = (q: string) => {
+    setAddQuery(q);
+    setAddItem(null);
+    setAddSearching(true);
+    if (q.trim().length < 2) {
+      setAddResults([]);
+      setAddSearching(false);
+      return;
+    }
+    setTimeout(() => searchAddItems(q.trim()), 300);
+  };
+
+  const submitAddItem = async () => {
+    if (!req || !id || !addItem) return;
+    const qty = Number(addQty);
+    if (!(qty > 0)) {
+      toast.error("Qty harus lebih dari 0.");
+      return;
+    }
+    setAddSaving(true);
+    try {
+      const { error } = await supabase.from("request_items").insert({
+        request_id: id,
+        item_id: addItem.id,
+        qty_requested: qty,
+        status_aset: addStatusAset,
+      });
+      if (error) throw new Error(error.message);
+      toast.success(`"${addItem.name}" ditambahkan ke tiket.`);
+      setShowAddItem(false);
+      setAddQuery("");
+      setAddResults([]);
+      setAddItem(null);
+      setAddQty("1");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menambah barang.");
+    } finally {
+      setAddSaving(false);
+    }
   };
 
   const canReview = hasPermission("requests.review");
@@ -792,6 +863,11 @@ export function RequestDetailPage() {
         {req.status === "ditolak" && req.rejection_reason && (
           <span className="text-sm text-brand-600">Alasan: {req.rejection_reason}</span>
         )}
+        {req.status === "diajukan" && (
+          <Button size="sm" onClick={() => setShowAddItem(true)}>
+            + Tambah Barang
+          </Button>
+        )}
         {req.notes && <span className="text-sm text-ink-500">Catatan: {req.notes}</span>}
       </div>
 
@@ -1405,6 +1481,82 @@ export function RequestDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialog tambah barang ke tiket yang masih diajukan */}
+      <Dialog open={showAddItem} onOpenChange={setShowAddItem}>
+        <DialogHeader>
+          <DialogTitle>Tambah Barang ke Tiket</DialogTitle>
+          <DialogDescription>
+            Cari barang, isi qty, lalu simpan. Barang langsung masuk daftar permintaan tiket ini.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Cari Barang</Label>
+            <Input
+              value={addQuery}
+              onChange={(e) => handleAddQueryChange(e.target.value)}
+              placeholder="Ketik nama atau SKU barang…"
+            />
+            {addSearching && <p className="text-xs text-ink-500">Mencari…</p>}
+            {addResults.length > 0 && !addItem && (
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-ink-200 bg-white">
+                {addResults.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-50"
+                    onClick={() => {
+                      setAddItem(r);
+                      setAddQuery(r.name);
+                      setAddResults([]);
+                    }}
+                  >
+                    <span className="font-medium">{r.name}</span>
+                    <span className="ml-2 font-mono text-xs text-ink-500">{r.sku}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {addItem && (
+              <p className="text-xs text-ink-500">
+                Terpilih: <b className="text-ink-800">{addItem.name}</b>{" "}
+                <span className="font-mono">({addItem.sku})</span>
+              </p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Qty</Label>
+              <Input
+                type="number"
+                min="1"
+                value={addQty}
+                onChange={(e) => setAddQty(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Status Aset</Label>
+              <Select
+                value={addStatusAset}
+                onValueChange={(v) => setAddStatusAset(v as ExcelStatusAset)}
+                options={(Object.keys(EXCEL_STATUS_ASET_LABELS) as ExcelStatusAset[]).map((o) => ({
+                  value: o,
+                  label: EXCEL_STATUS_ASET_LABELS[o],
+                }))}
+              />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowAddItem(false)} disabled={addSaving}>
+            Batal
+          </Button>
+          <Button onClick={submitAddItem} disabled={addSaving || !addItem}>
+            {addSaving ? "Menyimpan…" : "Tambah ke Tiket"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
 
       {/* Dialog edit item (superadmin) */}
       <Dialog open={!!editItem} onOpenChange={(o) => !o && setEditItem(null)}>
