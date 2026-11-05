@@ -4,7 +4,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus } from "lucide-react";
+import { ImageOff, Plus } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { formatQty } from "../lib/format";
@@ -379,6 +379,15 @@ export function InventoryListPage() {
     []
   );
 
+  const [onlyNoPhoto, setOnlyNoPhoto] = useState(false);
+
+  const filteredItems = useMemo(
+    () => (onlyNoPhoto ? items.filter((i) => !i.photo_url) : items),
+    [items, onlyNoPhoto]
+  );
+
+  const noPhotoCount = useMemo(() => items.filter((i) => !i.photo_url).length, [items]);
+
   return (
     <div>
       <PageHeader
@@ -392,9 +401,24 @@ export function InventoryListPage() {
           ) : undefined
         }
       />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Button
+          variant={onlyNoPhoto ? "default" : "outline"}
+          size="sm"
+          onClick={() => setOnlyNoPhoto((v) => !v)}
+        >
+          <ImageOff className="mr-1.5 h-4 w-4" />
+          Tanpa Foto ({noPhotoCount})
+        </Button>
+        {onlyNoPhoto && (
+          <span className="text-xs text-ink-500">
+            Menampilkan {filteredItems.length} barang tanpa foto — klik nama barang lalu upload foto di detail.
+          </span>
+        )}
+      </div>
       <DataTable
         columns={columns}
-        data={items}
+        data={filteredItems}
         loading={loading}
         searchPlaceholder="Cari nama barang…"
         pageSize={15}
