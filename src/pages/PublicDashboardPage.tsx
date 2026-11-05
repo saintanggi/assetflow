@@ -7,6 +7,7 @@ import { Select } from "../components/ui/select";
 import { Badge } from "../components/ui/badge";
 import { Skeleton } from "../components/ui/skeleton";
 import { Card, CardContent } from "../components/ui/card";
+import { PublicHeader } from "../components/PublicHeader";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import type {
@@ -95,7 +96,12 @@ export function PublicDashboardPage() {
   }, [debouncedQ, kategori]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="relative min-h-screen overflow-x-clip bg-ink-800 bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.14),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.12),transparent)]">
+      {/* Cahaya latar kaca (oranye + biru) */}
+      <div className="pointer-events-none fixed -right-24 -top-24 h-96 w-96 rounded-full bg-warn-500/10 blur-3xl" />
+      <div className="pointer-events-none fixed -bottom-24 -left-24 h-96 w-96 rounded-full bg-info-500/10 blur-3xl" />
+      <PublicHeader />
+      <div className="animate-page-in relative mx-auto max-w-7xl px-4 py-8">
       <PageHeader
         title="Katalog Aset Publik"
         description="Daftar aset yang dipublikasikan. Klik kartu untuk melihat detail."
@@ -103,12 +109,12 @@ export function PublicDashboardPage() {
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-300" />
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Cari nama, merek, atau model aset…"
-            className="pl-9"
+            className="border-white/15 bg-white/10 pl-9 text-white placeholder:text-ink-300 focus-visible:border-brand-500 focus-visible:ring-brand-500/25"
           />
         </div>
         <div className="w-full sm:w-64">
@@ -117,6 +123,7 @@ export function PublicDashboardPage() {
             value={kategori}
             onValueChange={setKategori}
             options={categories.map((c) => ({ value: c.id, label: c.name }))}
+            className="border-white/15 bg-white/10 text-white focus-visible:border-brand-500 focus-visible:ring-brand-500/25"
           />
         </div>
       </div>
@@ -134,17 +141,22 @@ export function PublicDashboardPage() {
           ))}
         </div>
       ) : assets.length === 0 ? (
-        <EmptyState
-          icon={PackageSearch}
-          title="Tidak ada aset ditemukan"
-          description="Coba ubah kata kunci pencarian atau filter kategori."
-        />
+        <Card>
+          <CardContent>
+            <EmptyState
+              icon={PackageSearch}
+              title="Tidak ada aset ditemukan"
+              description="Coba ubah kata kunci pencarian atau filter kategori."
+            />
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {assets.map((asset) => (
+          {assets.map((asset, i) => (
             <Card
               key={asset.sku}
-              className="overflow-hidden transition-shadow hover:shadow-lg"
+              className="animate-glass-in overflow-hidden transition-all hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(2,6,23,0.35)]"
+              style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}
             >
               <div className="aspect-[4/3] w-full bg-ink-100">
                 {asset.photo_url ? (
@@ -161,7 +173,7 @@ export function PublicDashboardPage() {
                 )}
               </div>
               <CardContent className="space-y-2 p-4">
-                <h3 className="line-clamp-1 font-semibold text-ink-900">{asset.name}</h3>
+                <h3 className="line-clamp-1 font-semibold text-ink-800">{asset.name}</h3>
                 <p className="line-clamp-1 text-sm text-ink-500">
                   {asset.category ?? "Tanpa kategori"}
                   {[asset.brand, asset.model].filter(Boolean).length > 0 &&
@@ -180,19 +192,19 @@ export function PublicDashboardPage() {
                 <div className="space-y-1 pt-1 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-ink-500">Stok Baru</span>
-                    <b className="text-emerald-700">
+                    <b className="text-ok-600">
                       {Number(asset.stock_baru ?? 0).toLocaleString("id-ID")}
                     </b>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-ink-500">Stok Retur</span>
-                    <b className="text-amber-700">
+                    <b className="text-warn-600">
                       {Number(asset.stock_retur ?? 0).toLocaleString("id-ID")}
                     </b>
                   </div>
                   <div className="flex items-center justify-between border-t border-ink-100 pt-1">
                     <span className="font-medium text-ink-700">Total Stok</span>
-                    <b className="text-ink-900">
+                    <b className="text-ink-800">
                       {Number(asset.total_stock).toLocaleString("id-ID")}
                     </b>
                   </div>
@@ -210,13 +222,13 @@ export function PublicDashboardPage() {
             <button
               onClick={() => void loadAssets(assets.length, true)}
               disabled={loadingMore}
-              className="rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50"
+              className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur transition-colors hover:bg-white/20 disabled:opacity-50"
             >
               {loadingMore ? "Memuat…" : "Muat lebih banyak"}
             </button>
           )}
           {lastUpdated && (
-            <p className="text-xs text-ink-400">
+            <p className="text-xs text-ink-300">
               Terakhir diperbarui:{" "}
               {lastUpdated.toLocaleTimeString("id-ID", {
                 hour: "2-digit",
@@ -228,6 +240,7 @@ export function PublicDashboardPage() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
