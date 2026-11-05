@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type HTMLAttributes } from "react";
 import { Link } from "react-router-dom";
 import {
   Area,
@@ -30,7 +30,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { Skeleton } from "../components/ui/skeleton";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import type { AssetStatus, TransactionType } from "../types/database";
 import { ASSET_STATUS_LABELS, TRANSACTION_TYPE_LABELS } from "../types/database";
 import { cn } from "../lib/utils";
@@ -75,13 +75,14 @@ interface DashboardState {
   locStock: LocationStock[];
 }
 
+// Warna donut diterangkan supaya terbaca di atas kaca gelap.
 const STATUS_COLORS: Record<AssetStatus, string> = {
-  tersedia: "#15803D",
-  digunakan: "#2563EB",
-  dipinjamkan: "#D97706",
+  tersedia: "#22C55E",
+  digunakan: "#60A5FA",
+  dipinjamkan: "#FBBF24",
   perbaikan: "#F59E0B",
-  rusak: "#DC2626",
-  dipensiunkan: "#6B7280",
+  rusak: "#F87171",
+  dipensiunkan: "#9CA3AF",
 };
 
 const TX_ICON: Record<TransactionType, typeof ArrowDownToLine> = {
@@ -115,47 +116,71 @@ function formatRupiah(v: number): string {
   return `Rp ${v.toLocaleString("id-ID")}`;
 }
 
+/** Permukaan kaca gelap (glassmorphism, ala "Glassy Dashboard V7") — khusus dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+const DARK_TOOLTIP = {
+  background: "#0F172A",
+  border: "1px solid rgba(255,255,255,0.15)",
+  borderRadius: 8,
+  color: "#F1F5F9",
+  boxShadow: "0 8px 28px rgba(2,6,23,0.45)",
+  fontSize: 12,
+} as const;
+
 function StatTile({
   icon: Icon,
   label,
   value,
   sub,
   tone,
+  delay = 0,
 }: {
   icon: typeof Boxes;
   label: string;
   value: string;
   sub: string;
   tone: "teal" | "amber" | "blue" | "violet";
+  delay?: number;
 }) {
   const toneClass = {
-    teal: "text-brand-700",
-    amber: "text-warn-600",
-    blue: "text-info-600",
-    violet: "text-ink-600",
+    teal: "text-ok-100",
+    amber: "text-warn-100",
+    blue: "text-info-100",
+    violet: "text-white",
   }[tone];
   const toneRing = {
-    teal: "bg-brand-50 ring-brand-100",
-    amber: "bg-warn-50 ring-warn-100",
-    blue: "bg-info-50 ring-info-100",
-    violet: "bg-ink-100 ring-ink-200",
+    teal: "bg-ok-500/15 ring-ok-500/25",
+    amber: "bg-warn-500/15 ring-warn-500/25",
+    blue: "bg-info-500/15 ring-info-500/25",
+    violet: "bg-white/10 ring-white/15",
   }[tone];
   return (
-    <Card className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-600/40 to-transparent" />
+    <GlassCard className="animate-glass-in relative overflow-hidden" style={{ animationDelay: `${delay}ms` }}>
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-ink-500">{label}</p>
-            <p className="tnum mt-2 text-4xl font-bold tracking-tight text-ink-800">{value}</p>
-            <p className="mt-1.5 text-xs text-ink-500">{sub}</p>
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-300">{label}</p>
+            <p className="tnum mt-2 text-4xl font-bold tracking-tight text-white">{value}</p>
+            <p className="mt-1.5 text-xs text-ink-300">{sub}</p>
           </div>
           <div className={cn("rounded-xl p-2.5 ring-1", toneRing, toneClass)}>
             <Icon className="h-5 w-5" />
           </div>
         </div>
       </CardContent>
-    </Card>
+    </GlassCard>
   );
 }
 
@@ -165,10 +190,10 @@ const ACTION_TONE: Record<
   ActionTone | "green",
   { chip: string; count: string }
 > = {
-  amber: { chip: "bg-warn-50 text-warn-600 ring-warn-100", count: "text-warn-700" },
-  blue: { chip: "bg-info-50 text-info-600 ring-info-100", count: "text-info-700" },
-  red: { chip: "bg-rose-50 text-brand-700 ring-brand-200", count: "text-brand-700" },
-  green: { chip: "bg-ok-50 text-ok-700 ring-ok-100", count: "text-ok-700" },
+  amber: { chip: "bg-warn-500/15 text-warn-100 ring-warn-500/25", count: "text-warn-500" },
+  blue: { chip: "bg-info-500/15 text-info-100 ring-info-500/25", count: "text-info-500" },
+  red: { chip: "bg-brand-500/15 text-brand-100 ring-brand-500/25", count: "text-brand-200" },
+  green: { chip: "bg-ok-500/15 text-ok-100 ring-ok-500/25", count: "text-ok-500" },
 };
 
 /** Kartu antrean "Perlu Tindakan" — jumlahnya merah/kuning kalau ada yang menunggu, hijau kalau beres. */
@@ -179,6 +204,7 @@ function ActionCard({
   sub,
   count,
   tone,
+  delay = 0,
 }: {
   to: string;
   icon: typeof Boxes;
@@ -186,20 +212,25 @@ function ActionCard({
   sub: string;
   count: number;
   tone: ActionTone;
+  delay?: number;
 }) {
   const effectiveTone = count > 0 ? tone : "green";
   const styles = ACTION_TONE[effectiveTone];
   const DisplayIcon = count > 0 ? Icon : CheckCircle2;
   return (
-    <Link to={to} className="block transition hover:-translate-y-0.5">
-      <Card>
+    <Link
+      to={to}
+      className="animate-glass-in block transition hover:-translate-y-0.5"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <GlassCard>
         <CardContent className="flex items-center gap-3 p-4">
           <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1", styles.chip)}>
             <DisplayIcon className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-ink-800">{label}</span>
-            <span className="block truncate text-xs text-ink-500">
+            <span className="block truncate text-sm font-semibold text-white">{label}</span>
+            <span className="block truncate text-xs text-ink-300">
               {count > 0 ? sub : "Tidak ada antrean"}
             </span>
           </span>
@@ -208,7 +239,7 @@ function ActionCard({
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-ink-400" />
         </CardContent>
-      </Card>
+      </GlassCard>
     </Link>
   );
 }
@@ -380,20 +411,20 @@ export function DashboardPage() {
 
   if (loading || !data) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 rounded-3xl bg-ink-800 p-5 sm:p-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
+            <Skeleton key={i} className="h-20 w-full bg-white/10" />
           ))}
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
+            <Skeleton key={i} className="h-32 w-full bg-white/10" />
           ))}
         </div>
         <div className="grid gap-4 lg:grid-cols-3">
-          <Skeleton className="h-80 w-full lg:col-span-2" />
-          <Skeleton className="h-80 w-full" />
+          <Skeleton className="h-80 w-full bg-white/10 lg:col-span-2" />
+          <Skeleton className="h-80 w-full bg-white/10" />
         </div>
       </div>
     );
@@ -408,31 +439,35 @@ export function DashboardPage() {
   });
 
   return (
-    <div className="space-y-5">
+    <div className="relative space-y-5 overflow-hidden rounded-3xl bg-ink-800 bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.20),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.16),transparent)] p-5 sm:p-6">
+      {/* Cahaya latar ala video (oranye + biru, blur) */}
+      <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-warn-500/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-info-500/15 blur-3xl" />
+      <div className="relative space-y-5">
       {/* Command header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-ink-800">
+            <h1 className="font-display text-2xl font-bold tracking-tight text-white">
               Command Center
             </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-widest text-brand-700">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-ok-500/30 bg-ok-500/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-widest text-ok-100">
               <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-600 opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand-600" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok-500 opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-ok-500" />
               </span>
               Live
             </span>
           </div>
-          <p className="mt-1 text-sm text-ink-500">{now} — pantauan operasional gudang real-time</p>
+          <p className="mt-1 text-sm text-ink-300">{now} — pantauan operasional gudang real-time</p>
         </div>
       </div>
 
       {/* Perlu Tindakan — antrean yang butuh tindak lanjut, klik kartu untuk membuka */}
       <div>
         <div className="mb-3 flex items-baseline justify-between gap-2">
-          <h2 className="font-display text-base font-bold text-ink-800">Perlu Tindakan</h2>
-          <p className="text-xs text-ink-500">Antrean yang butuh tindak lanjut hari ini</p>
+          <h2 className="font-display text-base font-bold text-white">Perlu Tindakan</h2>
+          <p className="text-xs text-ink-300">Antrean yang butuh tindak lanjut hari ini</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ActionCard
@@ -442,6 +477,7 @@ export function DashboardPage() {
             sub="tiket menunggu direview"
             count={data.reviewCount}
             tone="amber"
+            delay={0}
           />
           <ActionCard
             to="/permintaan?tab=aktif"
@@ -450,6 +486,7 @@ export function DashboardPage() {
             sub="tiket proses / kirim"
             count={data.activeCount}
             tone="blue"
+            delay={70}
           />
           <ActionCard
             to="/permintaan/sisa"
@@ -458,6 +495,7 @@ export function DashboardPage() {
             sub="baris barang belum terkirim"
             count={data.pendingCount}
             tone="amber"
+            delay={140}
           />
           <ActionCard
             to="/persediaan/peringatan-stok"
@@ -466,6 +504,7 @@ export function DashboardPage() {
             sub="SKU di bawah stok minimum"
             count={data.lowStockCount}
             tone="red"
+            delay={210}
           />
         </div>
       </div>
@@ -478,6 +517,7 @@ export function DashboardPage() {
           value={data.totalStock.toLocaleString("id-ID")}
           sub={`${data.totalSku.toLocaleString("id-ID")} SKU aktif tercatat`}
           tone="teal"
+          delay={0}
         />
         <StatTile
           icon={Banknote}
@@ -485,6 +525,7 @@ export function DashboardPage() {
           value={formatRupiah(data.totalValue)}
           sub="Stok akhir × harga beli"
           tone="teal"
+          delay={70}
         />
         <StatTile
           icon={ArrowDownToLine}
@@ -492,6 +533,7 @@ export function DashboardPage() {
           value={data.inboundToday.toLocaleString("id-ID")}
           sub="Dokumen barang masuk"
           tone="blue"
+          delay={140}
         />
         <StatTile
           icon={ArrowUpFromLine}
@@ -499,6 +541,7 @@ export function DashboardPage() {
           value={data.outboundToday.toLocaleString("id-ID")}
           sub="Dokumen barang keluar"
           tone="violet"
+          delay={210}
         />
         <Link to="/persediaan/peringatan-stok" className="block transition hover:-translate-y-0.5">
           <StatTile
@@ -507,21 +550,22 @@ export function DashboardPage() {
             value={data.lowStockCount.toLocaleString("id-ID")}
             sub="SKU di bawah stok minimum — klik untuk detail"
             tone="amber"
+            delay={280}
           />
         </Link>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Activity chart */}
-        <Card className="lg:col-span-2">
+        <GlassCard className="animate-glass-in lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="font-display text-base text-ink-800">
+              <CardTitle className="font-display text-base text-white">
                 Aktivitas Transaksi
               </CardTitle>
-              <p className="mt-0.5 text-xs text-ink-500">14 hari terakhir</p>
+              <p className="mt-0.5 text-xs text-ink-300">14 hari terakhir</p>
             </div>
-            <span className="tnum rounded-md border border-ink-200 bg-ink-100 px-2 py-1 font-mono text-xs text-ink-500">
+            <span className="tnum rounded-md border border-white/15 bg-white/10 px-2 py-1 font-mono text-xs text-ink-200">
               {data.tx14.reduce((s, d) => s + d.count, 0)} dokumen
             </span>
           </CardHeader>
@@ -530,66 +574,59 @@ export function DashboardPage() {
               <AreaChart data={data.tx14} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
                 <defs>
                   <linearGradient id="txFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#C62828" stopOpacity={0.22} />
-                    <stop offset="100%" stopColor="#C62828" stopOpacity={0.02} />
+                    <stop offset="0%" stopColor="#F97316" stopOpacity={0.28} />
+                    <stop offset="100%" stopColor="#F97316" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
                 <XAxis
                   dataKey="date"
                   tickFormatter={shortDate}
-                  tick={{ fontSize: 11, fill: "#6B7280" }}
+                  tick={{ fontSize: 11, fill: "#94A3B8" }}
                   interval={2}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
                   allowDecimals={false}
-                  tick={{ fontSize: 11, fill: "#6B7280" }}
+                  tick={{ fontSize: 11, fill: "#94A3B8" }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <Tooltip
                   labelFormatter={(label) => shortDate(String(label))}
                   formatter={(value) => [value, "Transaksi"]}
-                  contentStyle={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E5E7EB",
-                    borderRadius: 8,
-                    color: "#1F2937",
-                    boxShadow: "0 8px 28px rgba(16,24,40,0.12)",
-                    fontSize: 12,
-                  }}
+                  contentStyle={DARK_TOOLTIP}
                 />
                 <Area
                   type="monotone"
                   dataKey="count"
                   name="Transaksi"
-                  stroke="#C62828"
+                  stroke="#F97316"
                   strokeWidth={2}
                   fill="url(#txFill)"
                 />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
-        </Card>
+        </GlassCard>
 
         {/* Live feed */}
-        <Card>
+        <GlassCard className="animate-glass-in" style={{ animationDelay: "90ms" }}>
           <CardHeader>
-            <CardTitle className="font-display text-base text-ink-800">Aktivitas Terakhir</CardTitle>
-            <p className="mt-0.5 text-xs text-ink-500">Dokumen terbaru tercatat</p>
+            <CardTitle className="font-display text-base text-white">Aktivitas Terakhir</CardTitle>
+            <p className="mt-0.5 text-xs text-ink-300">Dokumen terbaru tercatat</p>
           </CardHeader>
           <CardContent className="space-y-1">
             {data.recent.length === 0 && (
-              <p className="py-8 text-center text-sm text-ink-500">Belum ada transaksi.</p>
+              <p className="py-8 text-center text-sm text-ink-300">Belum ada transaksi.</p>
             )}
             {data.recent.map((t) => {
               const Icon = TX_ICON[t.type];
               return (
                 <div
                   key={t.id}
-                  className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-ink-100"
+                  className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/5"
                 >
                   <span
                     className={cn(
@@ -600,10 +637,10 @@ export function DashboardPage() {
                     <Icon className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="tnum truncate font-mono text-[13px] font-semibold text-ink-800">
+                    <p className="tnum truncate font-mono text-[13px] font-semibold text-white">
                       {t.doc_number}
                     </p>
-                    <p className="text-xs text-ink-500">
+                    <p className="text-xs text-ink-300">
                       {TRANSACTION_TYPE_LABELS[t.type]} •{" "}
                       {new Date(t.created_at).toLocaleString("id-ID", {
                         day: "numeric",
@@ -617,50 +654,50 @@ export function DashboardPage() {
               );
             })}
           </CardContent>
-        </Card>
+        </GlassCard>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Stock per location */}
-        <Card className="lg:col-span-2">
+        <GlassCard className="animate-glass-in lg:col-span-2">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-display text-base text-ink-800">
-              <Warehouse className="h-4 w-4 text-brand-700" />
+            <CardTitle className="flex items-center gap-2 font-display text-base text-white">
+              <Warehouse className="h-4 w-4 text-warn-500" />
               Distribusi Stok per Lokasi
             </CardTitle>
-            <p className="mt-0.5 text-xs text-ink-500">5 lokasi dengan stok terbesar</p>
+            <p className="mt-0.5 text-xs text-ink-300">5 lokasi dengan stok terbesar</p>
           </CardHeader>
           <CardContent className="space-y-4">
             {data.locStock.length === 0 && (
-              <p className="py-8 text-center text-sm text-ink-500">Belum ada stok tercatat.</p>
+              <p className="py-8 text-center text-sm text-ink-300">Belum ada stok tercatat.</p>
             )}
             {data.locStock.map((l) => (
               <div key={l.code}>
                 <div className="mb-1.5 flex items-baseline justify-between">
-                  <p className="text-sm font-medium text-ink-800">
-                    <span className="tnum font-mono text-brand-700">{l.code}</span>
-                    <span className="ml-2 text-ink-500">{l.name}</span>
+                  <p className="text-sm font-medium text-white">
+                    <span className="tnum font-mono text-warn-500">{l.code}</span>
+                    <span className="ml-2 text-ink-300">{l.name}</span>
                   </p>
-                  <p className="tnum font-mono text-sm text-ink-700">
+                  <p className="tnum font-mono text-sm text-white">
                     {l.qty.toLocaleString("id-ID")}
                   </p>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-ink-100">
+                <div className="h-2 overflow-hidden rounded-full bg-white/10">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-700 transition-all"
+                    className="h-full rounded-full bg-gradient-to-r from-warn-500 to-brand-600 transition-all"
                     style={{ width: `${Math.max(4, (l.qty / maxLoc) * 100)}%` }}
                   />
                 </div>
               </div>
             ))}
           </CardContent>
-        </Card>
+        </GlassCard>
 
         {/* Asset status donut */}
-        <Card>
+        <GlassCard className="animate-glass-in" style={{ animationDelay: "90ms" }}>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-display text-base text-ink-800">
-              <Package className="h-4 w-4 text-brand-700" />
+            <CardTitle className="flex items-center gap-2 font-display text-base text-white">
+              <Package className="h-4 w-4 text-warn-500" />
               Aset per Status
             </CardTitle>
           </CardHeader>
@@ -682,36 +719,30 @@ export function DashboardPage() {
                 </Pie>
                 <Tooltip
                   formatter={(value) => [value, "Aset"]}
-                  contentStyle={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E5E7EB",
-                    borderRadius: 8,
-                    color: "#1F2937",
-                    boxShadow: "0 8px 28px rgba(16,24,40,0.12)",
-                    fontSize: 12,
-                  }}
+                  contentStyle={DARK_TOOLTIP}
                 />
               </PieChart>
             </ResponsiveContainer>
             <div className="mt-2 space-y-1.5">
               {data.byStatus.map((s) => (
                 <div key={s.status} className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2 text-ink-500">
+                  <span className="flex items-center gap-2 text-ink-200">
                     <span
                       className="h-2.5 w-2.5 rounded-full"
                       style={{ background: STATUS_COLORS[s.status] }}
                     />
                     {s.label}
                   </span>
-                  <span className="tnum font-mono text-ink-800">
+                  <span className="tnum font-mono text-white">
                     {s.count.toLocaleString("id-ID")}
                   </span>
                 </div>
               ))}
             </div>
           </CardContent>
-        </Card>
+        </GlassCard>
       </div>
+    </div>
     </div>
   );
 }
