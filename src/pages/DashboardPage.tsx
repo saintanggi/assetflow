@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Banknote,
   Boxes,
   Package,
   Warehouse,
@@ -56,6 +57,7 @@ interface LocationStock {
 interface DashboardState {
   totalStock: number;
   totalSku: number;
+  totalValue: number;
   lowStockCount: number;
   inboundToday: number;
   outboundToday: number;
@@ -95,6 +97,14 @@ const TX_COLOR: Record<TransactionType, string> = {
 function shortDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+}
+
+// Format Rupiah ringkas: Rp 1,2 M / Rp 850 rb / Rp 45.000.
+function formatRupiah(v: number): string {
+  if (v >= 1_000_000_000) return `Rp ${(v / 1_000_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`;
+  if (v >= 1_000_000) return `Rp ${(v / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt`;
+  if (v >= 1_000) return `Rp ${(v / 1_000).toLocaleString("id-ID", { maximumFractionDigits: 0 })} rb`;
+  return `Rp ${v.toLocaleString("id-ID")}`;
 }
 
 function StatTile({
@@ -161,7 +171,7 @@ export function DashboardPage() {
           locRes,
         ] = await Promise.all([
           supabase.from("assets").select("status").eq("archived", false),
-          supabase.from("inventory_items").select("id, min_stock").eq("is_active", true),
+          supabase.from("inventory_items").select("id, min_stock, purchase_price").eq("is_active", true),
           supabase.from("inventory_balances").select("item_id, qty, location_id"),
           supabase
             .from("inventory_transactions")
@@ -191,7 +201,7 @@ export function DashboardPage() {
         if (failures.length > 0) throw new Error("Gagal memuat data dashboard");
 
         const statuses = (statusesRes.data ?? []) as { status: AssetStatus }[];
-        const items = (itemsRes.data ?? []) as { id: string; min_stock: number | null }[];
+        const items = (itemsRes.data ?? []) as { id: string; min_stock: number | null; purchase_price: number | null }[];
         const balances = (balancesRes.data ?? []) as {
           item_id: string;
           qty: number;
@@ -211,9 +221,15 @@ export function DashboardPage() {
         }
 
         let lowStockCount = 0;
+        let totalValue = 0;
         for (const item of items) {
           if (item.min_stock === null) continue;
           if ((balanceByItem.get(item.id) ?? 0) < item.min_stock) lowStockCount++;
+        }
+        // Nilai stok = Σ (stok akhir × harga beli).
+        for (const item of items) {
+          const qty = balanceByItem.get(item.id) ?? 0;
+          totalValue += qty * Number(item.purchase_price ?? 0);
         }
 
         const tx14: TxDay[] = [];
@@ -257,6 +273,7 @@ export function DashboardPage() {
         setData({
           totalStock,
           totalSku: items.length,
+          totalValue,
           lowStockCount,
           inboundToday: txToday.filter((t) => t.type === "in").length,
           outboundToday: txToday.filter((t) => t.type === "out").length,
@@ -323,12 +340,19 @@ export function DashboardPage() {
       </div>
 
       {/* Stat tiles */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatTile
           icon={Boxes}
           label="Total Stok"
           value={data.totalStock.toLocaleString("id-ID")}
           sub={`${data.totalSku.toLocaleString("id-ID")} SKU aktif tercatat`}
+          tone="teal"
+        />
+        <StatTile
+          icon={Banknote}
+          label="Nilai Stok"
+          value={formatRupiah(data.totalValue)}
+          sub="Stok akhir × harga beli"
           tone="teal"
         />
         <StatTile
