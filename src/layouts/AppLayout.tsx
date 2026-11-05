@@ -13,6 +13,7 @@ import {
   PackageCheck,
   PackageOpen,
   PackageX,
+  ShoppingCart,
   Printer,
   ScanLine,
   Settings,
@@ -95,6 +96,12 @@ const NAV: NavItem[] = [
     label: "Upload Dokumen",
     icon: FileUp,
     permission: "requests.create",
+  },
+  {
+    to: "/pembelian",
+    label: "Pembelian (PO)",
+    icon: ShoppingCart,
+    permission: "inventory.receive",
   },
   {
     to: "#transaksi",

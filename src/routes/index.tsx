@@ -31,6 +31,9 @@ import { RequestListPage } from "../pages/RequestListPage";
 import { UserManagementPage } from "../pages/UserManagementPage";
 import { RequestFormPage } from "../pages/RequestFormPage";
 import { RequestDetailPage } from "../pages/RequestDetailPage";
+import { PurchaseOrderListPage } from "../pages/PurchaseOrderListPage";
+import { PurchaseOrderFormPage } from "../pages/PurchaseOrderFormPage";
+import { PurchaseOrderDetailPage } from "../pages/PurchaseOrderDetailPage";
 import { PendingPartialPage } from "../pages/PendingPartialPage";
 import { RequestUploadPage } from "../pages/RequestUploadPage";
 import { ScannerPage } from "../pages/ScannerPage";
@@ -194,6 +197,30 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission code="requests.view">
             <RequestDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/pembelian",
+        element: (
+          <RequirePermission code="inventory.receive">
+            <PurchaseOrderListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/pembelian/baru",
+        element: (
+          <RequirePermission code="inventory.receive">
+            <PurchaseOrderFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "/pembelian/:id",
+        element: (
+          <RequirePermission code="inventory.receive">
+            <PurchaseOrderDetailPage />
           </RequirePermission>
         ),
       },
