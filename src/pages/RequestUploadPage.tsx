@@ -23,6 +23,8 @@ import {
   pickNewestSheet,
   applySheetDate,
   normalizeItemName,
+  pickMergeTarget,
+  type ExistingRequestRef,
   type AggLine,
   type DupIndex,
   type KodeKondisi,
@@ -66,6 +68,10 @@ interface Preview {
   /** Semua sheet yang bisa dipilih dari file yang di-upload. */
   sheetOptions: { name: string; count: number }[];
   groups: number;
+  /** Grup yang akan digabung ke tiket yang sudah ada (bukan permintaan baru). */
+  mergeGroups: number;
+  /** Rentang tanggal pengiriman di file (tanggal yang akan dipakai upload). */
+  dateRange: { min: string; max: string } | null;
   unmatched: string[];
   existingTickets: string[];
 }
@@ -228,6 +234,28 @@ export function RequestUploadPage() {
       const lines = aggregateGroup(kept, keyOf);
       const groups = new Set(kept.map(groupKeyOf));
 
+      // Tiket yang sudah ada: grup-grup ini akan digabung (bukan permintaan baru).
+      const mergeTickets = [...new Set(kept.map((r) => r.ticket).filter(Boolean))];
+      let mergeGroups = 0;
+      if (mergeTickets.length > 0) {
+        const { data: mergeReqs } = await supabase
+          .from("requests")
+          .select("id, ticket_no, branch_name, request_date, created_at")
+          .in("ticket_no", mergeTickets)
+          .order("created_at", { ascending: false })
+          .limit(1000);
+        const candidates = (mergeReqs ?? []) as ExistingRequestRef[];
+        for (const gk of groups) {
+          const parts = gk.split("|");
+          if (parts.length !== 3 || parts[2].startsWith("ITEM:")) continue;
+          if (pickMergeTarget(candidates, parts[2], parts[1])) mergeGroups++;
+        }
+      }
+
+      // Rentang tanggal pengiriman di file — tanggal inilah yang dipakai upload.
+      const dates = kept.map((r) => r.date).sort();
+      const dateRange = dates.length > 0 ? { min: dates[0], max: dates[dates.length - 1] } : null;
+
     setPreview({
       rows,
       kept,
@@ -239,6 +267,8 @@ export function RequestUploadPage() {
       sheetName,
       sheetOptions: [...sheetCache.current.entries()].map(([name, c]) => ({ name, count: c.rows.length })),
       groups: groups.size,
+      mergeGroups,
+      dateRange,
       unmatched,
       existingTickets,
     });
@@ -373,6 +403,7 @@ export function RequestUploadPage() {
       }
 
       let reqCount = 0;
+      let mergedCount = 0;
       let itemCount = 0;
       let totalQty = 0;
       const failures: { ticket: string; detail: string }[] = [];
@@ -383,6 +414,8 @@ export function RequestUploadPage() {
         const ticket = first.ticket || null;
         setProgress(`Mengimpor permintaan ${n}/${groups.size}…`);
         let reqId: string | null = null;
+        let merged = false;
+        let insertedItemIds: string[] = [];
         try {
           // Baris per barang + kondisi aset + status terkirim.
           const lines = aggregateGroup(rs, (r) => {
@@ -391,30 +424,62 @@ export function RequestUploadPage() {
             return id;
           });
           const hasPending = lines.some((l) => l.isPending);
-          const { data: req, error: reqErr } = await supabase
-            .from("requests")
-            .insert({
-              ticket_no: ticket ?? `UPL-${first.date}-${n}`,
-              request_date: first.date,
-              branch_name: first.branch,
-              branch_code: first.branchCode || null,
-              status: "disetujui",
-              notes: "Upload dokumen pengiriman (otomatis disetujui).",
-              requested_by: user?.id ?? null,
-              reviewed_by: user?.id ?? null,
-              reviewed_at: new Date().toISOString(),
-            })
-            .select("id")
-            .single();
-          if (reqErr) throw new Error(reqErr.message);
-          reqId = req.id;
+
+          // Gabung ke permintaan yang sudah ada (tiket + gerai sama) — jangan
+          // bikin permintaan baru untuk tiket yang sama.
+          if (ticket) {
+            const { data: found, error: findErr } = await supabase
+              .from("requests")
+              .select("id, ticket_no, branch_name, request_date, created_at")
+              .eq("ticket_no", ticket)
+              .order("created_at", { ascending: false })
+              .limit(50);
+            if (findErr) throw new Error(findErr.message);
+            const target = pickMergeTarget((found ?? []) as ExistingRequestRef[], ticket, first.branch);
+            if (target) {
+              reqId = target.id;
+              merged = true;
+              // Tanggal permintaan ikut tanggal pengiriman batch ini supaya
+              // transaksi keluar stok yang baru tercatat di tanggal file
+              // (bukan tanggal batch lama). Transaksi lama tidak berubah.
+              if (target.request_date !== first.date) {
+                const { error: dateErr } = await supabase
+                  .from("requests")
+                  .update({ request_date: first.date })
+                  .eq("id", reqId);
+                if (dateErr) throw new Error(dateErr.message);
+              }
+            }
+          }
+
+          if (!merged) {
+            const { data: req, error: reqErr } = await supabase
+              .from("requests")
+              .insert({
+                ticket_no: ticket ?? `UPL-${first.date}-${n}`,
+                request_date: first.date,
+                branch_name: first.branch,
+                branch_code: first.branchCode || null,
+                status: "disetujui",
+                notes: "Upload dokumen pengiriman (otomatis disetujui).",
+                requested_by: user?.id ?? null,
+                reviewed_by: user?.id ?? null,
+                reviewed_at: new Date().toISOString(),
+              })
+              .select("id")
+              .single();
+            if (reqErr) throw new Error(reqErr.message);
+            reqId = req.id;
+          }
+          if (!reqId) throw new Error("Permintaan tidak terbentuk.");
 
           // Id baris dibuat di sisi klien supaya pemetaan hasil insert -> baris import
           // tidak bergantung pada urutan balikan PostgREST.
           const planned = lines.map((line) => ({ line, id: uuid() }));
+          insertedItemIds = planned.map(({ id }) => id);
           const payload = planned.map(({ line, id }) => ({
             id,
-            request_id: req.id,
+            request_id: reqId,
             item_id: line.itemKey,
             qty_requested: line.qty,
             qty_approved: line.qty,
@@ -431,7 +496,8 @@ export function RequestUploadPage() {
           }));
           const { error: itemsErr } = await supabase.from("request_items").insert(payload);
           if (itemsErr) throw new Error(itemsErr.message);
-          reqCount++;
+          if (merged) mergedCount++;
+          else reqCount++;
           itemCount += payload.length;
           totalQty += lines.reduce((s, l) => s + l.qty, 0);
 
@@ -449,22 +515,25 @@ export function RequestUploadPage() {
               const locId = locByKondisi.get(kode);
               if (!locId) throw new Error(`Lokasi ${kode} belum ada di database.`);
               const { error: shipErr } = await supabase.rpc("ship_request_items", {
-                p_request_id: req.id,
+                p_request_id: reqId,
                 p_location_id: locId,
                 p_lines: plines,
                 p_notes: `Upload dokumen pengiriman ${ticket ?? ""} (${kode})`.trim(),
                 p_allow_negative: true,
               });
-              if (shipErr) throw new Error(`Gagal kirim ${ticket ?? req.id} [${kode}]: ${shipErr.message}`);
+              if (shipErr) throw new Error(`Gagal kirim ${ticket ?? reqId} [${kode}]: ${shipErr.message}`);
             }
             if (hasPending) {
               await supabase
                 .from("requests")
                 .update({ status: "disetujui_sebagian" })
-                .eq("id", req.id);
+                .eq("id", reqId);
             }
           } else {
-            // Tandai selesai/pending tanpa ubah stok.
+            // Tandai selesai/pending tanpa ubah stok. Status dihitung dari
+            // SELURUH barang permintaan (bukan hanya batch ini) supaya
+            // permintaan gabungan tidak salah jadi "selesai" padahal masih
+            // ada barang pending dari batch lama.
             for (const { line, id } of planned) {
               await supabase
                 .from("request_items")
@@ -474,14 +543,25 @@ export function RequestUploadPage() {
                 })
                 .eq("id", id);
             }
+            const { data: allItems } = await supabase
+              .from("request_items")
+              .select("item_status")
+              .eq("request_id", reqId);
+            const anyPending = (allItems ?? []).some(
+              (it) => it.item_status === "pending_sebagian" || it.item_status === "menunggu_stok",
+            );
             await supabase
               .from("requests")
-              .update({ status: hasPending ? "disetujui_sebagian" : "selesai" })
-              .eq("id", req.id);
+              .update({ status: anyPending ? "disetujui_sebagian" : "selesai" })
+              .eq("id", reqId);
           }
         } catch (e) {
-          // Gagal di satu permintaan: hapus request yang sudah terbuat (rollback parsial), catat, lanjut.
-          if (reqId) await supabase.from("requests").delete().eq("id", reqId);
+          // Gagal di satu permintaan: permintaan BARU yang sudah terbuat
+          // dihapus (rollback parsial); kalau gabung, hanya baris baru yang
+          // dihapus — permintaan lama beserta isinya tidak boleh hilang.
+          if (!merged && reqId) await supabase.from("requests").delete().eq("id", reqId);
+          if (merged && insertedItemIds.length > 0)
+            await supabase.from("request_items").delete().in("id", insertedItemIds);
           const rawMsg = e instanceof Error ? e.message : "gagal";
           failures.push({
             ticket: ticket ?? `baris grup ${n}`,
@@ -495,7 +575,7 @@ export function RequestUploadPage() {
       const dupMsg = skippedDup > 0 ? ` ${skippedDup} baris duplikat dilewati.` : "";
       const emptyMsg = filteredRows.length === 0 ? " Tidak ada baris baru untuk diimpor." : "";
       setResult(
-        `Berhasil: ${reqCount} permintaan, ${itemCount} baris barang (total qty ${totalQty}).${deductStock ? " Stok otomatis berkurang." : ""}${dupMsg}${emptyMsg}${failMsg}`
+        `Berhasil: ${reqCount} permintaan baru${mergedCount > 0 ? `, ${mergedCount} permintaan digabung ke tiket yang sudah ada` : ""}, ${itemCount} baris barang (total qty ${totalQty}).${deductStock ? " Stok otomatis berkurang." : ""}${dupMsg}${emptyMsg}${failMsg}`
       );
       if (failures.length > 0) toast.warning(`${failures.length} permintaan gagal — lihat rincian.`);
       else toast.success("Import selesai.");
@@ -600,6 +680,18 @@ export function RequestUploadPage() {
                     <p className="text-xs text-ink-500">Barang baru</p>
                   </div>
                 </div>
+
+                {preview.dateRange && (
+                  <p className="text-xs text-ink-500">
+                    Tanggal pengiriman di file:{" "}
+                    <span className="font-medium text-ink-800">
+                      {preview.dateRange.min === preview.dateRange.max
+                        ? formatDate(preview.dateRange.min)
+                        : `${formatDate(preview.dateRange.min)} – ${formatDate(preview.dateRange.max)}`}
+                    </span>{" "}
+                    — tanggal ini yang dipakai sebagai tanggal permintaan &amp; keluar stok.
+                  </p>
+                )}
 
                 {/* Rincian qty per barang — dipakai untuk mengecek qty sudah sama dengan file */}
                 <div className="max-h-72 overflow-auto rounded-md border border-ink-200">
@@ -728,7 +820,9 @@ export function RequestUploadPage() {
                     <div>
                       Tiket {preview.existingTickets.slice(0, 5).join(", ")}
                       {preview.existingTickets.length > 5 && ` (+${preview.existingTickets.length - 5})`} sudah ada
-                      di sistem. Baris yang identik dilewati; baris baru tetap dibuat sebagai permintaan baru.
+                      di sistem. Baris yang identik dilewati; baris baru digabung ke permintaan yang sudah ada
+                      (tiket + gerai sama)
+                      {preview.mergeGroups > 0 && ` — ${preview.mergeGroups} grup akan digabung`}.
                     </div>
                   </div>
                 )}

@@ -359,6 +359,40 @@ export function groupKeyOf(row: ParsedShippingRow): string {
     : `${row.date}|${row.branch}|ITEM:${row.itemName.toUpperCase()}`;
 }
 
+export interface ExistingRequestRef {
+  id: string;
+  ticket_no: string;
+  branch_name: string;
+  request_date: string;
+  created_at: string;
+}
+
+/**
+ * Pilih permintaan yang akan digabung saat upload: nomor tiket + gerai harus
+ * sama (kapital/spasi tidak peduli). Bila tiket itu sudah ada beberapa kali
+ * (hasil upload lama yang terpecah), yang terbaru — dibuat paling akhir —
+ * yang dipakai, supaya barang baru menempel ke catatan tiket yang paling segar.
+ */
+export function pickMergeTarget(
+  existing: ExistingRequestRef[],
+  ticket: string,
+  branch: string,
+): ExistingRequestRef | null {
+  const t = ticket.trim().toUpperCase();
+  const b = branch.trim().toUpperCase();
+  if (!t) return null;
+  const matches = existing.filter(
+    (r) =>
+      r.ticket_no.trim().toUpperCase() === t &&
+      r.branch_name.trim().toUpperCase() === b,
+  );
+  if (matches.length === 0) return null;
+  matches.sort((a, b2) =>
+    a.created_at < b2.created_at ? 1 : a.created_at > b2.created_at ? -1 : 0,
+  );
+  return matches[0];
+}
+
 /**
  * Gabungkan baris-baris satu permintaan (satu tiket/gerai/tanggal) menjadi baris item
  * (barang + kondisi aset + status terkirim).

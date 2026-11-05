@@ -16,6 +16,8 @@ import {
   parseWorkbook,
   pickNewestSheet,
   normalizeItemName,
+  pickMergeTarget,
+  type ExistingRequestRef,
   type ParsedShippingRow,
   applySheetDate,
 } from "./shippingUpload";
@@ -605,5 +607,30 @@ describe("File lapangan: header 'In Progres' + nama ber-underscore", () => {
     expect(kamera.kodeKondisi).toBe("STOK-BARU");
     expect(monitor.qty).toBe(2);
     expect(monitor.kodeKondisi).toBe("STOK-RETUR");
+  });
+});
+
+describe("Gabung tiket yang sama (pickMergeTarget)", () => {
+  const req = (id: string, ticket: string, branch: string, created_at: string): ExistingRequestRef => ({
+    id, ticket_no: ticket, branch_name: branch, request_date: "2026-10-26", created_at,
+  });
+
+  it("memilih salinan terbaru dari tiket + gerai yang sama", () => {
+    const list = [
+      req("lama", "A2610261707", "SiCepat Ekspres Makassar Tamalate LM", "2026-11-03T07:51:04Z"),
+      req("baru", "A2610261707", "SiCepat Ekspres Makassar Tamalate LM", "2026-11-05T07:58:19Z"),
+    ];
+    expect(pickMergeTarget(list, "A2610261707", "SiCepat Ekspres Makassar Tamalate LM")?.id).toBe("baru");
+  });
+
+  it("gerai beda tidak digabung, pencocokan tidak peduli kapital", () => {
+    const list = [req("a", "A2610261707", "SiCepat Ekspres Makassar Tamalate LM", "2026-11-05T07:58:19Z")];
+    expect(pickMergeTarget(list, "A2610261707", "SiCepat Ekspres Gowa Pallangga LM")).toBeNull();
+    expect(pickMergeTarget(list, "a2610261707", "sicepat ekspres makassar tamalate lm")?.id).toBe("a");
+  });
+
+  it("tanpa tiket atau tanpa calon -> null", () => {
+    expect(pickMergeTarget([], "A2610261707", "X")).toBeNull();
+    expect(pickMergeTarget([req("a", "A2610261707", "X", "2026-11-05T07:58:19Z")], "", "X")).toBeNull();
   });
 });
