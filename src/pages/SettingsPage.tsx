@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { formatDateTime } from "../lib/format";
 import { DataTable } from "../components/DataTable";
+import { MfaSetup } from "../components/MfaSetup";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import {
@@ -207,6 +208,14 @@ export function SettingsPage() {
                 {pwSaving ? "Menyimpan…" : "Simpan kata sandi baru"}
               </Button>
             </div>
+          </div>
+
+          <div className="mt-6 border-t border-ink-200 pt-5">
+            <p className="mb-1 text-sm font-medium">Autentikasi Dua Faktor (MFA)</p>
+            <p className="mb-3 text-xs text-ink-500">
+              Disarankan untuk akun super admin — login jadi butuh kode dari aplikasi authenticator.
+            </p>
+            <MfaSetup />
           </div>
         </CardContent>
       </Card>

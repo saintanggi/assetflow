@@ -30,6 +30,12 @@ export function LoginPage() {
   const location = useLocation();
   const [formError, setFormError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  // MFA: setelah password benar, akun dengan MFA aktif harus verifikasi kode.
+  const [mfaNeeded, setMfaNeeded] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaChallengeId, setMfaChallengeId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaBusy, setMfaBusy] = useState(false);
 
   const from = (location.state as { from?: string } | undefined)?.from ?? "/dashboard";
 
@@ -64,6 +70,43 @@ export function LoginPage() {
     const { error } = await signIn(email, data.password);
     if (error) {
       setFormError("Username atau kata sandi salah");
+      return;
+    }
+    // Cek apakah akun ini wajib MFA (aal1 → aal2).
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal && aal.nextLevel === "aal2" && aal.currentLevel === "aal1") {
+      const { data: factors } = await supabase.auth.mfa.listFactors();
+      const verified = factors?.totp?.find((f) => f.status === "verified");
+      if (verified) {
+        const ch = await supabase.auth.mfa.challenge({ factorId: verified.id });
+        if (!ch.error && ch.data) {
+          setMfaFactorId(verified.id);
+          setMfaChallengeId(ch.data.id);
+          setMfaNeeded(true);
+          return;
+        }
+      }
+      setFormError("Akun ini memakai MFA, tapi verifikasi tidak bisa dimulai. Coba lagi.");
+      return;
+    }
+    navigate(from, { replace: true });
+  }
+
+  async function onMfaSubmit() {
+    if (!mfaFactorId || !mfaChallengeId || mfaCode.trim().length !== 6) {
+      setFormError("Masukkan kode 6 digit dari aplikasi authenticator.");
+      return;
+    }
+    setMfaBusy(true);
+    setFormError(null);
+    const { error } = await supabase.auth.mfa.verify({
+      factorId: mfaFactorId,
+      challengeId: mfaChallengeId,
+      code: mfaCode.trim(),
+    });
+    setMfaBusy(false);
+    if (error) {
+      setFormError("Kode MFA salah atau kedaluwarsa. Coba lagi.");
       return;
     }
     navigate(from, { replace: true });
@@ -195,10 +238,45 @@ export function LoginPage() {
                   {formError}
                 </p>
               )}
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                Masuk ke Command Center
-              </Button>
+              {mfaNeeded ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="mfa-code">Kode Authenticator (6 digit)</Label>
+                    <Input
+                      id="mfa-code"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="123456"
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
+                      autoFocus
+                    />
+                    <p className="text-xs text-ink-500">
+                      Password benar. Masukkan kode dari aplikasi authenticator Anda.
+                    </p>
+                  </div>
+                  <Button type="button" className="w-full" disabled={mfaBusy} onClick={() => void onMfaSubmit()}>
+                    {mfaBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Verifikasi & Masuk
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => {
+                      setMfaNeeded(false);
+                      setMfaCode("");
+                    }}
+                  >
+                    Kembali
+                  </Button>
+                </div>
+              ) : (
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Masuk ke Command Center
+                </Button>
+              )}
             </form>
             <p className="mt-6 text-center text-sm text-ink-500">
               Belum punya akun? Hubungi administrator sistem Anda.
