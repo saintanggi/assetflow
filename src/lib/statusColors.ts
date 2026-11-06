@@ -114,6 +114,17 @@ export const kondisiStatusVariant: Record<KondisiStatus, StatusBadgeVariant> = {
   HABIS: "destructive",
 };
 
+/**
+ * Versi kaca gelap dari badge yang sama (dipakai halaman Stok Kondisi yang
+ * bertema gelap) — warna sama, hanya latarnya tembus pandang + teks pucat.
+ * Dipakai sebagai className tambahan di atas `kondisiStatusVariant`.
+ */
+export const kondisiStatusDarkClass: Record<KondisiStatus, string> = {
+  AMAN: "bg-ok-500/15 text-ok-100 ring-ok-500/25",
+  KRITIS: "bg-warn-500/15 text-warn-100 ring-warn-500/25",
+  HABIS: "bg-brand-500/15 text-brand-100 ring-brand-500/25",
+};
+
 /** Level peringatan stok: kritis (masalah), waspada (perhatian). */
 export const alertLevelVariant: Record<AlertLevel, StatusBadgeVariant> = {
   kritis: "destructive",

@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
+import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { ArrowRightLeft, Download, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { kondisiStatusVariant } from "../lib/statusColors";
+import { kondisiStatusDarkClass, kondisiStatusVariant } from "../lib/statusColors";
 import { formatQty } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
+import { cn } from "../lib/utils";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { DataTable } from "../components/DataTable";
-import { Card, CardContent } from "../components/ui/card";
+import { CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
@@ -61,6 +63,23 @@ interface StokRow {
   buffer: number;
   status: "AMAN" | "KRITIS" | "HABIS";
 }
+
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   const cfg = KONDISI_CONFIG[kondisi];
@@ -201,7 +220,9 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   }, [rows]);
 
   const statusBadge = (s: StokRow["status"]) => (
-    <Badge variant={kondisiStatusVariant[s]}>{s}</Badge>
+    <Badge variant={kondisiStatusVariant[s]} className={kondisiStatusDarkClass[s]}>
+      {s}
+    </Badge>
   );
 
   const openEdit = (row: StokRow) => {
@@ -329,14 +350,14 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       header: "TOTAL IN",
       accessorKey: "totalIn",
       cell: ({ row }) => (
-        <span className="tnum font-semibold text-ok-600">+{formatQty(row.original.totalIn)}</span>
+        <span className="tnum font-semibold text-ok-500">+{formatQty(row.original.totalIn)}</span>
       ),
     },
     {
       header: "TOTAL OUT",
       accessorKey: "totalOut",
       cell: ({ row }) => (
-        <span className="tnum font-semibold text-brand-600">-{formatQty(row.original.totalOut)}</span>
+        <span className="tnum font-semibold text-brand-200">-{formatQty(row.original.totalOut)}</span>
       ),
     },
     {
@@ -367,6 +388,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
                   <Button
                     variant="outline"
                     size="sm"
+                    className={DARK_OUTLINE_BTN}
                     onClick={() => openMoveToReturn(row.original)}
                     title="Barang selesai servis — pindahkan ke Asset Return"
                   >
@@ -374,7 +396,12 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
                   </Button>
                 )}
                 {isSuperAdmin && (
-                  <Button variant="outline" size="sm" onClick={() => openEdit(row.original)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={DARK_OUTLINE_BTN}
+                    onClick={() => openEdit(row.original)}
+                  >
                     <Pencil className="mr-1 h-3 w-3" /> Ubah
                   </Button>
                 )}
@@ -444,16 +471,30 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-5 overflow-hidden rounded-3xl bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.20),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.16),transparent)] p-5 sm:p-6">
+      {/* Cahaya latar ala dashboard (oranye + biru, blur) */}
+      <div className="animate-drift pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-warn-500/20 blur-3xl" />
+      <div className="animate-drift-slow pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-info-500/15 blur-3xl" />
+      <div className="relative space-y-5">
       <PageHeader
         title={cfg.title}
         description={cfg.description}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportExcel}>
+            <Button
+              variant="outline"
+              size="sm"
+              className={DARK_OUTLINE_BTN}
+              onClick={handleExportExcel}
+            >
               <Download className="mr-1 h-4 w-4" /> Export Excel
             </Button>
-            <Button variant="outline" size="sm" onClick={handleExport}>
+            <Button
+              variant="outline"
+              size="sm"
+              className={DARK_OUTLINE_BTN}
+              onClick={handleExport}
+            >
               <Download className="mr-1 h-4 w-4" /> Export CSV
             </Button>
           </div>
@@ -461,56 +502,61 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card>
+        <GlassCard>
           <CardContent className="pt-4">
-            <p className="text-xs text-ink-500">TOTAL STOK AWAL</p>
-            <p className="tnum font-display text-xl font-bold text-ink-800">{formatQty(totals.awal)}</p>
+            <p className="text-xs text-ink-300">TOTAL STOK AWAL</p>
+            <p className="tnum font-display text-xl font-bold text-white">{formatQty(totals.awal)}</p>
           </CardContent>
-        </Card>
-        <Card>
+        </GlassCard>
+        <GlassCard>
           <CardContent className="pt-4">
-            <p className="text-xs text-ink-500">TOTAL IN</p>
-            <p className="tnum font-display text-xl font-bold text-ok-600">+{formatQty(totals.in)}</p>
+            <p className="text-xs text-ink-300">TOTAL IN</p>
+            <p className="tnum font-display text-xl font-bold text-ok-500">+{formatQty(totals.in)}</p>
           </CardContent>
-        </Card>
-        <Card>
+        </GlassCard>
+        <GlassCard>
           <CardContent className="pt-4">
-            <p className="text-xs text-ink-500">TOTAL OUT</p>
-            <p className="tnum font-display text-xl font-bold text-brand-600">-{formatQty(totals.out)}</p>
+            <p className="text-xs text-ink-300">TOTAL OUT</p>
+            <p className="tnum font-display text-xl font-bold text-brand-200">-{formatQty(totals.out)}</p>
           </CardContent>
-        </Card>
-        <Card>
+        </GlassCard>
+        <GlassCard>
           <CardContent className="pt-4">
-            <p className="text-xs text-ink-500">TOTAL STOK AKHIR</p>
-            <p className="tnum font-display text-xl font-bold text-warn-600">{formatQty(totals.akhir)}</p>
+            <p className="text-xs text-ink-300">TOTAL STOK AKHIR</p>
+            <p className="tnum font-display text-xl font-bold text-warn-500">{formatQty(totals.akhir)}</p>
           </CardContent>
-        </Card>
+        </GlassCard>
       </div>
 
-      <Card>
+      <GlassCard>
         <CardContent className="space-y-4 pt-6">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm text-ink-500">Filter:</span>
+            <span className="text-sm text-ink-300">Filter:</span>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="h-9 rounded-lg border border-ink-200 bg-ink-100 px-3 text-sm text-ink-800"
+              className="h-9 rounded-lg border border-white/15 bg-white/10 px-3 text-sm text-white [color-scheme:dark]"
             />
-            <span className="text-sm text-ink-500">s/d</span>
+            <span className="text-sm text-ink-300">s/d</span>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="h-9 rounded-lg border border-ink-200 bg-ink-100 px-3 text-sm text-ink-800"
+              className="h-9 rounded-lg border border-white/15 bg-white/10 px-3 text-sm text-white [color-scheme:dark]"
             />
             {(dateFrom || dateTo) && (
-              <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+              <Button
+                variant="outline"
+                size="sm"
+                className={DARK_OUTLINE_BTN}
+                onClick={() => { setDateFrom(""); setDateTo(""); }}
+              >
                 Reset
               </Button>
             )}
             {(dateFrom || dateTo) && (
-              <span className="text-xs text-ink-500">
+              <span className="text-xs text-ink-300">
                 IN/OUT menampilkan periode {dateFrom || "…"} s/d {dateTo || "…"}
               </span>
             )}
@@ -521,26 +567,27 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
             loading={loading}
             searchPlaceholder="Cari nama barang…"
             pageSize={15}
+            variant="dark"
             emptyTitle="Tidak ada data"
             emptyDescription={`Belum ada barang pada kondisi ${cfg.badge}.`}
             renderCard={(row) => (
-              <div className="space-y-2">
+              <div className="space-y-2 text-white">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-medium">{row.itemName}</div>
-                    <div className="text-xs text-ink-500">{row.satuan}</div>
+                    <div className="text-xs text-ink-300">{row.satuan}</div>
                   </div>
                   {statusBadge(row.status)}
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-xs text-ink-500">Stok Akhir</span>
+                  <span className="text-xs text-ink-300">Stok Akhir</span>
                   <span className="tnum text-lg font-bold">{formatQty(row.stokAkhir)}</span>
-                  <span className="tnum text-xs text-ink-500">
+                  <span className="tnum text-xs text-ink-300">
                     (Awal {formatQty(row.stokAwal)} • In +{formatQty(row.totalIn)} • Out -
                     {formatQty(row.totalOut)})
                   </span>
                 </div>
-                <div className="text-xs text-ink-500">
+                <div className="text-xs text-ink-300">
                   Buffer minimum: <span className="tnum">{formatQty(row.buffer)}</span>
                 </div>
                 {(isSuperAdmin || (kondisi === "unready" && canTransfer)) && (
@@ -549,7 +596,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1"
+                        className={cn("flex-1", DARK_OUTLINE_BTN)}
                         onClick={() => openMoveToReturn(row)}
                       >
                         <ArrowRightLeft className="mr-1 h-3 w-3" /> Ke Return
@@ -559,7 +606,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1"
+                        className={cn("flex-1", DARK_OUTLINE_BTN)}
                         onClick={() => openEdit(row)}
                       >
                         <Pencil className="mr-1 h-3 w-3" /> Ubah
@@ -571,7 +618,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
             )}
           />
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogHeader>
@@ -651,6 +698,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
           </Button>
         </DialogFooter>
       </Dialog>
+      </div>
     </div>
   );
 }

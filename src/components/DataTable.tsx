@@ -45,6 +45,11 @@ interface DataTableProps<TData> {
    */
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  /**
+   * Varian kaca gelap untuk halaman bertema gelap (mis. Stok Kondisi).
+   * Default "light" — semua halaman lain tidak berubah.
+   */
+  variant?: "light" | "dark";
 }
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -61,7 +66,9 @@ export function DataTable<TData>({
   searchActions,
   searchValue,
   onSearchChange,
+  variant = "light",
 }: DataTableProps<TData>) {
+  const dark = variant === "dark";
   const [internalFilter, setInternalFilter] = useState("");
   // Pencarian terkontrol bila induk menyediakan nilai + handler.
   const globalFilter = searchValue ?? internalFilter;
@@ -113,18 +120,34 @@ export function DataTable<TData>({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full flex-col gap-2 sm:max-w-md sm:flex-row">
           <div className="relative w-full">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
+            <Search
+              className={
+                dark
+                  ? "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-300"
+                  : "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500"
+              }
+            />
             <Input
               placeholder={searchPlaceholder}
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
-              className="pl-9"
+              className={
+                dark
+                  ? "border-white/15 bg-white/10 pl-9 text-white placeholder:text-ink-300"
+                  : "pl-9"
+              }
               aria-label={searchPlaceholder}
             />
           </div>
           {searchActions}
         </div>
-        <div className="flex items-center gap-2 text-sm text-ink-500">
+        <div
+          className={
+            dark
+              ? "flex items-center gap-2 text-sm text-ink-300"
+              : "flex items-center gap-2 text-sm text-ink-500"
+          }
+        >
           <label htmlFor="dt-page-size" className="whitespace-nowrap">
             Baris per halaman
           </label>
@@ -132,7 +155,11 @@ export function DataTable<TData>({
             id="dt-page-size"
             value={currentSize}
             onChange={(e) => table.setPageSize(Number(e.target.value))}
-            className="h-9 rounded-lg border border-ink-200 bg-white px-2 text-sm text-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 focus-visible:border-brand-600"
+            className={
+              dark
+                ? "h-9 rounded-lg border border-white/15 bg-white/10 px-2 text-sm text-white [color-scheme:dark] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 focus-visible:border-brand-600"
+                : "h-9 rounded-lg border border-ink-200 bg-white px-2 text-sm text-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 focus-visible:border-brand-600"
+            }
           >
             {PAGE_SIZES.map((s) => (
               <option key={s} value={s}>
@@ -147,14 +174,24 @@ export function DataTable<TData>({
       {renderCard && (
         <div className="space-y-3 md:hidden">
           {table.getRowModel().rows.length === 0 ? (
-            <div className="rounded-xl border border-ink-200 bg-white">
+            <div
+              className={
+                dark
+                  ? "rounded-xl border border-white/15 bg-white/[0.07]"
+                  : "rounded-xl border border-ink-200 bg-white"
+              }
+            >
               <EmptyState title={emptyTitle} description={emptyDescription} />
             </div>
           ) : (
             table.getRowModel().rows.map((row) => (
               <div
                 key={row.id}
-                className="rounded-xl border border-ink-200 bg-white p-4 shadow-card"
+                className={
+                  dark
+                    ? "rounded-xl border border-white/15 bg-white/[0.07] p-4"
+                    : "rounded-xl border border-ink-200 bg-white p-4 shadow-card"
+                }
               >
                 {renderCard(row.original)}
               </div>
@@ -165,12 +202,12 @@ export function DataTable<TData>({
 
       {/* Tabel desktop — disembunyikan di HP bila ada tampilan kartu. */}
       <div className={renderCard ? "hidden md:block" : undefined}>
-        <Table>
-          <TableHeader>
+        <Table dark={dark}>
+          <TableHeader dark={dark}>
             {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id} className="hover:bg-ink-50">
+              <TableRow key={hg.id} dark={dark} className={dark ? undefined : "hover:bg-ink-50"}>
                 {hg.headers.map((h) => (
-                  <TableHead key={h.id}>
+                  <TableHead key={h.id} dark={dark}>
                     {h.isPlaceholder
                       ? null
                       : flexRender(h.column.columnDef.header, h.getContext())}
@@ -181,14 +218,14 @@ export function DataTable<TData>({
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows.length === 0 ? (
-              <TableRow className="hover:bg-transparent">
+              <TableRow dark={dark} className="hover:bg-transparent">
                 <TableCell colSpan={columns.length}>
                   <EmptyState title={emptyTitle} description={emptyDescription} />
                 </TableCell>
               </TableRow>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow key={row.id} dark={dark}>
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -202,11 +239,11 @@ export function DataTable<TData>({
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-sm text-ink-500">
+        <span className={dark ? "text-sm text-ink-300" : "text-sm text-ink-500"}>
           {totalRows === 0 ? "Tidak ada data" : `Menampilkan ${firstRow}–${lastRow} dari ${totalRows} baris`}
         </span>
         <div className="flex items-center gap-2">
-          <span className="hidden text-sm text-ink-500 sm:inline">
+          <span className={dark ? "hidden text-sm text-ink-300 sm:inline" : "hidden text-sm text-ink-500 sm:inline"}>
             Halaman {table.getState().pagination.pageIndex + 1} dari {table.getPageCount() || 1}
           </span>
           <Button
