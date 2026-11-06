@@ -139,7 +139,7 @@ const DARK_TOOLTIP = {
 } as const;
 
 /** Angka menghitung naik dari 0 saat muncul (murah: satu requestAnimationFrame per angka). */
-function useCountUp(target: number, duration = 750): number {
+function useCountUp(target: number, duration = 1200): number {
   const [value, setValue] = useState(0);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -168,6 +168,7 @@ function StatTile({
   tone,
   delay = 0,
   numeric,
+  format,
 }: {
   icon: typeof Boxes;
   label: string;
@@ -176,6 +177,8 @@ function StatTile({
   tone: "teal" | "amber" | "blue" | "violet";
   delay?: number;
   numeric?: number;
+  /** Format angka yang sedang dihitung (mis. Rupiah) — tanpa ini tampil ribuan biasa. */
+  format?: (v: number) => string;
 }) {
   const animated = useCountUp(numeric ?? 0);
   const toneClass = {
@@ -198,7 +201,9 @@ function StatTile({
           <div>
             <p className="text-xs font-medium uppercase tracking-widest text-ink-300">{label}</p>
             <p className="tnum mt-2 text-4xl font-bold tracking-tight text-white">
-              {numeric !== undefined ? animated.toLocaleString("id-ID") : value}
+              {numeric !== undefined
+                ? (format ? format(animated) : animated.toLocaleString("id-ID"))
+                : value}
             </p>
             <p className="mt-1.5 text-xs text-ink-300">{sub}</p>
           </div>
@@ -555,6 +560,8 @@ export function DashboardPage() {
           sub="Stok akhir × harga beli"
           tone="teal"
           delay={70}
+          numeric={data.totalValue}
+          format={formatRupiah}
         />
         <StatTile
           icon={ArrowDownToLine}

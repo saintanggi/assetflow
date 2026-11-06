@@ -19,6 +19,8 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  Volume2,
+  VolumeX,
   Warehouse,
   X,
   ChevronDown,
@@ -45,6 +47,12 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import {
+  isNavSoundEnabled,
+  playNavSound,
+  setNavSoundEnabled,
+  unlockAudio,
+} from "../lib/sound";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Toaster } from "sonner";
@@ -550,6 +558,24 @@ export function AppLayout(): ReactNode {
   const { profile, user, isSuperAdmin, hasPermission, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [soundOn, setSoundOn] = useState(isNavSoundEnabled());
+  const firstRoute = useRef(true);
+
+  // Buka kunci audio saat interaksi pertama (browser memblokir audio sebelumnya).
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock);
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
+
+  // Bunyi lembut tiap pindah menu/dashboard (bukan saat pertama kali dibuka).
+  useEffect(() => {
+    if (firstRoute.current) {
+      firstRoute.current = false;
+      return;
+    }
+    playNavSound();
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     setNotifOpen(false);
@@ -710,6 +736,20 @@ export function AppLayout(): ReactNode {
             >
               Lihat situs publik
             </Link>
+            <button
+              type="button"
+              aria-label={soundOn ? "Matikan suara navigasi" : "Nyalakan suara navigasi"}
+              aria-pressed={soundOn}
+              title={soundOn ? "Suara navigasi: nyala" : "Suara navigasi: mati"}
+              onClick={() => {
+                const next = !soundOn;
+                setSoundOn(next);
+                setNavSoundEnabled(next);
+              }}
+              className="rounded-lg p-2 text-ink-300 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              {soundOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+            </button>
             <div className="relative" ref={notifRef}>
               <button
                 type="button"
