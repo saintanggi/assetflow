@@ -4,7 +4,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { ColumnDef } from "@tanstack/react-table";
-import { ImageOff, Plus, ScanLine } from "lucide-react";
+import { ImageOff, Plus, ScanLine, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { stockStatusVariant } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
@@ -57,7 +57,7 @@ interface LocationRow extends Location {
 }
 
 export function InventoryListPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, isSuperAdmin } = useAuth();
   const [items, setItems] = useState<ItemRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -292,6 +292,39 @@ export function InventoryListPage() {
     }
   };
 
+  // --- Hapus master barang (khusus super admin, via RPC delete_inventory_item) ---
+  const [deleteItem, setDeleteItem] = useState<ItemRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  const confirmDeleteItem = async () => {
+    if (!deleteItem) return;
+    setDeleteBusy(true);
+    try {
+      const { error } = await supabase.rpc("delete_inventory_item", {
+        p_item_id: deleteItem.id,
+      });
+      if (error) throw new Error(error.message);
+      // Foto di storage ikut dibersihkan (best effort — gagal pun tidak masalah).
+      if (deleteItem.photo_url) {
+        const marker = "/item-photos/";
+        const idx = deleteItem.photo_url.indexOf(marker);
+        if (idx >= 0) {
+          const path = deleteItem.photo_url.slice(idx + marker.length);
+          await supabase.storage.from("item-photos").remove([path]);
+        }
+      }
+      toast.success(`Barang ${deleteItem.name} berhasil dihapus`);
+      setDeleteItem(null);
+      await loadItems();
+    } catch (err) {
+      toast.error("Gagal menghapus barang", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   const stockBadge = (row: ItemRow) => (
     <Badge variant={stockStatusVariant[row.stock_status]}>
       {row.stock_status === "habis" ? "Habis" : row.stock_status === "menipis" ? "Menipis" : "Aman"}
@@ -363,17 +396,30 @@ export function InventoryListPage() {
         header: "",
         id: "atur-stok",
         cell: ({ row }) => (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => openAdjust(row.original)}
-          >
-            Atur Stok
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openAdjust(row.original)}
+            >
+              Atur Stok
+            </Button>
+            {isSuperAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                title="Hapus barang (super admin)"
+                className="text-red-600 hover:text-red-700"
+                onClick={() => setDeleteItem(row.original)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
         ),
       },
     ],
-    []
+    [isSuperAdmin]
   );
 
   const [onlyNoPhoto, setOnlyNoPhoto] = useState(false);
@@ -465,14 +511,27 @@ export function InventoryListPage() {
                 Min: <span className="tnum">{formatQty(row.min_stock)}</span>
               </span>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => openAdjust(row)}
-            >
-              Atur Stok
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => openAdjust(row)}
+              >
+                Atur Stok
+              </Button>
+              {isSuperAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Hapus barang (super admin)"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={() => setDeleteItem(row)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
         )}
       />
@@ -694,6 +753,40 @@ export function InventoryListPage() {
           </Button>
           <Button onClick={saveAdjust} disabled={adjustSaving}>
             {adjustSaving ? "Menyimpan…" : "Simpan"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={!!deleteItem} onOpenChange={(o) => !o && setDeleteItem(null)}>
+        <DialogHeader>
+          <DialogTitle>Hapus Barang</DialogTitle>
+          <DialogDescription>
+            {deleteItem && (
+              <>
+                {deleteItem.name} ({deleteItem.sku}) — Stok: Baru{" "}
+                {formatQty(deleteItem.stock_baru)}, Retur {formatQty(deleteItem.stock_retur)}
+                <br />
+                <br />
+                Barang akan <b>dihapus permanen</b> dari master. Hanya barang tanpa
+                stok dan tanpa riwayat pemakaian yang bisa dihapus — kalau masih ada
+                stok atau sudah pernah dipakai, penghapusan akan ditolak.
+                <br />
+                <br />
+                Lanjutkan?
+              </>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDeleteItem(null)} disabled={deleteBusy}>
+            Batal
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={confirmDeleteItem}
+            disabled={deleteBusy}
+          >
+            {deleteBusy ? "Menghapus…" : "Ya, Hapus"}
           </Button>
         </DialogFooter>
       </Dialog>
