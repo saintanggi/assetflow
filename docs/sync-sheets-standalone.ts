@@ -157,6 +157,16 @@ export const toText = (v: unknown): string => {
   return String(v).trim();
 };
 
+/**
+ * Normalisasi nama barang untuk pencocokan toleran — aturan yang sama dengan
+ * pencarian di aplikasi: huruf besar/kecil, spasi, underscore, dan strip
+ * dianggap sama. "MONITOR_PC_LG 19M38A" == "Monitor PC LG 19M38A".
+ * Dipakai saat mencocokkan NAMA BARANG file upload dengan master barang.
+ */
+export function normalizeItemName(name: string): string {
+  return name.toUpperCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 /** Kode/nomor (resi, barcode, kode gerai) — angka besar tidak boleh jadi notasi ilmiah. */
 export const toCode = (v: unknown): string => {
   if (v === null || v === undefined || v === "") return "";
@@ -213,7 +223,18 @@ export function parseDateText(s: string): string | null {
  */
 /** Sama seperti parseSheetDate, tetapi null bila sel tanggalnya kosong/tidak valid. */
 export function parseSheetDateOrNull(v: unknown): string | null {
-  if (v instanceof Date && !isNaN(v.getTime())) return isoOf(v.getFullYear(), v.getMonth() + 1, v.getDate());
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    // BUG 6 Nov 2026: SheetJS (cellDates) mengubah serial tanggal tengah malam
+    // menjadi Date beberapa detik SEBELUM tengah malam lokal — 23:59:56 hari
+    // sebelumnya — karena acuan konversinya memakai offset zona waktu
+    // historis 1899 (untuk WIB +06:42:04, bukan +07:00; selisih 4 detiknya
+    // lolos karena getTimezoneOffset() dibulatkan ke menit). Tanpa koreksi,
+    // tanggal pengiriman tercatat mundur 1 hari (file 6 Nov -> 5 Nov).
+    // Sel tanggal pengiriman tidak punya jam, jadi geser +10 menit dulu:
+    // 23:59:56 jadi 00:09:56 di hari yang benar, tanggal siang tidak berubah.
+    const d = new Date(v.getTime() + 10 * 60 * 1000);
+    return isoOf(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
   if (typeof v === "number" && v > 20000 && v < 80000) {
     const d = XLSX.SSF.parse_date_code(v);
     if (d) return isoOf(d.y, d.m, d.d);
@@ -328,7 +349,10 @@ export function parseShippingSheet(aoa: unknown[][]): ParsedSheet {
     }
     return -1;
   };
-  const cDate = col("IN PROGRESS DATE", "TANGGAL");
+  const cDate =
+    col("IN PROGRESS DATE", "IN PROGRESS", "IN PROGRES", "TANGGAL", "TANGGAL KIRIM", "TANGGAL PENGIRIMAN") >= 0
+      ? col("IN PROGRESS DATE", "IN PROGRESS", "IN PROGRES", "TANGGAL", "TANGGAL KIRIM", "TANGGAL PENGIRIMAN")
+      : headers.findIndex((h) => h.startsWith("IN PROGRES"));
   const cTicket = col("NO TICKET");
   const cBranch = col("CABANG/GERAI", "GERAI");
   const cBranchCode = col("KODE GERAI");
@@ -396,6 +420,40 @@ export function groupKeyOf(row: ParsedShippingRow): string {
   return row.ticket
     ? `${row.date}|${row.branch}|${row.ticket}`
     : `${row.date}|${row.branch}|ITEM:${row.itemName.toUpperCase()}`;
+}
+
+export interface ExistingRequestRef {
+  id: string;
+  ticket_no: string;
+  branch_name: string;
+  request_date: string;
+  created_at: string;
+}
+
+/**
+ * Pilih permintaan yang akan digabung saat upload: nomor tiket + gerai harus
+ * sama (kapital/spasi tidak peduli). Bila tiket itu sudah ada beberapa kali
+ * (hasil upload lama yang terpecah), yang terbaru — dibuat paling akhir —
+ * yang dipakai, supaya barang baru menempel ke catatan tiket yang paling segar.
+ */
+export function pickMergeTarget(
+  existing: ExistingRequestRef[],
+  ticket: string,
+  branch: string,
+): ExistingRequestRef | null {
+  const t = ticket.trim().toUpperCase();
+  const b = branch.trim().toUpperCase();
+  if (!t) return null;
+  const matches = existing.filter(
+    (r) =>
+      r.ticket_no.trim().toUpperCase() === t &&
+      r.branch_name.trim().toUpperCase() === b,
+  );
+  if (matches.length === 0) return null;
+  matches.sort((a, b2) =>
+    a.created_at < b2.created_at ? 1 : a.created_at > b2.created_at ? -1 : 0,
+  );
+  return matches[0];
 }
 
 /**

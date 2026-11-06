@@ -171,7 +171,18 @@ export function parseDateText(s: string): string | null {
  */
 /** Sama seperti parseSheetDate, tetapi null bila sel tanggalnya kosong/tidak valid. */
 export function parseSheetDateOrNull(v: unknown): string | null {
-  if (v instanceof Date && !isNaN(v.getTime())) return isoOf(v.getFullYear(), v.getMonth() + 1, v.getDate());
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    // BUG 6 Nov 2026: SheetJS (cellDates) mengubah serial tanggal tengah malam
+    // menjadi Date beberapa detik SEBELUM tengah malam lokal — 23:59:56 hari
+    // sebelumnya — karena acuan konversinya memakai offset zona waktu
+    // historis 1899 (untuk WIB +06:42:04, bukan +07:00; selisih 4 detiknya
+    // lolos karena getTimezoneOffset() dibulatkan ke menit). Tanpa koreksi,
+    // tanggal pengiriman tercatat mundur 1 hari (file 6 Nov -> 5 Nov).
+    // Sel tanggal pengiriman tidak punya jam, jadi geser +10 menit dulu:
+    // 23:59:56 jadi 00:09:56 di hari yang benar, tanggal siang tidak berubah.
+    const d = new Date(v.getTime() + 10 * 60 * 1000);
+    return isoOf(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
   if (typeof v === "number" && v > 20000 && v < 80000) {
     const d = XLSX.SSF.parse_date_code(v);
     if (d) return isoOf(d.y, d.m, d.d);

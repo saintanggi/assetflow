@@ -11,6 +11,7 @@ import {
   parseDateText,
   parseQtyCell,
   parseSheetDate,
+  parseSheetDateOrNull,
   parseShippingSheet,
   parseSheetLabel,
   parseWorkbook,
@@ -289,6 +290,32 @@ describe("tanggal", () => {
   it("Date tengah malam lokal tidak bergeser satu hari (WIB/UTC+7)", () => {
     // Sebelum diperbaiki: toISOString() -> "2026-10-13" untuk pengguna WIB.
     expect(parseSheetDate(new Date(2026, 9, 14))).toBe("2026-10-14");
+  });
+  it("Date hasil SheetJS (23:59:56 hari sebelumnya) tidak mundur 1 hari", () => {
+    // SheetJS 0.18.5 cellDates: serial tanggal tengah malam (mis. 6 Nov 2026)
+    // dibaca sebagai 23:59:56 WIB 5 Nov karena offset historis 1899 (+06:42:04).
+    // Tanpa koreksi, request_date tercatat 2026-11-05 padahal file 2026-11-06.
+    expect(parseSheetDateOrNull(new Date(2026, 10, 5, 23, 59, 56))).toBe("2026-11-06");
+    expect(parseSheetDateOrNull(new Date(2026, 10, 6, 0, 0, 4))).toBe("2026-11-06");
+    expect(parseSheetDateOrNull(new Date(2026, 10, 6, 0, 0, 0))).toBe("2026-11-06");
+    expect(parseSheetDateOrNull(new Date(2026, 10, 6, 12, 0, 0))).toBe("2026-11-06");
+  });
+  it("serial tanggal Excel tengah malam terbaca tanggal yang benar (end-to-end)", () => {
+    // Jalur produksi penuh: tulis serial 46332 (= 6 Nov 2026) ke xlsx,
+    // baca lagi dengan cellDates:true seperti halaman upload.
+    const ws = XLSX.utils.aoa_to_sheet([
+      [...SHIPPING_HEADERS],
+      [46332, "T1", "Gerai A", "1", "MEJA", 1, "", "R-1", "B-1", "", "", "ASSET BARU", "TERKIRIM"],
+    ]);
+    ws["A2"].z = "mm-dd-yy"; // sel tanggal berformat tanggal seperti file lapangan
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "PENGIRIMAN");
+    const raw = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const wb2 = XLSX.read(raw, { cellDates: true });
+    const aoaBack = XLSX.utils.sheet_to_json<unknown[]>(wb2.Sheets["PENGIRIMAN"], { header: 1, defval: "" });
+    const { rows: parsed } = parseShippingSheet(aoaBack);
+    expect(parsed[0].date).toBe("2026-11-06");
+    expect(parsed[0].dateExplicit).toBe(true);
   });
   it("menerima tanggal teks format Excel Indonesia", () => {
     expect(parseDateText("14-Oct-26")).toBe("2026-10-14");
