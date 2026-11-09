@@ -173,6 +173,37 @@ body {
   animation: drift 26s ease-in-out infinite alternate-reverse;
 }
 
+/* Lingkaran latar melayang pelan — gaya animasi video login (naik-turun halus). */
+@keyframes float-slow {
+  0% {
+    transform: translateY(0) translateX(0);
+  }
+  50% {
+    transform: translateY(-18px) translateX(10px);
+  }
+  100% {
+    transform: translateY(0) translateX(0);
+  }
+}
+.animate-float-slow {
+  animation: float-slow 14s ease-in-out infinite;
+}
+
+/* Kartu login masuk — naik + membesar halus sekali saat muncul. */
+@keyframes login-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-login-in {
+  animation: login-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
 /* Dialog masuk: panel membesar halus, latar memudar. */
 @keyframes dialog-in {
   from {
@@ -206,6 +237,8 @@ body {
   .animate-glass-in,
   .animate-drift,
   .animate-drift-slow,
+  .animate-float-slow,
+  .animate-login-in,
   .animate-dialog-in,
   .animate-overlay-in {
     animation: none;

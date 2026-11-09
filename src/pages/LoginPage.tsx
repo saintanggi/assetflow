@@ -123,6 +123,22 @@ export function LoginPage() {
         aria-hidden
         className="animate-drift-slow pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-info-500/10 blur-3xl"
       />
+      {/* Lingkaran melayang — gaya animasi video login (balon putih lembut) */}
+      <div
+        aria-hidden
+        className="animate-float-slow pointer-events-none absolute left-[6%] top-[10%] h-24 w-24 rounded-full bg-white/[0.06] blur-xl"
+        style={{ animationDelay: "-3s" }}
+      />
+      <div
+        aria-hidden
+        className="animate-float-slow pointer-events-none absolute bottom-[12%] right-[8%] h-32 w-32 rounded-full bg-white/[0.05] blur-2xl"
+        style={{ animationDelay: "-8s" }}
+      />
+      <div
+        aria-hidden
+        className="animate-float-slow pointer-events-none absolute right-[36%] top-[64%] h-16 w-16 rounded-full bg-info-500/10 blur-xl"
+        style={{ animationDelay: "-11s" }}
+      />
 
       {/* Panel kiri — branding */}
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r border-white/10 bg-white/[0.04] p-12 lg:flex">
@@ -176,7 +192,7 @@ export function LoginPage() {
 
       {/* Panel kanan — form */}
       <div className="relative flex w-full items-center justify-center px-4 py-12 lg:w-1/2">
-        <Card className="w-full max-w-md shadow-card">
+        <Card className="animate-login-in w-full max-w-md shadow-card">
           <CardHeader className="space-y-1">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 shadow-soft lg:hidden">
               <span className="font-display text-base font-extrabold text-white">IW</span>
@@ -189,37 +205,42 @@ export function LoginPage() {
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  autoComplete="username"
-                  placeholder="username"
-                  {...register("username")}
-                />
+                <div className="relative">
+                  <Input
+                    id="username"
+                    type="text"
+                    autoComplete="username"
+                    placeholder=" "
+                    {...register("username")}
+                    className="peer h-14 rounded-full border-ink-200 bg-ink-100/70 px-5 pb-2 pt-6 focus-visible:border-info-500 focus-visible:ring-info-500/40"
+                  />
+                  <Label
+                    htmlFor="username"
+                    className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-sm font-normal text-ink-500 transition-all duration-200 peer-focus:top-2.5 peer-focus:translate-y-0 peer-focus:text-[11px] peer-focus:font-semibold peer-focus:text-info-600 peer-[:not(:placeholder-shown)]:top-2.5 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:font-semibold"
+                  >
+                    Username
+                  </Label>
+                </div>
                 {errors.username && (
                   <p className="text-xs text-brand-600">{errors.username.message}</p>
                 )}
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Kata sandi</Label>
-                  <Link
-                    to="/lupa-password"
-                    className="text-xs font-medium text-brand-700 hover:text-brand-700"
-                  >
-                    Lupa kata sandi?
-                  </Link>
-                </div>
                 <div className="relative">
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
-                    placeholder="••••••••"
-                    className="pr-10"
+                    placeholder=" "
+                    className="peer h-14 rounded-full border-ink-200 bg-ink-100/70 px-5 pb-2 pr-12 pt-6 focus-visible:border-info-500 focus-visible:ring-info-500/40"
                     {...register("password")}
                   />
+                  <Label
+                    htmlFor="password"
+                    className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-sm font-normal text-ink-500 transition-all duration-200 peer-focus:top-2.5 peer-focus:translate-y-0 peer-focus:text-[11px] peer-focus:font-semibold peer-focus:text-info-600 peer-[:not(:placeholder-shown)]:top-2.5 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:font-semibold"
+                  >
+                    Kata sandi
+                  </Label>
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
@@ -228,6 +249,14 @@ export function LoginPage() {
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
+                </div>
+                <div className="flex justify-end">
+                  <Link
+                    to="/lupa-password"
+                    className="text-xs font-medium text-brand-700 hover:text-brand-700"
+                  >
+                    Lupa kata sandi?
+                  </Link>
                 </div>
                 {errors.password && (
                   <p className="text-xs text-brand-600">{errors.password.message}</p>
@@ -272,7 +301,11 @@ export function LoginPage() {
                   </Button>
                 </div>
               ) : (
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  className="h-12 w-full rounded-full bg-white text-base font-semibold text-info-700 shadow-soft ring-1 ring-info-500/30 transition-all duration-300 hover:bg-gradient-to-r hover:from-info-500 hover:to-info-600 hover:text-white hover:ring-info-600/40 focus-visible:ring-info-500"
+                  disabled={isSubmitting}
+                >
                   {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                   Masuk ke Command Center
                 </Button>
