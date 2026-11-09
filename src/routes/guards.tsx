@@ -6,9 +6,11 @@ function LoadingScreen() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-ink-50">
       <div className="flex flex-col items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-600 shadow-soft">
-          <span className="font-display text-xs font-extrabold text-white">IW</span>
-        </div>
+        <img
+          src="/favicon.svg"
+          alt="Logo Inventory Warehouse"
+          className="h-10 w-10 rounded-lg shadow-soft"
+        />
         <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-ink-200 border-t-brand-600" />
         <p className="text-sm text-ink-500">Memuat…</p>
       </div>

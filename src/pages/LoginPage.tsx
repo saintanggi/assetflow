@@ -143,9 +143,11 @@ export function LoginPage() {
       {/* Panel kiri — branding */}
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r border-white/10 bg-white/[0.04] p-12 lg:flex">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 shadow-soft">
-            <span className="font-display text-sm font-extrabold text-white">IW</span>
-          </div>
+          <img
+            src="/favicon.svg"
+            alt="Logo Inventory Warehouse"
+            className="h-10 w-10 rounded-xl shadow-soft"
+          />
           <div>
             <p className="font-display text-lg font-bold leading-tight text-white">
               Inventory Warehouse
@@ -194,9 +196,11 @@ export function LoginPage() {
       <div className="relative flex w-full items-center justify-center px-4 py-12 lg:w-1/2">
         <Card className="animate-login-in w-full max-w-md shadow-card">
           <CardHeader className="space-y-1">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 shadow-soft lg:hidden">
-              <span className="font-display text-base font-extrabold text-white">IW</span>
-            </div>
+            <img
+              src="/favicon.svg"
+              alt="Logo Inventory Warehouse"
+              className="mb-3 h-12 w-12 rounded-xl shadow-soft lg:hidden"
+            />
             <CardTitle className="font-display text-2xl text-ink-800">Selamat datang kembali</CardTitle>
             <CardDescription>
               Masuk untuk mengakses command center operasional.

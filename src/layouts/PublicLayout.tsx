@@ -22,9 +22,11 @@ export function PublicLayout() {
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 shadow-soft">
-              <span className="font-display text-sm font-extrabold text-white">IW</span>
-            </div>
+            <img
+              src="/favicon.svg"
+              alt="Logo Inventory Warehouse"
+              className="h-9 w-9 rounded-xl shadow-soft"
+            />
             <span
               className={`font-display text-lg font-bold ${dark ? "text-white" : "text-ink-800"}`}
             >

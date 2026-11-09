@@ -57,9 +57,11 @@ export function ForgotPasswordPage() {
       />
       <Card className="relative w-full max-w-md shadow-card">
         <CardHeader className="space-y-1">
-          <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 shadow-soft">
-            <span className="font-display text-sm font-extrabold text-white">IW</span>
-          </div>
+          <img
+            src="/favicon.svg"
+            alt="Logo Inventory Warehouse"
+            className="mb-2 h-11 w-11 rounded-xl shadow-soft"
+          />
           <CardTitle className="font-display text-2xl text-ink-800">Lupa kata sandi</CardTitle>
           <CardDescription>
             Masukkan email akun Anda — kami akan mengirimkan tautan untuk mengatur ulang

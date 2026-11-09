@@ -316,11 +316,11 @@ function SidebarContent({
           collapsed && "justify-center px-2"
         )}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 shadow-soft">
-          <span className="font-display text-sm font-extrabold tracking-tight text-white">
-            IW
-          </span>
-        </div>
+        <img
+          src="/favicon.svg"
+          alt="Logo Inventory Warehouse"
+          className="h-9 w-9 shrink-0 rounded-lg shadow-soft"
+        />
         {!collapsed && (
           <div className="min-w-0">
             <p className="truncate font-display text-[15px] font-bold leading-tight text-white">

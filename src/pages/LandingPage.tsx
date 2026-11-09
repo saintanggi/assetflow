@@ -51,9 +51,11 @@ export function LandingPage() {
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(198,40,40,0.10),transparent_60%)]"
         />
         <div className="relative mx-auto flex max-w-7xl flex-col items-center px-4 py-20 text-center sm:py-28">
-          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 shadow-soft">
-            <span className="font-display text-xl font-extrabold text-white">IW</span>
-          </div>
+          <img
+            src="/favicon.svg"
+            alt="Logo Inventory Warehouse"
+            className="mb-6 h-14 w-14 rounded-2xl shadow-soft"
+          />
           <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
             Inventory Warehouse
           </h1>
