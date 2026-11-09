@@ -113,43 +113,43 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-[calc(100vh-4rem)] overflow-hidden bg-ink-50">
-      {/* Glow latar */}
+    <div className="relative flex min-h-[calc(100vh-4rem)] overflow-hidden bg-ink-800 bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.14),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.12),transparent)]">
+      {/* Orbs latar — sama seperti dashboard & katalog publik */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_-10%,rgba(198,40,40,0.10),transparent_70%)]"
+        className="animate-drift pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-warn-500/10 blur-3xl"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_40%_40%_at_90%_110%,rgba(198,40,40,0.05),transparent_70%)]"
+        className="animate-drift-slow pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-info-500/10 blur-3xl"
       />
 
       {/* Panel kiri — branding */}
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r border-ink-200 bg-white p-12 lg:flex">
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r border-white/10 bg-white/[0.04] p-12 lg:flex">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 shadow-soft">
             <span className="font-display text-sm font-extrabold text-white">IW</span>
           </div>
           <div>
-            <p className="font-display text-lg font-bold leading-tight text-ink-800">
+            <p className="font-display text-lg font-bold leading-tight text-white">
               Inventory Warehouse
             </p>
-            <p className="text-xs uppercase tracking-widest text-brand-600">
+            <p className="text-xs uppercase tracking-widest text-brand-200">
               Command Center
             </p>
           </div>
         </div>
         <div>
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
-            <ShieldCheck className="h-3.5 w-3.5" />
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-3 py-1 text-xs font-medium text-white">
+            <ShieldCheck className="h-3.5 w-3.5 text-brand-200" />
             Sistem terpadu aset & gudang
           </div>
-          <h2 className="font-display text-4xl font-bold leading-tight tracking-tight text-ink-800">
+          <h2 className="font-display text-4xl font-bold leading-tight tracking-tight text-white">
             Operasional gudang,
             <br />
             dalam satu kendali.
           </h2>
-          <p className="mt-4 max-w-md text-ink-500">
+          <p className="mt-4 max-w-md text-ink-300">
             Pencatatan aset tetap, persediaan, dan transaksi dalam satu command
             center yang akurat, transparan, dan siap diaudit.
           </p>
@@ -161,15 +161,15 @@ export function LoginPage() {
             ].map(([t, d]) => (
               <div
                 key={t}
-                className="rounded-xl border border-ink-200 bg-white p-3"
+                className="rounded-xl border border-white/15 bg-white/[0.07] p-3"
               >
-                <p className="font-display text-sm font-bold text-brand-700">{t}</p>
-                <p className="mt-1 text-xs text-ink-500">{d}</p>
+                <p className="font-display text-sm font-bold text-brand-200">{t}</p>
+                <p className="mt-1 text-xs text-ink-300">{d}</p>
               </div>
             ))}
           </div>
         </div>
-        <p className="text-xs text-ink-500">
+        <p className="text-xs text-ink-300">
           © {new Date().getFullYear()} Inventory Warehouse — Sistem Informasi Manajemen Aset &amp; Gudang
         </p>
       </div>

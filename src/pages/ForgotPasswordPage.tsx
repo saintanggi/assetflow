@@ -45,10 +45,15 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex relative min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-ink-50 px-4 py-12">
+    <div className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-ink-800 bg-[radial-gradient(1000px_480px_at_85%_-10%,rgba(245,158,11,0.14),transparent),radial-gradient(800px_480px_at_0%_110%,rgba(59,130,246,0.12),transparent)] px-4 py-12">
+      {/* Orbs latar — sama seperti dashboard & halaman login */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_50%_30%,rgba(198,40,40,0.08),transparent_70%)]"
+        className="animate-drift pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-warn-500/10 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="animate-drift-slow pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-info-500/10 blur-3xl"
       />
       <Card className="relative w-full max-w-md shadow-card">
         <CardHeader className="space-y-1">
