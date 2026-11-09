@@ -164,7 +164,7 @@ export function DataTable<TData>({
             }
           >
             {PAGE_SIZES.map((s) => (
-              <option key={s} value={s}>
+              <option key={s} value={s} className={dark ? "bg-ink-800 text-white" : undefined}>
                 {s}
               </option>
             ))}

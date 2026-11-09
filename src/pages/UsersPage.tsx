@@ -246,8 +246,8 @@ export function UsersPage() {
                   value={roleName}
                   onChange={(e) => void handleRoleChange(r, e.target.value)}
                 >
-                  <option value="admin">Admin</option>
-                  <option value="super_admin" disabled={!isSuperAdmin}>
+                  <option value="admin" className="bg-ink-800 text-white">Admin</option>
+                  <option value="super_admin" disabled={!isSuperAdmin} className="bg-ink-800 text-white">
                     Super Admin
                   </option>
                 </select>

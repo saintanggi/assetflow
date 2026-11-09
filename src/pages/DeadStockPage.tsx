@@ -217,10 +217,10 @@ export function DeadStockPage() {
               onChange={(e) => setThreshold(Number(e.target.value))}
               className="h-9 rounded-lg border border-white/15 bg-white/10 px-2 text-sm text-white [color-scheme:dark]"
             >
-              <option value={30}>Tidak bergerak ≥ 30 hari</option>
-              <option value={60}>Tidak bergerak ≥ 60 hari</option>
-              <option value={90}>Tidak bergerak ≥ 90 hari</option>
-              <option value={180}>Tidak bergerak ≥ 180 hari</option>
+              <option value={30} className="bg-ink-800 text-white">Tidak bergerak ≥ 30 hari</option>
+              <option value={60} className="bg-ink-800 text-white">Tidak bergerak ≥ 60 hari</option>
+              <option value={90} className="bg-ink-800 text-white">Tidak bergerak ≥ 90 hari</option>
+              <option value={180} className="bg-ink-800 text-white">Tidak bergerak ≥ 180 hari</option>
             </select>
             <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={exportCsv}>
               Export CSV

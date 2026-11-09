@@ -26,6 +26,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   },
   ref
 ) {
+  // Select gelap (tema kaca gelap) memakai teks putih — tanpa gaya eksplisit,
+  // <option> ikut teks putih sementara popup native di sebagian browser tetap
+  // putih, sehingga tulisannya tidak kelihatan. Beri opsi warna gelap eksplisit.
+  const isDark = className?.includes("text-white") ?? false;
+  const optionClassName = isDark ? "bg-ink-800 text-white" : undefined;
   return (
     <select
       ref={ref}
@@ -43,9 +48,13 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
       )}
       {...props}
     >
-      {placeholder !== undefined && <option value="">{placeholder}</option>}
+      {placeholder !== undefined && (
+        <option value="" className={optionClassName}>
+          {placeholder}
+        </option>
+      )}
       {options.map((o) => (
-        <option key={o.value} value={o.value}>
+        <option key={o.value} value={o.value} className={optionClassName}>
           {o.label}
         </option>
       ))}

@@ -1307,9 +1307,9 @@ export function RequestDetailPage() {
                   onChange={(e) => setShipLocation(e.target.value)}
                   className="w-full rounded-md border border-white/15 bg-white/10 px-3 py-2 text-sm text-white [color-scheme:dark]"
                 >
-                  <option value="">— Pilih lokasi —</option>
+                  <option value="" className="bg-ink-800 text-white">— Pilih lokasi —</option>
                   {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
+                    <option key={l.id} value={l.id} className="bg-ink-800 text-white">
                       {l.code} — {l.name}
                     </option>
                   ))}

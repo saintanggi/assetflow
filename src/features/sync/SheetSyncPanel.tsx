@@ -285,8 +285,8 @@ export function SheetSyncPanel() {
               onChange={(e) => setMode(e.target.value as "newest" | "named")}
               className="w-full rounded-md border border-white/15 bg-white/10 px-2 py-1.5 text-xs text-white [color-scheme:dark]"
             >
-              <option value="newest">Selalu sheet terbaru</option>
-              <option value="named">Sheet tertentu</option>
+              <option value="newest" className="bg-ink-800 text-white">Selalu sheet terbaru</option>
+              <option value="named" className="bg-ink-800 text-white">Sheet tertentu</option>
             </select>
           </div>
           {mode === "named" && (

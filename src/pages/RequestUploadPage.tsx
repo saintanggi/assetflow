@@ -661,7 +661,7 @@ export function RequestUploadPage() {
                         className="rounded-md border border-white/15 bg-white/10 px-2 py-1 text-xs text-white [color-scheme:dark]"
                       >
                         {sheetOptions.map((sh) => (
-                          <option key={sh.name} value={sh.name}>
+                          <option key={sh.name} value={sh.name} className="bg-ink-800 text-white">
                             {sh.name} — {sh.count} baris
                           </option>
                         ))}
