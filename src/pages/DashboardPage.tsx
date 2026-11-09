@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
+  ArrowUpRight,
   Banknote,
   Boxes,
   CheckCircle2,
@@ -169,6 +170,7 @@ function StatTile({
   delay = 0,
   numeric,
   format,
+  to,
 }: {
   icon: typeof Boxes;
   label: string;
@@ -179,6 +181,8 @@ function StatTile({
   numeric?: number;
   /** Format angka yang sedang dihitung (mis. Rupiah) — tanpa ini tampil ribuan biasa. */
   format?: (v: number) => string;
+  /** Kalau diisi, kartu jadi tautan yang bisa diklik ke menu itu. */
+  to?: string;
 }) {
   const animated = useCountUp(numeric ?? 0);
   const toneClass = {
@@ -193,13 +197,21 @@ function StatTile({
     blue: "bg-info-500/15 ring-info-500/25",
     violet: "bg-white/10 ring-white/15",
   }[tone];
-  return (
-    <GlassCard className="animate-glass-in relative overflow-hidden" style={{ animationDelay: `${delay}ms` }}>
+  const card = (
+    <GlassCard
+      className={cn("animate-glass-in relative overflow-hidden", to && "h-full")}
+      style={{ animationDelay: `${delay}ms` }}
+    >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-ink-300">{label}</p>
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-300">
+              {label}
+              {to && (
+                <ArrowUpRight className="ml-1 inline-block h-3.5 w-3.5 -translate-x-0.5 align-[-2px] text-ink-300 opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100" />
+              )}
+            </p>
             <p className="tnum mt-2 text-4xl font-bold tracking-tight text-white">
               {numeric !== undefined
                 ? (format ? format(animated) : animated.toLocaleString("id-ID"))
@@ -207,12 +219,29 @@ function StatTile({
             </p>
             <p className="mt-1.5 text-xs text-ink-300">{sub}</p>
           </div>
-          <div className={cn("rounded-xl p-2.5 ring-1", toneRing, toneClass)}>
+          <div
+            className={cn(
+              "rounded-xl p-2.5 ring-1 transition-transform duration-300",
+              toneRing,
+              toneClass,
+              to && "group-hover:-rotate-6 group-hover:scale-110"
+            )}
+          >
             <Icon className="h-5 w-5" />
           </div>
         </div>
       </CardContent>
     </GlassCard>
+  );
+  if (!to) return card;
+  return (
+    <Link
+      to={to}
+      aria-label={`${label} — lihat detail`}
+      className="group block h-full cursor-pointer rounded-2xl transition-all duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 active:scale-[0.98]"
+    >
+      {card}
+    </Link>
   );
 }
 
@@ -280,6 +309,8 @@ function ActionCard({
 export function DashboardPage() {
   const [data, setData] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
+  // Tanggal hari ini (format sama dengan yang dipakai penghitung Inbound/Outbound).
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
     let cancelled = false;
@@ -552,6 +583,7 @@ export function DashboardPage() {
           tone="teal"
           delay={0}
           numeric={data.totalStock}
+          to="/persediaan"
         />
         <StatTile
           icon={Banknote}
@@ -562,6 +594,7 @@ export function DashboardPage() {
           delay={70}
           numeric={data.totalValue}
           format={formatRupiah}
+          to="/laporan"
         />
         <StatTile
           icon={ArrowDownToLine}
@@ -571,6 +604,7 @@ export function DashboardPage() {
           tone="blue"
           delay={140}
           numeric={data.inboundToday}
+          to={`/transaksi/log?jenis=in&dari=${todayStr}&sampai=${todayStr}`}
         />
         <StatTile
           icon={ArrowUpFromLine}
@@ -580,18 +614,18 @@ export function DashboardPage() {
           tone="violet"
           delay={210}
           numeric={data.outboundToday}
+          to={`/transaksi/log?jenis=out&dari=${todayStr}&sampai=${todayStr}`}
         />
-        <Link to="/persediaan/peringatan-stok" className="block transition hover:-translate-y-0.5">
-          <StatTile
-            icon={AlertTriangle}
-            label="Perlu Perhatian"
-            value={data.lowStockCount.toLocaleString("id-ID")}
-            sub="SKU di bawah stok minimum — klik untuk detail"
-            tone="amber"
-            delay={280}
-            numeric={data.lowStockCount}
-          />
-        </Link>
+        <StatTile
+          icon={AlertTriangle}
+          label="Perlu Perhatian"
+          value={data.lowStockCount.toLocaleString("id-ID")}
+          sub="SKU di bawah stok minimum — klik untuk detail"
+          tone="amber"
+          delay={280}
+          numeric={data.lowStockCount}
+          to="/persediaan/peringatan-stok"
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

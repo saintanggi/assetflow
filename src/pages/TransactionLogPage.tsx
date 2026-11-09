@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { HTMLAttributes } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Download, Pencil, Trash2 } from "lucide-react";
@@ -76,11 +77,22 @@ const DARK_OUTLINE_BTN =
 
 export function TransactionLogPage() {
   const { isSuperAdmin } = useAuth();
+  const [searchParams] = useSearchParams();
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [jenis, setJenis] = useState("");
+  // Filter awal boleh datang dari URL (mis. kartu dashboard Inbound/Outbound hari ini).
+  const [dateFrom, setDateFrom] = useState(() => {
+    const v = searchParams.get("dari") ?? "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
+  });
+  const [dateTo, setDateTo] = useState(() => {
+    const v = searchParams.get("sampai") ?? "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
+  });
+  const [jenis, setJenis] = useState(() => {
+    const v = searchParams.get("jenis");
+    return v === "in" || v === "out" ? v : "";
+  });
   const [jenisStok, setJenisStok] = useState("");
   // Koreksi jenis stok (khusus super admin).
   const [editRow, setEditRow] = useState<LogRow | null>(null);
