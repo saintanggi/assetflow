@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
@@ -7,7 +8,8 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { cn } from "../lib/utils";
 import { DataTable } from "../components/DataTable";
 import { exportToCsv } from "../lib/csv";
 
@@ -40,6 +42,24 @@ function todayLocal(): string {
 
 const fmt = (n: number) =>
   n.toLocaleString("id-ID", { maximumFractionDigits: 3 });
+
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
+
 
 const right = "text-right";
 const liveStockColumns: ColumnDef<LiveStockRow, unknown>[] = [
@@ -269,16 +289,17 @@ export function LiveStockPage() {
         title="Live Stok"
         description="Posisi stok per gudang ala Excel LIVE STOK: Stok Awal / IN / OUT / Stok Akhir."
       />
-      <Card>
+      <GlassCard>
         <CardHeader>
-          <CardTitle>Filter Laporan</CardTitle>
+          <CardTitle className="text-white">Filter Laporan</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-4">
             <div className="space-y-1.5">
-              <Label htmlFor="ls-wh">Gudang</Label>
+              <Label htmlFor="ls-wh" className="text-ink-300">Gudang</Label>
               <Select
                 id="ls-wh"
+                className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                 options={warehouseOptions}
                 placeholder="Pilih gudang"
                 value={warehouseId}
@@ -286,19 +307,21 @@ export function LiveStockPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ls-start">Dari Tanggal</Label>
+              <Label htmlFor="ls-start" className="text-ink-300">Dari Tanggal</Label>
               <Input
                 id="ls-start"
                 type="date"
+                className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ls-end">Sampai Tanggal</Label>
+              <Label htmlFor="ls-end" className="text-ink-300">Sampai Tanggal</Label>
               <Input
                 id="ls-end"
                 type="date"
+                className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
@@ -307,13 +330,13 @@ export function LiveStockPage() {
               <Button onClick={loadReport} disabled={loading}>
                 {loading ? "Memuat…" : "Tampilkan"}
               </Button>
-              <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
+              <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={exportCsv} disabled={rows.length === 0}>
                 Export CSV
               </Button>
             </div>
           </div>
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <div className="mt-6">
         <DataTable<LiveStockRow>

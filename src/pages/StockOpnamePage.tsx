@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { badgeDarkClass } from "../lib/statusColors";
+import { cn } from "../lib/utils";
 import { formatDate, formatQty } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
@@ -9,7 +12,6 @@ import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
 import { Badge } from "../components/ui/badge";
 import {
-  Card,
   CardContent,
   CardDescription,
   CardHeader,
@@ -37,6 +39,19 @@ interface OpnameLine {
   name: string;
   systemQty: number;
   countedQty: string;
+}
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 function generateOpnameDocNumber(): string {
@@ -255,10 +270,10 @@ export function StockOpnamePage() {
         description="Hitung fisik barang lalu finalisasi untuk membuat transaksi penyesuaian"
       />
 
-      <Card>
+      <GlassCard>
         <CardHeader>
-          <CardTitle>Langkah 1 — Input Hasil Hitung</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-white">Langkah 1 — Input Hasil Hitung</CardTitle>
+          <CardDescription className="text-ink-300">
             Pilih lokasi, muat barang, lalu isi hasil perhitungan fisik setiap
             barang.
           </CardDescription>
@@ -266,8 +281,8 @@ export function StockOpnamePage() {
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
             <div className="w-full space-y-1.5 sm:max-w-sm">
-              <Label htmlFor="opname-location">Lokasi</Label>
-              <Select
+              <Label className="text-white" htmlFor="opname-location">Lokasi</Label>
+              <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                 id="opname-location"
                 options={locationOptions}
                 placeholder="Pilih lokasi"
@@ -282,23 +297,23 @@ export function StockOpnamePage() {
 
           {lines.length > 0 && (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Nama Barang</TableHead>
-                    <TableHead className="text-right">Stok Sistem</TableHead>
-                    <TableHead className="w-40">Hasil Hitung</TableHead>
+              <Table dark>
+                <TableHeader dark>
+                  <TableRow dark>
+                    <TableHead dark>SKU</TableHead>
+                    <TableHead dark>Nama Barang</TableHead>
+                    <TableHead dark className="text-right">Stok Sistem</TableHead>
+                    <TableHead dark className="w-40">Hasil Hitung</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lines.map((l) => (
-                    <TableRow key={l.itemId}>
+                    <TableRow dark key={l.itemId}>
                       <TableCell className="font-medium">{l.sku}</TableCell>
                       <TableCell>{l.name}</TableCell>
                       <TableCell className="text-right">{formatQty(l.systemQty)}</TableCell>
                       <TableCell>
-                        <Input
+                        <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                           type="number"
                           min={0}
                           step="any"
@@ -320,55 +335,55 @@ export function StockOpnamePage() {
             </>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
-      <Card>
+      <GlassCard>
         <CardHeader>
-          <CardTitle>Langkah 2 — Daftar Opname & Finalisasi</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-white">Langkah 2 — Daftar Opname & Finalisasi</CardTitle>
+          <CardDescription className="text-ink-300">
             Finalisasi draft opname akan memposting selisih sebagai transaksi
             penyesuaian stok.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loadingCounts ? (
-            <p className="text-sm text-ink-500">Memuat daftar opname…</p>
+            <p className="text-sm text-ink-300">Memuat daftar opname…</p>
           ) : counts.length === 0 ? (
-            <p className="text-sm text-ink-500">Belum ada draft opname.</p>
+            <p className="text-sm text-ink-300">Belum ada draft opname.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>No. Dokumen</TableHead>
-                  <TableHead>Tanggal</TableHead>
-                  <TableHead>Lokasi</TableHead>
-                  <TableHead className="text-right">Selisih</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Aksi</TableHead>
+            <Table dark>
+              <TableHeader dark>
+                <TableRow dark>
+                  <TableHead dark>No. Dokumen</TableHead>
+                  <TableHead dark>Tanggal</TableHead>
+                  <TableHead dark>Lokasi</TableHead>
+                  <TableHead dark className="text-right">Selisih</TableHead>
+                  <TableHead dark>Status</TableHead>
+                  <TableHead dark className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {counts.map((c) => {
                   const diff = diffOf(c);
                   return (
-                    <TableRow key={c.id}>
+                    <TableRow dark key={c.id}>
                       <TableCell className="font-medium">{c.doc_number}</TableCell>
                       <TableCell>{formatDate(c.created_at)}</TableCell>
                       <TableCell>{locationLabel(c.location_id)}</TableCell>
                       <TableCell
                         className={`text-right font-medium ${
                           diff > 0
-                            ? "text-brand-700"
+                            ? "text-brand-200"
                             : diff < 0
-                              ? "text-brand-600"
-                              : "text-ink-500"
+                              ? "text-brand-200"
+                              : "text-ink-300"
                         }`}
                       >
                         {diff > 0 ? "+" : ""}
                         {formatQty(diff)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={c.status === "posted" ? "success" : "warning"}>
+                        <Badge variant={c.status === "posted" ? "success" : "warning"} className={badgeDarkClass[c.status === "posted" ? "success" : "warning"]}>
                           {c.status === "posted" ? "Diposting" : "Draft"}
                         </Badge>
                       </TableCell>
@@ -390,7 +405,7 @@ export function StockOpnamePage() {
             </Table>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <ConfirmDialog
         open={finalizeTarget !== null}

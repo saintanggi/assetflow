@@ -1,13 +1,15 @@
 import { useRef, useState } from "react";
+import type { HTMLAttributes } from "react";
 import * as XLSX from "xlsx";
 import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
 import { formatDate } from "../lib/format";
 import { SheetSyncPanel } from "../features/sync/SheetSyncPanel";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
 import {
@@ -34,6 +36,23 @@ import {
 } from "../lib/shippingUpload";
 
 // Ubah pesan error teknis (berisi UUID) menjadi bahasa yang mudah dipahami.
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
+
 function formatShipError(raw: string, itemNameById: Map<string, string>): string {
   // Pola: Stok tidak mencukupi (item <uuid>, lokasi <uuid>): tersedia X, perubahan -Y
   const m = raw.match(/Stok tidak mencukupi \(item ([0-9a-f-]{36})/i);
@@ -596,27 +615,27 @@ export function RequestUploadPage() {
         title="Upload Dokumen Pengiriman"
         description="Upload file Excel dokumen pengiriman — otomatis masuk sebagai data permintaan."
         actions={
-          <Button variant="outline" onClick={downloadTemplate}>
+          <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={downloadTemplate}>
             <Download className="mr-1 h-4 w-4" /> Download Template
           </Button>
         }
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <GlassCard className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="font-display text-base text-ink-800">File Excel</CardTitle>
+            <CardTitle className="font-display text-base text-white">File Excel</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div
               onClick={() => fileRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-ink-200 bg-ink-50 p-8 text-center transition hover:border-brand-200 hover:bg-ink-100"
+              className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-white/20 bg-white/5 p-8 text-center transition hover:border-white/30 hover:bg-white/10"
             >
-              <FileSpreadsheet className="h-10 w-10 text-brand-700" />
-              <p className="text-sm text-ink-700">
+              <FileSpreadsheet className="h-10 w-10 text-brand-200" />
+              <p className="text-sm text-white">
                 {fileName || "Klik untuk pilih file .xlsx"}
               </p>
-              <p className="text-xs text-ink-500">Format mengikuti template dokumen pengiriman</p>
+              <p className="text-xs text-ink-300">Format mengikuti template dokumen pengiriman</p>
               <input
                 ref={fileRef}
                 type="file"
@@ -631,15 +650,15 @@ export function RequestUploadPage() {
             </div>
 
             {preview && (
-              <div className="space-y-3 rounded-lg border border-ink-200 p-4">
+              <div className="space-y-3 rounded-lg border border-white/15 p-4">
                 {(sheetOptions.length > 1 || preview.sheetName) && (
                   <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="text-ink-500">Sheet diproses:</span>
+                    <span className="text-ink-300">Sheet diproses:</span>
                     {sheetOptions.length > 1 ? (
                       <select
                         value={preview.sheetName}
                         onChange={(e) => void changeSheet(e.target.value)}
-                        className="rounded-md border border-ink-200 bg-white/70 px-2 py-1 text-xs text-ink-800"
+                        className="rounded-md border border-white/15 bg-white/10 px-2 py-1 text-xs text-white [color-scheme:dark]"
                       >
                         {sheetOptions.map((sh) => (
                           <option key={sh.name} value={sh.name}>
@@ -648,10 +667,10 @@ export function RequestUploadPage() {
                         ))}
                       </select>
                     ) : (
-                      <span className="font-medium text-ink-800">{preview.sheetName}</span>
+                      <span className="font-medium text-white">{preview.sheetName}</span>
                     )}
                     {sheetOptions.length > 1 && (
-                      <span className="text-warn-700">
+                      <span className="text-warn-100">
                         File punya {sheetOptions.length} sheet berisi data — sistem memakai sheet terbaru; ganti
                         lewat dropdown bila perlu.
                       </span>
@@ -660,31 +679,31 @@ export function RequestUploadPage() {
                 )}
                 <div className="grid grid-cols-4 gap-3 text-center">
                   <div>
-                    <p className="tnum font-display text-xl font-bold text-ink-800">{preview.kept.length}</p>
-                    <p className="text-xs text-ink-500">Baris diimpor</p>
+                    <p className="tnum font-display text-xl font-bold text-white">{preview.kept.length}</p>
+                    <p className="text-xs text-ink-300">Baris diimpor</p>
                   </div>
                   <div>
-                    <p className="tnum font-display text-xl font-bold text-ink-800">{preview.groups}</p>
-                    <p className="text-xs text-ink-500">Permintaan</p>
+                    <p className="tnum font-display text-xl font-bold text-white">{preview.groups}</p>
+                    <p className="text-xs text-ink-300">Permintaan</p>
                   </div>
                   <div>
-                    <p className="tnum font-display text-xl font-bold text-ink-800">
+                    <p className="tnum font-display text-xl font-bold text-white">
                       {preview.lines.reduce((s, l) => s + l.qty, 0)}
                     </p>
-                    <p className="text-xs text-ink-500">Total qty</p>
+                    <p className="text-xs text-ink-300">Total qty</p>
                   </div>
                   <div>
-                    <p className={`tnum font-display text-xl font-bold ${preview.unmatched.length > 0 ? "text-warn-600" : "text-brand-700"}`}>
+                    <p className={`tnum font-display text-xl font-bold ${preview.unmatched.length > 0 ? "text-warn-100" : "text-brand-100"}`}>
                       {preview.unmatched.length}
                     </p>
-                    <p className="text-xs text-ink-500">Barang baru</p>
+                    <p className="text-xs text-ink-300">Barang baru</p>
                   </div>
                 </div>
 
                 {preview.dateRange && (
-                  <p className="text-xs text-ink-500">
+                  <p className="text-xs text-ink-300">
                     Tanggal pengiriman di file:{" "}
-                    <span className="font-medium text-ink-800">
+                    <span className="font-medium text-white">
                       {preview.dateRange.min === preview.dateRange.max
                         ? formatDate(preview.dateRange.min)
                         : `${formatDate(preview.dateRange.min)} – ${formatDate(preview.dateRange.max)}`}
@@ -694,9 +713,9 @@ export function RequestUploadPage() {
                 )}
 
                 {/* Rincian qty per barang — dipakai untuk mengecek qty sudah sama dengan file */}
-                <div className="max-h-72 overflow-auto rounded-md border border-ink-200">
+                <div className="max-h-72 overflow-auto rounded-md border border-white/15">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 border-b border-ink-200 bg-white/95 text-left text-xs font-semibold uppercase tracking-wide text-ink-500 backdrop-blur">
+                    <thead className="sticky top-0 border-b border-white/15 bg-ink-800 text-left text-xs font-semibold uppercase tracking-wide text-ink-300 backdrop-blur">
                       <tr>
                         <th className="px-2 py-1.5 font-medium">Nama barang</th>
                         <th className="px-2 py-1.5 font-medium">Status aset</th>
@@ -708,18 +727,18 @@ export function RequestUploadPage() {
                     </thead>
                     <tbody>
                       {preview.lines.map((l, i) => (
-                        <tr key={`${l.itemKey}-${l.kodeKondisi}-${l.isPending}-${i}`} className="border-t border-ink-200 transition-colors hover:bg-brand-50/40">
-                          <td className="px-2 py-1.5 text-ink-800">
+                        <tr key={`${l.itemKey}-${l.kodeKondisi}-${l.isPending}-${i}`} className="border-t border-white/15 transition-colors hover:bg-white/5">
+                          <td className="px-2 py-1.5 text-white">
                             {nameOf(l)}
                             {!preview.idByName.has(normalizeItemName(l.itemName)) && (
-                              <span className="ml-1 text-warn-600">(baru)</span>
+                              <span className="ml-1 text-warn-100">(baru)</span>
                             )}
                           </td>
-                          <td className="px-2 py-1.5 text-ink-500">{asetLabelOf(l.kodeKondisi)}</td>
-                          <td className="px-2 py-1.5 text-ink-500">{l.isPending ? "PENDING" : "TERKIRIM"}</td>
-                          <td className="tnum px-2 py-1.5 text-right font-semibold text-ink-800">{l.qty}</td>
-                          <td className="tnum px-2 py-1.5 text-right text-ink-500">{l.rows.length}</td>
-                          <td className="px-2 py-1.5 text-warn-700">
+                          <td className="px-2 py-1.5 text-ink-300">{asetLabelOf(l.kodeKondisi)}</td>
+                          <td className="px-2 py-1.5 text-ink-300">{l.isPending ? "PENDING" : "TERKIRIM"}</td>
+                          <td className="tnum px-2 py-1.5 text-right font-semibold text-white">{l.qty}</td>
+                          <td className="tnum px-2 py-1.5 text-right text-ink-300">{l.rows.length}</td>
+                          <td className="px-2 py-1.5 text-warn-100">
                             {l.qtyFile === 0
                               ? `QTY kosong di file → dihitung ${l.qty} dari ${l.rowCount} baris/barcode`
                               : l.qty > l.qtyFile
@@ -735,7 +754,7 @@ export function RequestUploadPage() {
                 </div>
 
                 {preview.unmatched.length > 0 && (
-                  <div className="flex gap-2 rounded-md bg-warn-50 p-3 text-xs text-warn-700">
+                  <div className="flex gap-2 rounded-md bg-warn-500/15 p-3 text-xs text-warn-100">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
                       {preview.unmatched.length} nama barang tidak ada di master:{" "}
@@ -746,7 +765,7 @@ export function RequestUploadPage() {
                   </div>
                 )}
                 {preview.skipped.length > 0 && (
-                  <div className="flex gap-2 rounded-md bg-warn-50 p-3 text-xs text-warn-700">
+                  <div className="flex gap-2 rounded-md bg-warn-500/15 p-3 text-xs text-warn-100">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
                       {preview.skipped.length} baris sudah ada di sistem (tiket + barang + barcode/resi sama)
@@ -756,7 +775,7 @@ export function RequestUploadPage() {
                   </div>
                 )}
                 {preview.lines.some((l) => l.qtyFile > 0 && l.qty > l.qtyFile) && (
-                  <div className="flex gap-2 rounded-md bg-warn-50 p-3 text-xs text-warn-700">
+                  <div className="flex gap-2 rounded-md bg-warn-500/15 p-3 text-xs text-warn-100">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
                       Ada barang yang jumlah baris/barcode-nya lebih banyak dari angka QTY di file, jadi qty
@@ -771,7 +790,7 @@ export function RequestUploadPage() {
                   </div>
                 )}
                 {preview.rows.some((r) => !r.ticket) && (
-                  <div className="flex gap-2 rounded-md bg-warn-50 p-3 text-xs text-warn-700">
+                  <div className="flex gap-2 rounded-md bg-warn-500/15 p-3 text-xs text-warn-100">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
                       {preview.rows.filter((r) => !r.ticket).length} baris tidak punya NO TICKET (baris{" "}
@@ -782,7 +801,7 @@ export function RequestUploadPage() {
                   </div>
                 )}
                 {preview.rows.some((r) => !r.dateExplicit) && (
-                  <div className="flex gap-2 rounded-md bg-warn-50 p-3 text-xs text-warn-700">
+                  <div className="flex gap-2 rounded-md bg-warn-500/15 p-3 text-xs text-warn-100">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
                       {preview.rows.filter((r) => !r.dateExplicit).length} baris tanpa tanggal di file (baris{" "}
@@ -794,7 +813,7 @@ export function RequestUploadPage() {
                   </div>
                 )}
                 {preview.rows.some((r) => r.qtyUnreadable) && (
-                  <div className="flex gap-2 rounded-md bg-warn-50 p-3 text-xs text-warn-700">
+                  <div className="flex gap-2 rounded-md bg-warn-500/15 p-3 text-xs text-warn-100">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
                       Kolom QTY tidak terbaca sebagai angka di baris{" "}
@@ -805,7 +824,7 @@ export function RequestUploadPage() {
                   </div>
                 )}
                 {preview.dupsInFile.length > 0 && (
-                  <div className="flex gap-2 rounded-md bg-warn-50 p-3 text-xs text-warn-700">
+                  <div className="flex gap-2 rounded-md bg-warn-500/15 p-3 text-xs text-warn-100">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
                       {preview.dupsInFile.length} baris punya tiket + barang + barcode/resi sama di dalam file
@@ -815,7 +834,7 @@ export function RequestUploadPage() {
                   </div>
                 )}
                 {preview.existingTickets.length > 0 && (
-                  <div className="flex gap-2 rounded-md bg-ink-50 p-3 text-xs text-ink-500">
+                  <div className="flex gap-2 rounded-md bg-white/5 p-3 text-xs text-ink-300">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <div>
                       Tiket {preview.existingTickets.slice(0, 5).join(", ")}
@@ -831,19 +850,19 @@ export function RequestUploadPage() {
 
             {result && (
               <div className="space-y-3">
-                <div className="flex gap-2 rounded-md bg-brand-50 p-3 text-sm text-brand-700">
+                <div className="flex gap-2 rounded-md bg-brand-500/15 p-3 text-sm text-brand-100">
                   <CheckCircle2 className="h-5 w-5 shrink-0" />
                   <p>{result}</p>
                 </div>
                 {failList.length > 0 && (
-                  <div className="rounded-md border border-brand-200 bg-brand-50 p-3">
-                    <p className="mb-2 text-sm font-semibold text-brand-700">
+                  <div className="rounded-md border border-brand-500/25 bg-brand-500/15 p-3">
+                    <p className="mb-2 text-sm font-semibold text-brand-100">
                       Rincian kegagalan ({failList.length}):
                     </p>
-                    <ul className="max-h-64 space-y-1.5 overflow-y-auto text-sm text-brand-700">
+                    <ul className="max-h-64 space-y-1.5 overflow-y-auto text-sm text-brand-100">
                       {failList.map((f, i) => (
                         <li key={i} className="flex gap-2">
-                          <span className="shrink-0 font-mono font-semibold text-brand-600">{f.ticket}:</span>
+                          <span className="shrink-0 font-mono font-semibold text-brand-100">{f.ticket}:</span>
                           <span>{f.detail}</span>
                         </li>
                       ))}
@@ -853,12 +872,12 @@ export function RequestUploadPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </GlassCard>
 
         <div className="space-y-4">
-        <Card>
+        <GlassCard>
           <CardHeader>
-            <CardTitle className="font-display text-base text-ink-800">Opsi Import</CardTitle>
+            <CardTitle className="font-display text-base text-white">Opsi Import</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <label className="flex cursor-pointer items-start gap-2">
@@ -866,11 +885,11 @@ export function RequestUploadPage() {
                 type="checkbox"
                 checked={deductStock}
                 onChange={(e) => setDeductStock(e.target.checked)}
-                className="mt-1"
+                className="mt-1 accent-brand-600"
               />
               <span>
-                <span className="block text-sm font-medium text-ink-800">Kurangi stok otomatis</span>
-                <span className="block text-xs text-ink-500">
+                <span className="block text-sm font-medium text-white">Kurangi stok otomatis</span>
+                <span className="block text-xs text-ink-300">
                   Buat transaksi barang keluar untuk tiap pengiriman. Matikan jika dokumen sudah lama dan stok sudah sesuai.
                 </span>
               </span>
@@ -880,11 +899,11 @@ export function RequestUploadPage() {
                 type="checkbox"
                 checked={autoCreate}
                 onChange={(e) => setAutoCreate(e.target.checked)}
-                className="mt-1"
+                className="mt-1 accent-brand-600"
               />
               <span>
-                <span className="block text-sm font-medium text-ink-800">Buat barang baru otomatis</span>
-                <span className="block text-xs text-ink-500">
+                <span className="block text-sm font-medium text-white">Buat barang baru otomatis</span>
+                <span className="block text-xs text-ink-300">
                   Nama barang yang tidak cocok dengan master akan dibuatkan data barang baru.
                 </span>
               </span>
@@ -893,9 +912,9 @@ export function RequestUploadPage() {
               <Upload className="mr-1 h-4 w-4" />
               {importing ? "Mengimpor…" : "Import ke Sistem"}
             </Button>
-            {importing && progress && <p className="text-xs text-ink-500">{progress}</p>}
-            <div className="text-xs text-ink-500">
-              <Label className="mb-1 block">Cara pakai</Label>
+            {importing && progress && <p className="text-xs text-ink-300">{progress}</p>}
+            <div className="text-xs text-ink-300">
+              <Label className="mb-1 block text-white">Cara pakai</Label>
               1. Download template, isi datanya.
               <br />
               2. Upload file yang sudah terisi (sheet terbaru otomatis dipakai).
@@ -905,7 +924,7 @@ export function RequestUploadPage() {
               4. Klik Import.
             </div>
           </CardContent>
-        </Card>
+        </GlassCard>
         <SheetSyncPanel />
         </div>
       </div>

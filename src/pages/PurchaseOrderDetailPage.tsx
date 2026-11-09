@@ -1,17 +1,36 @@
 import { useEffect, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { useParams } from "react-router-dom";
 import { PackageCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
-import { poStatusVariant } from "../lib/statusColors";
+import { badgeDarkClass, poStatusVariant } from "../lib/statusColors";
+import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
 import { PO_STATUS_LABELS, type PoStatus } from "./PurchaseOrderListPage";
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 const fmt = (n: number) => n.toLocaleString("id-ID", { maximumFractionDigits: 3 });
@@ -180,8 +199,8 @@ export function PurchaseOrderDetailPage() {
     }
   };
 
-  if (loading) return <p className="py-12 text-center text-sm text-ink-500">Memuat PO…</p>;
-  if (!po) return <p className="py-12 text-center text-sm text-ink-500">PO tidak ditemukan.</p>;
+  if (loading) return <p className="py-12 text-center text-sm text-ink-300">Memuat PO…</p>;
+  if (!po) return <p className="py-12 text-center text-sm text-ink-300">PO tidak ditemukan.</p>;
 
   return (
     <div>
@@ -196,7 +215,7 @@ export function PurchaseOrderDetailPage() {
               </Button>
             )}
             {(po.status === "draft" || po.status === "ordered") && (
-              <Button variant="outline" disabled={busy} onClick={() => setStatus("cancelled")}>
+              <Button variant="outline" className={DARK_OUTLINE_BTN} disabled={busy} onClick={() => setStatus("cancelled")}>
                 <Trash2 className="mr-1 h-4 w-4" /> Batalkan
               </Button>
             )}
@@ -205,32 +224,32 @@ export function PurchaseOrderDetailPage() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Badge variant={poStatusVariant[po.status]}>{PO_STATUS_LABELS[po.status]}</Badge>
+        <Badge variant={poStatusVariant[po.status]} className={badgeDarkClass[poStatusVariant[po.status]]}>{PO_STATUS_LABELS[po.status]}</Badge>
         {po.expected_date && (
-          <span className="text-sm text-ink-500">
+          <span className="text-sm text-ink-300">
             Estimasi datang: {new Date(po.expected_date).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
           </span>
         )}
-        <span className="tnum ml-auto text-lg font-bold">Total: {fmtRp(po.total_amount)}</span>
+        <span className="tnum ml-auto text-lg font-bold text-white">Total: {fmtRp(po.total_amount)}</span>
       </div>
 
       {po.notes && (
-        <Card className="mb-4">
+        <GlassCard className="mb-4">
           <CardContent className="p-4">
-            <p className="text-sm text-ink-600">{po.notes}</p>
+            <p className="text-sm text-ink-300">{po.notes}</p>
           </CardContent>
-        </Card>
+        </GlassCard>
       )}
 
-      <Card>
+      <GlassCard>
         <CardHeader>
-          <CardTitle>Item PO</CardTitle>
+          <CardTitle className="text-white">Item PO</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-ink-500">
+                <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wide text-ink-300">
                   <th className="py-2 pr-2">Barang</th>
                   <th className="py-2 pr-2 text-right">Pesan</th>
                   <th className="py-2 pr-2 text-right">Diterima</th>
@@ -241,10 +260,10 @@ export function PurchaseOrderDetailPage() {
               </thead>
               <tbody>
                 {po.items.map((it) => (
-                  <tr key={it.id} className="border-b last:border-0">
+                  <tr key={it.id} className="border-b border-white/10 text-ink-100 transition-colors last:border-0 hover:bg-white/5">
                     <td className="py-2 pr-2">
                       <div className="font-medium">{it.name}</div>
-                      <div className="font-mono text-xs text-ink-500">{it.sku}</div>
+                      <div className="font-mono text-xs text-ink-300">{it.sku}</div>
                     </td>
                     <td className="tnum py-2 pr-2 text-right">{fmt(it.qty_ordered)}</td>
                     <td className="tnum py-2 pr-2 text-right">{fmt(it.qty_received)}</td>
@@ -257,7 +276,7 @@ export function PurchaseOrderDetailPage() {
                           min="0"
                           max={remaining(it)}
                           step="1"
-                          className="ml-auto w-24 text-right"
+                          className="ml-auto w-24 border-white/15 bg-white/10 text-right text-white placeholder:text-ink-300"
                           placeholder="0"
                           value={receiveQty[it.id] ?? ""}
                           disabled={remaining(it) <= 0}
@@ -272,10 +291,11 @@ export function PurchaseOrderDetailPage() {
           </div>
 
           {canReceive && (
-            <div className="mt-4 flex flex-wrap items-end gap-3 border-t pt-4">
+            <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-white/15 pt-4">
               <div className="min-w-48">
-                <Label>Lokasi Tujuan *</Label>
+                <Label className="text-white">Lokasi Tujuan *</Label>
                 <Select
+                  className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                   value={locationId}
                   onValueChange={setLocationId}
                   placeholder="Pilih lokasi…"
@@ -289,13 +309,13 @@ export function PurchaseOrderDetailPage() {
                 <PackageCheck className="mr-2 h-4 w-4" />
                 {receiving ? "Memproses…" : "Terima Barang (Masuk Stok)"}
               </Button>
-              <p className="text-xs text-ink-500">
+              <p className="text-xs text-ink-300">
                 Barang yang diterima langsung masuk stok & tercatat sebagai Barang Masuk (dokumen IN).
               </p>
             </div>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { CrudPage } from "../components/CrudPage";
 import { Badge } from "../components/ui/badge";
+import { badgeDarkClass } from "../lib/statusColors";
 
 export function UnitsPage() {
   return (
@@ -15,7 +16,7 @@ export function UnitsPage() {
           key: "allow_decimal",
           label: "Desimal",
           render: (row) => (
-            <Badge variant={row.allow_decimal ? "info" : "secondary"}>
+            <Badge variant={row.allow_decimal ? "info" : "secondary"} className={badgeDarkClass[row.allow_decimal ? "info" : "secondary"]}>
               {row.allow_decimal ? "Ya" : "Tidak"}
             </Badge>
           ),

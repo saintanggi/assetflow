@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Pencil, Archive, ArchiveRestore, Globe, Globe2, Printer, ArrowLeft } from "lucide-react";
 import { supabase, publicAssetUrl } from "../lib/supabase";
-import { assetStatusVariant } from "../lib/statusColors";
+import { assetStatusVariant, badgeDarkClass } from "../lib/statusColors";
+import { cn } from "../lib/utils";
 import { useAuth } from "../context/AuthContext";
 import { formatDate, formatDateTime, formatRupiah } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Table,
@@ -24,6 +26,23 @@ import { QrLabel } from "../features/barcodes/QrLabel";
 import type { Asset, AssetMovement, AssetStatus } from "../types/database";
 import { ASSET_STATUS_LABELS, ASSET_CONDITION_LABELS } from "../types/database";
 import { toast } from "sonner";
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 const ASSET_SELECT =
   "*, asset_categories(code,name), locations(code,name,warehouses(code,name)), departments(code,name)";
@@ -231,10 +250,10 @@ export function AssetDetailPage() {
         description={`Kode: ${asset.asset_code} · Kode publik: ${asset.public_code}`}
         actions={
           <>
-            <Button variant="outline" onClick={() => navigate("/aset")}>
+            <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={() => navigate("/aset")}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
             </Button>
-            <Button variant="outline" onClick={() => navigate(`/label?asset=${asset.id}`)}>
+            <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={() => navigate(`/label?asset=${asset.id}`)}>
               <Printer className="mr-2 h-4 w-4" /> Cetak Label
             </Button>
             {canUpdate && (
@@ -247,38 +266,39 @@ export function AssetDetailPage() {
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <GlassCard className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Informasi Aset</CardTitle>
+            <CardTitle className="text-white">Informasi Aset</CardTitle>
           </CardHeader>
           <CardContent>
             <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
               {detailRows.map((r) => (
                 <div key={r.label} className="flex flex-col">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-500">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-300">
                     {r.label}
                   </dt>
-                  <dd className="mt-0.5 text-sm font-medium text-ink-800">{r.value}</dd>
+                  <dd className="mt-0.5 text-sm font-medium text-white">{r.value}</dd>
                 </div>
               ))}
             </dl>
             <div className="mt-6 flex flex-wrap gap-2">
-              <Badge variant={assetStatusVariant[asset.status]}>
+              <Badge variant={assetStatusVariant[asset.status]} className={badgeDarkClass[assetStatusVariant[asset.status]]}>
                 {ASSET_STATUS_LABELS[asset.status]}
               </Badge>
-              <Badge variant="outline">{ASSET_CONDITION_LABELS[asset.condition]}</Badge>
+              <Badge variant="outline" className={badgeDarkClass.outline}>{ASSET_CONDITION_LABELS[asset.condition]}</Badge>
               {asset.is_published ? (
-                <Badge variant="success">Publik</Badge>
+                <Badge variant="success" className={badgeDarkClass.success}>Publik</Badge>
               ) : (
-                <Badge variant="secondary">Privat</Badge>
+                <Badge variant="secondary" className={badgeDarkClass.secondary}>Privat</Badge>
               )}
-              {asset.archived && <Badge variant="destructive">Diarsipkan</Badge>}
+              {asset.archived && <Badge variant="destructive" className={badgeDarkClass.destructive}>Diarsipkan</Badge>}
             </div>
             {(canArchive || canPublish) && (
-              <div className="mt-6 flex flex-wrap gap-2 border-t pt-4">
+              <div className="mt-6 flex flex-wrap gap-2 border-t border-white/15 pt-4">
                 {canArchive && (
                   <Button
                     variant="outline"
+                    className={DARK_OUTLINE_BTN}
                     onClick={() => setConfirmKind("archive")}
                   >
                     {asset.archived ? (
@@ -295,6 +315,7 @@ export function AssetDetailPage() {
                 {canPublish && (
                   <Button
                     variant="outline"
+                    className={DARK_OUTLINE_BTN}
                     onClick={() => setConfirmKind("publish")}
                   >
                     {asset.is_published ? (
@@ -311,19 +332,19 @@ export function AssetDetailPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </GlassCard>
 
         <div className="space-y-6">
-          <Card>
+          <GlassCard>
             <CardHeader>
-              <CardTitle>QR Code Publik</CardTitle>
+              <CardTitle className="text-white">QR Code Publik</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col items-center gap-3">
               {asset.photo_url ? (
                 <img
                   src={asset.photo_url}
                   alt={asset.name}
-                  className="h-32 w-full rounded-lg border object-cover"
+                  className="h-32 w-full rounded-lg border border-white/15 object-cover"
                 />
               ) : null}
               <QrLabel
@@ -331,40 +352,41 @@ export function AssetDetailPage() {
                 size={160}
                 fileName={asset.asset_code}
               />
-              <p className="break-all text-center text-xs text-ink-500">
+              <p className="break-all text-center text-xs text-ink-300">
                 {publicAssetUrl(asset.public_code)}
               </p>
             </CardContent>
-          </Card>
+          </GlassCard>
         </div>
       </div>
 
-      <Card className="mt-6">
+      <GlassCard className="mt-6">
         <CardHeader>
-          <CardTitle>Riwayat Perpindahan</CardTitle>
+          <CardTitle className="text-white">Riwayat Perpindahan</CardTitle>
         </CardHeader>
         <CardContent>
           {movements.length === 0 ? (
             <EmptyState
+              dark
               title="Belum ada riwayat"
               description="Aset ini belum pernah dipindahkan."
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Waktu</TableHead>
-                  <TableHead>Dari Lokasi</TableHead>
-                  <TableHead>Ke Lokasi</TableHead>
-                  <TableHead>Dari Status</TableHead>
-                  <TableHead>Ke Status</TableHead>
-                  <TableHead>Oleh</TableHead>
-                  <TableHead>Catatan</TableHead>
+            <Table dark>
+              <TableHeader dark>
+                <TableRow dark>
+                  <TableHead dark>Waktu</TableHead>
+                  <TableHead dark>Dari Lokasi</TableHead>
+                  <TableHead dark>Ke Lokasi</TableHead>
+                  <TableHead dark>Dari Status</TableHead>
+                  <TableHead dark>Ke Status</TableHead>
+                  <TableHead dark>Oleh</TableHead>
+                  <TableHead dark>Catatan</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {movements.map((m) => (
-                  <TableRow key={m.id}>
+                  <TableRow dark key={m.id}>
                     <TableCell className="whitespace-nowrap">
                       {formatDateTime(m.created_at)}
                     </TableCell>
@@ -380,7 +402,7 @@ export function AssetDetailPage() {
             </Table>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <ConfirmDialog
         open={confirmKind !== null}

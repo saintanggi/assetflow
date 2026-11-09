@@ -1,16 +1,18 @@
-import { requestItemStatusVariant, requestStatusVariant } from "../lib/statusColors";
+import { badgeDarkClass, requestItemStatusVariant, requestStatusVariant } from "../lib/statusColors";
 import { useEffect, useMemo, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, ScanLine, Scissors, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
 import { buildSearchPattern } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { BarcodeScanner } from "../components/BarcodeScanner";
 import { EmptyState } from "../components/EmptyState";
 import { Skeleton } from "../components/ui/skeleton";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -41,6 +43,23 @@ import {
   parseRequestStatus,
   parseStatusAset,
 } from "../lib/requestStatus";
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 const fmt = (n: number) => Number(n).toLocaleString("id-ID", { maximumFractionDigits: 3 });
 
@@ -841,6 +860,7 @@ export function RequestDetailPage() {
   if (!req) {
     return (
       <EmptyState
+        dark
         title="Permintaan tidak ditemukan"
         description="Permintaan ini mungkin sudah dihapus atau Anda tidak memiliki akses."
       />
@@ -865,13 +885,13 @@ export function RequestDetailPage() {
         description={`${req.request_number} • ${req.branch_name}${req.branch_code ? ` (${req.branch_code})` : ""} • ${req.request_date}`}
         actions={
           <div className="flex flex-wrap gap-2 print:hidden">
-            <Button variant="outline" size="sm" onClick={() => handlePrint("picklist")}>
+            <Button variant="outline" className={DARK_OUTLINE_BTN} size="sm" onClick={() => handlePrint("picklist")}>
               <Printer className="mr-1 h-4 w-4" /> Pick List
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handlePrint("surat_jalan")}>
+            <Button variant="outline" className={DARK_OUTLINE_BTN} size="sm" onClick={() => handlePrint("surat_jalan")}>
               <Printer className="mr-1 h-4 w-4" /> Cetak Surat Jalan
             </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate("/permintaan")}>
+            <Button variant="outline" className={DARK_OUTLINE_BTN} size="sm" onClick={() => navigate("/permintaan")}>
               Kembali
             </Button>
           </div>
@@ -879,52 +899,52 @@ export function RequestDetailPage() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Badge variant={requestStatusVariant[req.status]}>{REQUEST_STATUS_LABELS[req.status]}</Badge>
+        <Badge variant={requestStatusVariant[req.status]} className={badgeDarkClass[requestStatusVariant[req.status]]}>{REQUEST_STATUS_LABELS[req.status]}</Badge>
         {req.status === "ditolak" && req.rejection_reason && (
-          <span className="text-sm text-brand-600">Alasan: {req.rejection_reason}</span>
+          <span className="text-sm text-brand-200">Alasan: {req.rejection_reason}</span>
         )}
         {req.status === "diajukan" && (
           <Button size="sm" onClick={() => setShowAddItem(true)}>
             + Tambah Barang
           </Button>
         )}
-        {req.notes && <span className="text-sm text-ink-500">Catatan: {req.notes}</span>}
+        {req.notes && <span className="text-sm text-ink-300">Catatan: {req.notes}</span>}
       </div>
 
       {/* ===== PANEL KIRIM CEPAT 1 PINTU (Super Admin) ===== */}
       {isSuperAdmin && quickItems.length > 0 && (
-        <Card className="mb-4 border-brand-200">
+        <GlassCard className="mb-4 border-brand-500/30">
           <CardHeader>
-            <CardTitle className="font-display text-base text-ink-800">
+            <CardTitle className="font-display text-base text-white">
               Kirim Barang
             </CardTitle>
-            <p className="mt-0.5 text-xs text-ink-500">
+            <p className="mt-0.5 text-xs text-ink-300">
               Langsung kirim tanpa proses setujui. Lokasi stok otomatis mengikuti jenis stok
               tiap barang (Baru / Retur / Unready). Kolom bertanda * wajib diisi.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
             {/* Tempel banyak barcode/SN sekaligus */}
-            <div className="rounded-lg border border-dashed border-brand-300 bg-brand-50 p-3">
-              <div className="mb-2 text-sm font-medium text-ink-700">
+            <div className="rounded-lg border border-dashed border-white/20 bg-white/5 p-3">
+              <div className="mb-2 text-sm font-medium text-white">
                 Tempel banyak sekaligus (satu barcode per baris)
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <Label>SN (opsional, satu per baris)</Label>
+                  <Label className="text-white">SN (opsional, satu per baris)</Label>
                   <Textarea
                     rows={4}
-                    className="mt-1 font-mono text-xs"
+                    className="mt-1 border-white/15 bg-white/10 font-mono text-xs text-white placeholder:text-ink-300"
                     placeholder={"21043B16261\n5J2021031387"}
                     value={bulkSn}
                     onChange={(e) => setBulkSn(e.target.value)}
                   />
                 </div>
                 <div>
-                  <Label>Barcode (satu per baris)</Label>
+                  <Label className="text-white">Barcode (satu per baris)</Label>
                   <Textarea
                     rows={4}
-                    className="mt-1 font-mono text-xs"
+                    className="mt-1 border-white/15 bg-white/10 font-mono text-xs text-white placeholder:text-ink-300"
                     placeholder={"A0700026412\nA1100034380\nA0900011040"}
                     value={bulkBarcode}
                     onChange={(e) => setBulkBarcode(e.target.value)}
@@ -933,21 +953,21 @@ export function RequestDetailPage() {
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Button
-                  variant="outline"
+                  variant="outline" className={DARK_OUTLINE_BTN}
                   size="sm"
                   onClick={applyBulk}
                 >
                   <ClipboardPaste className="mr-1 h-4 w-4" /> Tempel ke baris
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="outline" className={DARK_OUTLINE_BTN}
                   size="sm"
                   onClick={() => setScanTarget("quick")}
                 >
                   <ScanLine className="mr-1 h-4 w-4" /> Scan Barcode
                 </Button>
               </div>
-              <p className="mt-1 text-xs text-ink-500">
+              <p className="mt-1 text-xs text-ink-300">
                 Barcode ke-1 → baris 1, ke-2 → baris 2, dst. Qty tiap baris tetap 1.
               </p>
             </div>
@@ -958,7 +978,7 @@ export function RequestDetailPage() {
                 <div
                   key={x.id}
                   className={`grid gap-3 rounded-lg border p-3 sm:grid-cols-12 sm:items-end ${
-                    selected ? "border-ink-200 bg-ink-50" : "border-amber-200 bg-amber-50/50 opacity-75"
+                    selected ? "border-white/15 bg-white/5" : "border-warn-500/25 bg-warn-500/10 opacity-75"
                   }`}
                 >
                   <div className="sm:col-span-12 flex items-start gap-2">
@@ -972,22 +992,22 @@ export function RequestDetailPage() {
                       title={selected ? "Kirim barang ini" : "Jangan kirim (stok kosong) → Sisa Belum Terkirim"}
                     />
                     <div className="flex-1">
-                      <div className="font-medium">{x.inventory_items?.name}</div>
-                      <div className="text-xs text-ink-500">
+                      <div className="font-medium text-white">{x.inventory_items?.name}</div>
+                      <div className="text-xs text-ink-300">
                         Minta: {fmt(Number(x.qty_requested ?? 0))} • Sisa: {fmt(sisa)} • Terkirim:{" "}
                         {fmt(Number(x.qty_shipped ?? 0))}
                         {x.status_aset && <span className="ml-1 font-medium">• {x.status_aset}</span>}
                       </div>
                       {!selected && (
-                        <div className="mt-1 text-xs font-medium text-amber-700">
+                        <div className="mt-1 text-xs font-medium text-warn-100">
                           ⏳ Tidak dikirim — masuk Sisa Belum Terkirim
                         </div>
                       )}
                     </div>
                   </div>
                   <div className="sm:col-span-2">
-                    <Label>Qty kirim</Label>
-                    <Input
+                    <Label className="text-white">Qty kirim</Label>
+                    <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                       type="number"
                       min="0"
                       disabled={!selected}
@@ -996,18 +1016,18 @@ export function RequestDetailPage() {
                     />
                   </div>
                   <div className="sm:col-span-3">
-                    <Label>SN (opsional)</Label>
+                    <Label className="text-white">SN (opsional)</Label>
                     <Input
                       value={quickSn[x.id] ?? ""}
                       disabled={!selected}
                       onChange={(e) => setQuickSn((p) => ({ ...p, [x.id]: e.target.value }))}
                       placeholder="Opsional"
-                      className="font-mono"
+                      className="border-white/15 bg-white/10 font-mono text-white placeholder:text-ink-300"
                     />
                   </div>
                   <div className="sm:col-span-3">
-                    <Label>No resi *</Label>
-                    <Input
+                    <Label className="text-white">No resi *</Label>
+                    <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                       value={quickResi[x.id] ?? ""}
                       disabled={!selected}
                       onChange={(e) => setQuickResi((p) => ({ ...p, [x.id]: e.target.value }))}
@@ -1015,13 +1035,13 @@ export function RequestDetailPage() {
                     />
                   </div>
                   <div className="sm:col-span-4">
-                    <Label>Barcode *</Label>
+                    <Label className="text-white">Barcode *</Label>
                     <Input
                       value={quickBarcode[x.id] ?? ""}
                       disabled={!selected}
                       onChange={(e) => setQuickBarcode((p) => ({ ...p, [x.id]: e.target.value }))}
                       placeholder="Wajib diisi"
-                      className="font-mono"
+                      className="border-white/15 bg-white/10 font-mono text-white placeholder:text-ink-300"
                     />
                   </div>
                 </div>
@@ -1030,20 +1050,20 @@ export function RequestDetailPage() {
             <Button onClick={submitQuickShip} disabled={busy}>
               <Send className="mr-1 h-4 w-4" /> Kirim
             </Button>
-            <p className="text-xs text-ink-500">
+            <p className="text-xs text-ink-300">
               Centang barang yang mau dikirim. Yang tidak dicentang (stok kosong) tidak wajib diisi
               dan otomatis masuk Sisa Belum Terkirim. Sekali klik: transaksi barang keluar dicatat
               dan stok berkurang dari lokasi yang tepat.
             </p>
           </CardContent>
-        </Card>
+        </GlassCard>
       )}
 
       {/* ===== PANEL REVIEW (Admin Gudang) ===== */}
       {!isSuperAdmin && isReviewable && (
-        <Card className="mb-4 border-info-100">
+        <GlassCard className="mb-4 border-info-500/30">
           <CardHeader>
-            <CardTitle className="font-display text-base text-ink-800">
+            <CardTitle className="font-display text-base text-white">
               Review Admin Gudang — cek stok & tentukan qty yang disetujui
             </CardTitle>
           </CardHeader>
@@ -1054,29 +1074,29 @@ export function RequestDetailPage() {
               return (
                 <div
                   key={x.id}
-                  className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
+                  className="grid gap-3 rounded-lg border border-white/15 bg-white/5 p-3 sm:grid-cols-12 sm:items-end"
                 >
                   <div className="sm:col-span-5">
-                    <div className="font-medium">{x.inventory_items?.name}</div>
-                    <div className="font-mono text-xs text-ink-500">{x.inventory_items?.sku}</div>
+                    <div className="font-medium text-white">{x.inventory_items?.name}</div>
+                    <div className="font-mono text-xs text-ink-300">{x.inventory_items?.sku}</div>
                     <div className="mt-1 text-xs">
-                      <span className="text-ink-500">Minta: {fmt(minta)}</span>
+                      <span className="text-ink-300">Minta: {fmt(minta)}</span>
                       {" • "}
-                      <span className={tersedia >= minta ? "text-brand-700" : "text-warn-600"}>
+                      <span className={tersedia >= minta ? "text-brand-200" : "text-warn-100"}>
                         Stok tersedia: {fmt(tersedia)}
                       </span>
                     </div>
                   </div>
                   <div className="sm:col-span-3">
-                    <Label>Qty disetujui</Label>
-                    <Input
+                    <Label className="text-white">Qty disetujui</Label>
+                    <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                       type="number"
                       min="0"
                       value={approved[x.id] ?? ""}
                       onChange={(e) => setApproved((p) => ({ ...p, [x.id]: e.target.value }))}
                     />
                   </div>
-                  <div className="sm:col-span-4 text-xs text-ink-500">
+                  <div className="sm:col-span-4 text-xs text-ink-300">
                     {tersedia < minta
                       ? `Stok kurang ${fmt(minta - tersedia)} — setujui sebagian, sisa otomatis masuk Sisa Belum Terkirim.`
                       : "Stok cukup untuk permintaan penuh."}
@@ -1085,13 +1105,13 @@ export function RequestDetailPage() {
               );
             })}
             <div className="space-y-1.5 pt-2">
-              <Label>Keterangan Gudang <span className="text-ink-500">(wajib bila ada yang disetujui sebagian)</span></Label>
+              <Label className="text-white">Keterangan Gudang <span className="text-ink-300">(wajib bila ada yang disetujui sebagian)</span></Label>
               <Textarea
                 rows={2}
                 value={warehouseNote}
                 onChange={(e) => setWarehouseNote(e.target.value)}
                 placeholder="cth: stok gudang hanya 3, sisanya menunggu kiriman"
-                className="text-sm"
+                className="border-white/15 bg-white/10 text-sm text-white placeholder:text-ink-300"
               />
             </div>
             <div className="flex flex-wrap gap-2 pt-2">
@@ -1103,9 +1123,9 @@ export function RequestDetailPage() {
               </Button>
             </div>
             {showReject && (
-              <div className="space-y-2 rounded-lg border border-brand-200 p-3">
-                <Label>Alasan penolakan</Label>
-                <Textarea
+              <div className="space-y-2 rounded-lg border border-brand-500/25 p-3">
+                <Label className="text-white">Alasan penolakan</Label>
+                <Textarea className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
                   placeholder="cth: stok kosong untuk semua item…"
@@ -1117,14 +1137,14 @@ export function RequestDetailPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </GlassCard>
       )}
 
       {/* ===== PANEL SETUJUI MENUNGGU STOK ===== */}
       {!isSuperAdmin && canReview && items.some((x) => x.item_status === "menunggu_stok") && (
-        <Card className="mb-4 border-info-100">
+        <GlassCard className="mb-4 border-info-500/30">
           <CardHeader>
-            <CardTitle className="font-display text-base text-ink-800">
+            <CardTitle className="font-display text-base text-white">
               Menunggu Stok — setujui saat stok sudah datang
             </CardTitle>
           </CardHeader>
@@ -1134,13 +1154,13 @@ export function RequestDetailPage() {
               .map((x) => (
                 <div
                   key={x.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/15 bg-white/5 p-3"
                 >
                   <div>
-                    <div className="font-medium">{x.inventory_items?.name}</div>
-                    <div className="text-xs text-ink-500">
+                    <div className="font-medium text-white">{x.inventory_items?.name}</div>
+                    <div className="text-xs text-ink-300">
                       Qty: {fmt(Number(x.qty_requested))}
-                      {x.notes && <span className="ml-2 text-info-600">• {x.notes}</span>}
+                      {x.notes && <span className="ml-2 text-info-100">• {x.notes}</span>}
                     </div>
                   </div>
                   <Button
@@ -1153,23 +1173,23 @@ export function RequestDetailPage() {
                 </div>
               ))}
           </CardContent>
-        </Card>
+        </GlassCard>
       )}
 
       {/* ===== PANEL PROSES (Helper) ===== */}
       {!isSuperAdmin && isProcessable && (
-        <Card className="mb-4 border-warn-100 print:hidden">
+        <GlassCard className="mb-4 border-warn-500/30 print:hidden">
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle className="font-display text-base text-ink-800">
+              <CardTitle className="font-display text-base text-white">
                 Proses Helper — isi barcode/SN lalu tandai siap
               </CardTitle>
-              <p className="mt-0.5 text-xs text-ink-500">
+              <p className="mt-0.5 text-xs text-ink-300">
                 Tips scanner USB: tekan Enter setelah scan Barcode untuk otomatis pindah ke kolom SN / baris berikutnya.
               </p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setScanTarget("proc")}>
+              <Button size="sm" variant="outline" className={DARK_OUTLINE_BTN} onClick={() => setScanTarget("proc")}>
                 <ScanLine className="mr-1 h-4 w-4" /> Scan Barcode
               </Button>
               <Button size="sm" onClick={saveAllProcessItems} disabled={busy}>
@@ -1186,18 +1206,18 @@ export function RequestDetailPage() {
                 return (
                   <div
                     key={x.id}
-                    className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
+                    className="grid gap-3 rounded-lg border border-white/15 bg-white/5 p-3 sm:grid-cols-12 sm:items-end"
                   >
                     <div className="sm:col-span-4">
-                      <div className="font-medium">{x.inventory_items?.name}</div>
-                      <div className="text-xs text-ink-500">
+                      <div className="font-medium text-white">{x.inventory_items?.name}</div>
+                      <div className="text-xs text-ink-300">
                         Qty disetujui: {fmt(Number(x.qty_approved ?? 0))}
-                        {x.status_aset && <span className="ml-2 text-info-600">• {x.status_aset}</span>}
+                        {x.status_aset && <span className="ml-2 text-info-100">• {x.status_aset}</span>}
                       </div>
                     </div>
                     <div className="sm:col-span-3">
-                      <Label>Barcode (wajib)</Label>
-                      <Input
+                      <Label className="text-white">Barcode (wajib)</Label>
+                      <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                         id={`proc-bc-${x.id}`}
                         value={p.barcode}
                         onChange={(e) =>
@@ -1214,8 +1234,8 @@ export function RequestDetailPage() {
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <Label>SN (opsional)</Label>
-                      <Input
+                      <Label className="text-white">SN (opsional)</Label>
+                      <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                         id={`proc-sn-${x.id}`}
                         value={p.sn}
                         onChange={(e) =>
@@ -1233,8 +1253,8 @@ export function RequestDetailPage() {
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <Label>Type barang</Label>
-                      <Input
+                      <Label className="text-white">Type barang</Label>
+                      <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                         value={p.type}
                         onChange={(e) =>
                           setProc((prev) => ({ ...prev, [x.id]: { ...p, type: e.target.value } }))
@@ -1245,7 +1265,7 @@ export function RequestDetailPage() {
                     <div className="flex gap-1 sm:col-span-1">
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="outline" className={DARK_OUTLINE_BTN}
                         onClick={() => saveProcessItem(x.id, false)}
                         disabled={busy}
                         title="Simpan"
@@ -1267,25 +1287,25 @@ export function RequestDetailPage() {
                 );
               })}
           </CardContent>
-        </Card>
+        </GlassCard>
       )}
 
       {/* ===== PANEL KIRIM (Admin Gudang) ===== */}
       {!isSuperAdmin && isShippable && pendingItems.length > 0 && (
-        <Card className="mb-4 border-brand-200">
+        <GlassCard className="mb-4 border-brand-500/30">
           <CardHeader>
-            <CardTitle className="font-display text-base text-ink-800">
+            <CardTitle className="font-display text-base text-white">
               Kirim Barang — catat qty kirim & no resi
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Lokasi gudang pengirim</Label>
+                <Label className="text-white">Lokasi gudang pengirim</Label>
                 <select
                   value={shipLocation}
                   onChange={(e) => setShipLocation(e.target.value)}
-                  className="w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800"
+                  className="w-full rounded-md border border-white/15 bg-white/10 px-3 py-2 text-sm text-white [color-scheme:dark]"
                 >
                   <option value="">— Pilih lokasi —</option>
                   {locations.map((l) => (
@@ -1301,18 +1321,18 @@ export function RequestDetailPage() {
               return (
                 <div
                   key={x.id}
-                  className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 sm:grid-cols-12 sm:items-end"
+                  className="grid gap-3 rounded-lg border border-white/15 bg-white/5 p-3 sm:grid-cols-12 sm:items-end"
                 >
                   <div className="sm:col-span-5">
-                    <div className="font-medium">{x.inventory_items?.name}</div>
-                    <div className="text-xs text-ink-500">
+                    <div className="font-medium text-white">{x.inventory_items?.name}</div>
+                    <div className="text-xs text-ink-300">
                       Sisa: {fmt(sisa)} • Terkirim: {fmt(Number(x.qty_shipped ?? 0))}
                       {x.barcode && <span className="font-mono"> • {x.barcode}</span>}
                     </div>
                   </div>
                   <div className="sm:col-span-2">
-                    <Label>Qty kirim</Label>
-                    <Input
+                    <Label className="text-white">Qty kirim</Label>
+                    <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                       type="number"
                       min="0"
                       value={shipQty[x.id] ?? ""}
@@ -1320,8 +1340,8 @@ export function RequestDetailPage() {
                     />
                   </div>
                   <div className="sm:col-span-5">
-                    <Label>No resi</Label>
-                    <Input
+                    <Label className="text-white">No resi</Label>
+                    <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                       value={shipResi[x.id] ?? ""}
                       onChange={(e) => setShipResi((p) => ({ ...p, [x.id]: e.target.value }))}
                       placeholder="No resi pengiriman"
@@ -1333,24 +1353,24 @@ export function RequestDetailPage() {
             <Button onClick={submitShip} disabled={busy}>
               <Send className="mr-1 h-4 w-4" /> Kirim & Catat Transaksi
             </Button>
-            <p className="text-xs text-ink-500">
+            <p className="text-xs text-ink-300">
               Pengiriman otomatis mencatat transaksi barang keluar — stok berkurang dan tercatat di
               buku besar.
             </p>
           </CardContent>
-        </Card>
+        </GlassCard>
       )}
 
       {/* ===== DAFTAR ITEM ===== */}
-      <Card>
+      <GlassCard>
         <CardHeader>
-          <CardTitle className="font-display text-base text-ink-800">Item Permintaan</CardTitle>
+          <CardTitle className="font-display text-base text-white">Item Permintaan</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-ink-50">
-                <tr className="border-b border-ink-200 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
+              <thead className="bg-white/5">
+                <tr className="border-b border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-ink-300">
                   <th className="pb-2 pr-3">Item</th>
                   <th className="pb-2 pr-3 text-right">Request</th>
                   <th className="pb-2 pr-3 text-right">Disetujui</th>
@@ -1401,24 +1421,24 @@ export function RequestDetailPage() {
                   }
                   const sisa = Number(x.qty_requested ?? 0) - Number(x.qty_shipped ?? 0);
                   return (
-                  <tr key={x.id} className="border-b border-ink-200 transition-colors hover:bg-brand-50/40">
+                  <tr key={x.id} className="border-b border-white/10 transition-colors hover:bg-white/5">
                     <td className="py-2 pr-3">
-                      <div className="font-medium">{x.inventory_items?.name}</div>
-                      <div className="font-mono text-xs text-ink-500">{x.inventory_items?.sku}</div>
+                      <div className="font-medium text-white">{x.inventory_items?.name}</div>
+                      <div className="font-mono text-xs text-ink-300">{x.inventory_items?.sku}</div>
                     </td>
                     <td className="tnum py-2 pr-3 text-right">{fmt(Number(x.qty_requested))}</td>
                     <td className="tnum py-2 pr-3 text-right">
                       {x.qty_approved != null ? fmt(Number(x.qty_approved)) : "—"}
                     </td>
                     <td className="tnum py-2 pr-3 text-right">{fmt(Number(x.qty_shipped))}</td>
-                    <td className={`tnum py-2 pr-3 text-right font-semibold ${sisa > 0 ? "text-warn-700" : "text-ink-400"}`}>
+                    <td className={`tnum py-2 pr-3 text-right font-semibold ${sisa > 0 ? "text-warn-100" : "text-ink-300"}`}>
                       {fmt(sisa)}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">
                       {x.barcode ? (
                         <div className="space-y-0.5">
                           {x.barcode.split("\n").map((b, i) => (
-                            <div key={i} className="text-ink-800">{b.trim()}</div>
+                            <div key={i} className="text-white">{b.trim()}</div>
                           ))}
                         </div>
                       ) : "—"}
@@ -1426,7 +1446,7 @@ export function RequestDetailPage() {
                     <td className="py-2 pr-3 font-mono text-xs">
                       {snList.length > 0 ? (
                         <div className="space-y-0.5">
-                          {snList.map((s, i) => <div key={i} className="text-ink-800">{s}</div>)}
+                          {snList.map((s, i) => <div key={i} className="text-white">{s}</div>)}
                         </div>
                       ) : "—"}
                     </td>
@@ -1434,7 +1454,7 @@ export function RequestDetailPage() {
                       {x.resi ? (
                         <div className="space-y-0.5">
                           {x.resi.split("\n").map((r, i) => (
-                            <div key={i} className="text-ink-800">{r.trim()}</div>
+                            <div key={i} className="text-white">{r.trim()}</div>
                           ))}
                         </div>
                       ) : "—"}
@@ -1442,21 +1462,21 @@ export function RequestDetailPage() {
                     <td className="py-2 pr-3 font-mono text-xs">
                       {srList.length > 0 ? (
                         <div className="space-y-0.5">
-                          {[...new Set(srList)].map((s, i) => <div key={i} className="text-warn-700">{s}</div>)}
+                          {[...new Set(srList)].map((s, i) => <div key={i} className="text-warn-100">{s}</div>)}
                         </div>
                       ) : (
-                        <Badge variant={requestItemStatusVariant[x.item_status] ?? "default"}>
+                        <Badge variant={requestItemStatusVariant[x.item_status] ?? "default"} className={badgeDarkClass[requestItemStatusVariant[x.item_status] ?? "default"]}>
                           {REQUEST_ITEM_STATUS_LABELS[x.item_status]}
                         </Badge>
                       )}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">
-                      {x.status_aset ? <span className="text-info-700">{x.status_aset}</span> : "—"}
+                      {x.status_aset ? <span className="text-info-100">{x.status_aset}</span> : "—"}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">
                       {ketList.length > 0 ? (
                         <div className="space-y-0.5">
-                          {ketList.map((k, i) => <div key={i} className="text-ink-500">{k}</div>)}
+                          {ketList.map((k, i) => <div key={i} className="text-ink-300">{k}</div>)}
                         </div>
                       ) : "—"}
                     </td>
@@ -1466,7 +1486,7 @@ export function RequestDetailPage() {
                           {Math.round(Number(x.qty_approved ?? x.qty_requested ?? 0)) > 1 &&
                             Number(x.qty_shipped ?? 0) === 0 && (
                               <Button
-                                variant="outline"
+                                variant="outline" className={DARK_OUTLINE_BTN}
                                 size="sm"
                                 onClick={() => splitItemRow(x)}
                                 disabled={splitting}
@@ -1475,7 +1495,7 @@ export function RequestDetailPage() {
                                 <Scissors className="mr-1 h-3 w-3" /> Split
                               </Button>
                             )}
-                          <Button variant="outline" size="sm" onClick={() => openItemEdit(x)}>
+                          <Button variant="outline" className={DARK_OUTLINE_BTN} size="sm" onClick={() => openItemEdit(x)}>
                             <Pencil className="mr-1 h-3 w-3" /> Edit
                           </Button>
                         </div>
@@ -1487,9 +1507,9 @@ export function RequestDetailPage() {
                   return (
                     <>
                       {terkirim.length > 0 && (
-                        <tr className="bg-emerald-50">
+                        <tr className="bg-ok-500/15">
                           <td colSpan={colSpan} className="py-2 pr-3">
-                            <span className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                            <span className="text-xs font-bold uppercase tracking-wide text-ok-100">
                               ✅ Sudah Terkirim ({terkirim.length} item)
                             </span>
                           </td>
@@ -1497,9 +1517,9 @@ export function RequestDetailPage() {
                       )}
                       {terkirim.map(renderRow)}
                       {belum.length > 0 && (
-                        <tr className="bg-amber-50">
+                        <tr className="bg-warn-500/15">
                           <td colSpan={colSpan} className="py-2 pr-3">
-                            <span className="text-xs font-bold uppercase tracking-wide text-amber-700">
+                            <span className="text-xs font-bold uppercase tracking-wide text-warn-100">
                               ⏳ Sisa Belum Terkirim ({belum.length} item)
                             </span>
                           </td>
@@ -1513,7 +1533,7 @@ export function RequestDetailPage() {
             </table>
           </div>
         </CardContent>
-      </Card>
+      </GlassCard>
 
       {/* Modal scan barcode kamera HP (Kirim Cepat & Proses Helper) */}
       <BarcodeScanner

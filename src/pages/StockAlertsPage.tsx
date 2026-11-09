@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { AlertTriangle, Siren } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
-import { alertLevelVariant } from "../lib/statusColors";
+import { alertLevelVariant, badgeDarkClass } from "../lib/statusColors";
+import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
-import { Card, CardContent } from "../components/ui/card";
+import { CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTable } from "../components/DataTable";
@@ -26,6 +28,24 @@ interface AlertRow {
 
 const fmt = (n: number) => n.toLocaleString("id-ID", { maximumFractionDigits: 3 });
 
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
+
+
 const alertColumns: ColumnDef<AlertRow, unknown>[] = [
   { header: "SKU", accessorKey: "sku" },
   {
@@ -35,7 +55,7 @@ const alertColumns: ColumnDef<AlertRow, unknown>[] = [
       <div>
         <div className="font-medium">{row.original.name}</div>
         {row.original.brand && (
-          <div className="text-xs text-ink-500">{row.original.brand}</div>
+          <div className="text-xs text-ink-300">{row.original.brand}</div>
         )}
       </div>
     ),
@@ -55,7 +75,10 @@ const alertColumns: ColumnDef<AlertRow, unknown>[] = [
     header: "Status",
     accessorKey: "level",
     cell: ({ row }) => (
-      <Badge variant={alertLevelVariant[row.original.level]}>
+      <Badge
+        variant={alertLevelVariant[row.original.level]}
+        className={badgeDarkClass[alertLevelVariant[row.original.level]]}
+      >
         {row.original.level === "kritis" ? "Kritis" : "Waspada"}
       </Badge>
     ),
@@ -199,40 +222,40 @@ export function StockAlertsPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <GlassCard>
           <CardContent className="flex items-center gap-4 p-5">
-            <div className="rounded-xl bg-brand-50 p-2.5 text-brand-600 ring-1 ring-brand-200">
+            <div className="rounded-xl bg-brand-500/15 p-2.5 text-brand-200 ring-1 ring-brand-500/25">
               <Siren className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-medium uppercase tracking-widest text-ink-500">
+              <p className="text-xs font-medium uppercase tracking-widest text-ink-300">
                 Kritis
               </p>
-              <p className="tnum font-display text-2xl font-bold text-ink-800">
+              <p className="tnum font-display text-2xl font-bold text-white">
                 {counts.kritis.toLocaleString("id-ID")}
               </p>
             </div>
           </CardContent>
-        </Card>
-        <Card>
+        </GlassCard>
+        <GlassCard>
           <CardContent className="flex items-center gap-4 p-5">
-            <div className="rounded-xl bg-warn-50 p-2.5 text-warn-600 ring-1 ring-warn-100">
+            <div className="rounded-xl bg-warn-500/15 p-2.5 text-warn-100 ring-1 ring-warn-500/25">
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-medium uppercase tracking-widest text-ink-500">
+              <p className="text-xs font-medium uppercase tracking-widest text-ink-300">
                 Waspada
               </p>
-              <p className="tnum font-display text-2xl font-bold text-ink-800">
+              <p className="tnum font-display text-2xl font-bold text-white">
                 {counts.waspada.toLocaleString("id-ID")}
               </p>
             </div>
           </CardContent>
-        </Card>
+        </GlassCard>
       </div>
 
       <div className="mt-6 flex justify-end">
-        <Button variant="outline" onClick={handleExport} disabled={rows.length === 0}>
+        <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={handleExport} disabled={rows.length === 0}>
           Export CSV
         </Button>
       </div>
@@ -251,16 +274,19 @@ export function StockAlertsPage() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="font-medium">{row.name}</div>
-                  <div className="font-mono text-xs text-ink-500">{row.sku}</div>
+                  <div className="font-mono text-xs text-ink-300">{row.sku}</div>
                   {row.brand && (
-                    <div className="text-xs text-ink-500">{row.brand}</div>
+                    <div className="text-xs text-ink-300">{row.brand}</div>
                   )}
                 </div>
-                <Badge variant={alertLevelVariant[row.level]}>
+                <Badge
+                  variant={alertLevelVariant[row.level]}
+                  className={badgeDarkClass[alertLevelVariant[row.level]]}
+                >
                   {row.level === "kritis" ? "Kritis" : "Waspada"}
                 </Badge>
               </div>
-              <div className="text-xs text-ink-500">{row.locations}</div>
+              <div className="text-xs text-ink-300">{row.locations}</div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                 <span>
                   Stok:{" "}

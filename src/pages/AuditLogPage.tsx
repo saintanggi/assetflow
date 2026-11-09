@@ -4,6 +4,7 @@ import { Eye } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { formatDateTime } from "../lib/format";
+import { badgeDarkClass } from "../lib/statusColors";
 import { DataTable } from "../components/DataTable";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
@@ -80,7 +81,11 @@ export function AuditLogPage() {
       {
         id: "aksi",
         header: "Aksi",
-        cell: ({ row }) => <Badge variant="secondary">{row.original.action}</Badge>,
+        cell: ({ row }) => (
+          <Badge variant="secondary" className={badgeDarkClass.secondary}>
+            {row.original.action}
+          </Badge>
+        ),
       },
       {
         id: "entitas",
@@ -98,7 +103,12 @@ export function AuditLogPage() {
         id: "detail",
         header: "Detail",
         cell: ({ row }) => (
-          <Button variant="ghost" size="sm" onClick={() => setSelected(row.original)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-ink-300 hover:bg-white/10 hover:text-white"
+            onClick={() => setSelected(row.original)}
+          >
             <Eye className="mr-1 h-4 w-4" /> Lihat
           </Button>
         ),
@@ -116,21 +126,23 @@ export function AuditLogPage() {
 
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:max-w-2xl">
         <div className="space-y-1.5">
-          <Label htmlFor="flt-aksi">Filter aksi</Label>
+          <Label htmlFor="flt-aksi" className="text-ink-100">Filter aksi</Label>
           <Input
             id="flt-aksi"
             value={aksiFilter}
             onChange={(e) => setAksiFilter(e.target.value)}
             placeholder="cth. create, update, delete…"
+            className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="flt-entitas">Filter tipe entitas</Label>
+          <Label htmlFor="flt-entitas" className="text-ink-100">Filter tipe entitas</Label>
           <Input
             id="flt-entitas"
             value={entitasFilter}
             onChange={(e) => setEntitasFilter(e.target.value)}
             placeholder="cth. assets, inventory_items…"
+            className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
           />
         </div>
       </div>

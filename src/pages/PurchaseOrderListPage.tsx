@@ -4,13 +4,17 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
-import { poStatusVariant } from "../lib/statusColors";
+import { badgeDarkClass, poStatusVariant } from "../lib/statusColors";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTable } from "../components/DataTable";
 
 export type PoStatus = "draft" | "ordered" | "received_partial" | "received" | "cancelled";
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export const PO_STATUS_LABELS: Record<PoStatus, string> = {
   draft: "Draft",
@@ -38,7 +42,7 @@ const poColumns: ColumnDef<PoRow, unknown>[] = [
     header: "No. PO",
     accessorKey: "po_number",
     cell: ({ row }) => (
-      <Link to={`/pembelian/${row.original.id}`} className="font-mono font-semibold text-brand-700 hover:underline">
+      <Link to={`/pembelian/${row.original.id}`} className="font-mono font-semibold text-brand-200 hover:underline">
         {row.original.po_number}
       </Link>
     ),
@@ -56,7 +60,7 @@ const poColumns: ColumnDef<PoRow, unknown>[] = [
     header: "Status",
     accessorKey: "status",
     cell: ({ row }) => (
-      <Badge variant={poStatusVariant[row.original.status]}>{PO_STATUS_LABELS[row.original.status]}</Badge>
+      <Badge variant={poStatusVariant[row.original.status]} className={badgeDarkClass[poStatusVariant[row.original.status]]}>{PO_STATUS_LABELS[row.original.status]}</Badge>
     ),
   },
   {
@@ -169,6 +173,7 @@ export function PurchaseOrderListPage() {
             key={t.id}
             variant={tab === t.id ? "default" : "outline"}
             size="sm"
+            className={tab === t.id ? undefined : DARK_OUTLINE_BTN}
             onClick={() => setTab(t.id)}
           >
             {t.label}

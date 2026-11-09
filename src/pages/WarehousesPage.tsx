@@ -3,6 +3,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Plus, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { badgeDarkClass } from "../lib/statusColors";
 import { CrudPage } from "../components/CrudPage";
 import { DataTable } from "../components/DataTable";
 import { PageHeader } from "../components/PageHeader";
@@ -155,7 +156,7 @@ function LocationsManager() {
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <Badge variant={row.original.is_active ? "success" : "secondary"}>
+          <Badge variant={row.original.is_active ? "success" : "secondary"} className={badgeDarkClass[row.original.is_active ? "success" : "secondary"]}>
             {row.original.is_active ? "Aktif" : "Nonaktif"}
           </Badge>
         ),
@@ -167,17 +168,18 @@ function LocationsManager() {
           const r = row.original;
           return (
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" title="Ubah" onClick={() => openEdit(r)}>
+              <Button variant="ghost" size="icon" title="Ubah" className="text-ink-300 hover:bg-white/10 hover:text-white" onClick={() => openEdit(r)}>
                 <Pencil className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 title={r.is_active ? "Nonaktifkan" : "Aktifkan"}
+                className="text-ink-300 hover:bg-white/10 hover:text-white"
                 onClick={() => void toggleActive(r)}
               >
                 <Power
-                  className={`h-4 w-4 ${r.is_active ? "text-warn-600" : "text-ok-600"}`}
+                  className={`h-4 w-4 ${r.is_active ? "text-warn-100" : "text-ok-100"}`}
                 />
                 {r.is_active ? "Nonaktif" : "Aktif"}
               </Button>
@@ -185,9 +187,10 @@ function LocationsManager() {
                 variant="ghost"
                 size="icon"
                 title="Hapus"
+                className="text-ink-300 hover:bg-white/10 hover:text-white"
                 onClick={() => setDeleteTarget(r)}
               >
-                <Trash2 className="h-4 w-4 text-brand-600" />
+                <Trash2 className="h-4 w-4 text-brand-200" />
               </Button>
             </div>
           );
@@ -313,7 +316,7 @@ export function WarehousesPage() {
             key: "is_active",
             label: "Status",
             render: (row) => (
-              <Badge variant={row.is_active ? "success" : "secondary"}>
+              <Badge variant={row.is_active ? "success" : "secondary"} className={badgeDarkClass[row.is_active ? "success" : "secondary"]}>
                 {row.is_active ? "Aktif" : "Nonaktif"}
               </Badge>
             ),

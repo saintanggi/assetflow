@@ -3,6 +3,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { KeyRound, Plus, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { badgeDarkClass } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { PERMISSIONS, PUBLISH_PERMISSION } from "../lib/permissions";
 import type { Profile, Role } from "../types/database";
@@ -23,7 +24,11 @@ import { Label } from "../components/ui/label";
 import { cn } from "../lib/utils";
 
 const SELECT_CLASS =
-  "flex h-10 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50";
+  "flex h-10 w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white [color-scheme:dark] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50";
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 interface PermRow {
   id: string;
@@ -207,9 +212,9 @@ export function UsersPage() {
         cell: ({ row }) => {
           const roleName = row.original.roles?.name;
           return roleName === "super_admin" ? (
-            <Badge variant="default">Super Admin</Badge>
+            <Badge variant="default" className={badgeDarkClass.default}>Super Admin</Badge>
           ) : (
-            <Badge variant="secondary">Admin</Badge>
+            <Badge variant="secondary" className={badgeDarkClass.secondary}>Admin</Badge>
           );
         },
       },
@@ -217,7 +222,7 @@ export function UsersPage() {
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <Badge variant={row.original.is_active ? "success" : "secondary"}>
+          <Badge variant={row.original.is_active ? "success" : "secondary"} className={badgeDarkClass[row.original.is_active ? "success" : "secondary"]}>
             {row.original.is_active ? "Aktif" : "Nonaktif"}
           </Badge>
         ),
@@ -231,7 +236,7 @@ export function UsersPage() {
           const canChangeRole = isSuperAdmin || roleName !== "super_admin";
           return (
             <div className="flex flex-wrap items-center gap-1">
-              <Button variant="outline" size="sm" onClick={() => void toggleActive(r)}>
+              <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={() => void toggleActive(r)}>
                 {r.is_active ? "Nonaktifkan" : "Aktifkan"}
               </Button>
               {canChangeRole ? (
@@ -247,9 +252,9 @@ export function UsersPage() {
                   </option>
                 </select>
               ) : (
-                <Badge variant="default">Super Admin</Badge>
+                <Badge variant="default" className={badgeDarkClass.default}>Super Admin</Badge>
               )}
-              <Button variant="ghost" size="sm" onClick={() => void openPermDialog(r)}>
+              <Button variant="ghost" size="sm" className="text-ink-300 hover:bg-white/10 hover:text-white" onClick={() => void openPermDialog(r)}>
                 <KeyRound className="mr-1 h-4 w-4" /> Kelola Izin
               </Button>
             </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { KeyRound, Plus, Power } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { badgeDarkClass } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
@@ -32,6 +33,10 @@ const ROLE_LABELS: Record<string, string> = {
   admin_gudang: "Admin Gudang",
   helper: "Helper Gudang",
 };
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function UserManagementPage() {
   const { isSuperAdmin } = useAuth();
@@ -149,7 +154,7 @@ export function UserManagementPage() {
 
   if (!isSuperAdmin) {
     return (
-      <div className="py-20 text-center text-ink-500">
+      <div className="py-20 text-center text-ink-300">
         Hanya Super Admin yang bisa mengakses halaman ini.
       </div>
     );
@@ -157,13 +162,13 @@ export function UserManagementPage() {
 
   const columns: ColumnDef<Account, unknown>[] = [
     { header: "Username", accessorKey: "username",
-      cell: ({ row }) => <span className="font-mono text-sm text-brand-700">{row.original.username}</span> },
+      cell: ({ row }) => <span className="font-mono text-sm text-brand-200">{row.original.username}</span> },
     { header: "Nama", accessorKey: "display_name" },
     { header: "Role", accessorKey: "role",
-      cell: ({ row }) => <Badge>{ROLE_LABELS[row.original.role] ?? row.original.role}</Badge> },
+      cell: ({ row }) => <Badge className={badgeDarkClass.default}>{ROLE_LABELS[row.original.role] ?? row.original.role}</Badge> },
     { header: "Status", accessorKey: "is_active",
       cell: ({ row }) => (
-        <Badge variant={row.original.is_active ? "success" : "destructive"}>
+        <Badge variant={row.original.is_active ? "success" : "destructive"} className={badgeDarkClass[row.original.is_active ? "success" : "destructive"]}>
           {row.original.is_active ? "Aktif" : "Nonaktif"}
         </Badge>
       ) },
@@ -171,10 +176,10 @@ export function UserManagementPage() {
       header: "", id: "aksi",
       cell: ({ row }) => (
         <div className="flex gap-1">
-          <Button variant="outline" size="sm" onClick={() => setResetUser(row.original)} title="Reset password">
+          <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={() => setResetUser(row.original)} title="Reset password">
             <KeyRound className="h-3 w-3" />
           </Button>
-          <Button variant="outline" size="sm" onClick={() => toggleActive(row.original)} title={row.original.is_active ? "Nonaktifkan" : "Aktifkan"}>
+          <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={() => toggleActive(row.original)} title={row.original.is_active ? "Nonaktifkan" : "Aktifkan"}>
             <Power className="h-3 w-3" />
           </Button>
         </div>

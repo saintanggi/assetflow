@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
+import { badgeDarkClass } from "../lib/statusColors";
 import { formatDate, formatDateTime, formatQty } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
@@ -12,7 +15,7 @@ import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
-import { Card, CardContent } from "../components/ui/card";
+import { CardContent } from "../components/ui/card";
 import { exportToCsv } from "../lib/csv";
 import {
   Dialog,
@@ -54,6 +57,23 @@ const STATUS_BADGE: Record<TransactionStatus, "success" | "destructive" | "warni
   posted: "success",
   reversed: "destructive",
 };
+
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function TransactionHistoryPage() {
   const { hasPermission, isSuperAdmin } = useAuth();
@@ -151,7 +171,7 @@ export function TransactionHistoryPage() {
       cell: ({ row }) => (
         <div>
           <div className="font-medium">{row.original.item?.name ?? "—"}</div>
-          <div className="font-mono text-xs text-ink-500">{row.original.item?.sku ?? ""}</div>
+          <div className="font-mono text-xs text-ink-300">{row.original.item?.sku ?? ""}</div>
         </div>
       ),
     },
@@ -165,7 +185,7 @@ export function TransactionHistoryPage() {
       id: "tipe",
       cell: ({ row }) =>
         row.original.tx ? (
-          <Badge variant={TYPE_BADGE[row.original.tx.type]}>
+          <Badge variant={TYPE_BADGE[row.original.tx.type]} className={badgeDarkClass[TYPE_BADGE[row.original.tx.type]]}>
             {TRANSACTION_TYPE_LABELS[row.original.tx.type]}
           </Badge>
         ) : (
@@ -183,7 +203,7 @@ export function TransactionHistoryPage() {
       header: "No Dokumen",
       id: "dok",
       cell: ({ row }) => (
-        <span className="font-mono text-xs text-ink-500">{row.original.tx?.doc_number ?? "—"}</span>
+        <span className="font-mono text-xs text-ink-300">{row.original.tx?.doc_number ?? "—"}</span>
       ),
     },
   ];
@@ -345,7 +365,7 @@ export function TransactionHistoryPage() {
       header: "Tipe",
       accessorKey: "type",
       cell: ({ row }) => (
-        <Badge variant={TYPE_BADGE[row.original.type]}>
+        <Badge variant={TYPE_BADGE[row.original.type]} className={badgeDarkClass[TYPE_BADGE[row.original.type]]}>
           {TRANSACTION_TYPE_LABELS[row.original.type]}
         </Badge>
       ),
@@ -354,7 +374,7 @@ export function TransactionHistoryPage() {
       header: "Status",
       accessorKey: "status",
       cell: ({ row }) => (
-        <Badge variant={STATUS_BADGE[row.original.status]}>
+        <Badge variant={STATUS_BADGE[row.original.status]} className={badgeDarkClass[STATUS_BADGE[row.original.status]]}>
           {TRANSACTION_STATUS_LABELS[row.original.status]}
         </Badge>
       ),
@@ -371,7 +391,7 @@ export function TransactionHistoryPage() {
           : "—";
         return (
           <span className="text-sm">
-            {src} <span className="text-ink-500">→</span> {dst}
+            {src} <span className="text-ink-300">→</span> {dst}
           </span>
         );
       },
@@ -386,7 +406,7 @@ export function TransactionHistoryPage() {
       header: "Aksi",
       id: "aksi",
       cell: ({ row }) => (
-        <Button variant="outline" size="sm" onClick={() => openDetail(row.original)}>
+        <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={() => openDetail(row.original)}>
           Detail
         </Button>
       ),
@@ -400,7 +420,7 @@ export function TransactionHistoryPage() {
         description="Daftar seluruh transaksi persediaan beserta detailnya"
       />
 
-      <Card>
+      <GlassCard>
         <CardContent className="space-y-4 pt-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-2">
@@ -408,8 +428,8 @@ export function TransactionHistoryPage() {
                 onClick={() => switchView("dokumen")}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                   view === "dokumen"
-                    ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
-                    : "bg-white text-ink-600 ring-1 ring-ink-200 hover:bg-ink-50"
+                    ? "bg-brand-500/15 text-brand-100 ring-1 ring-brand-500/25"
+                    : "bg-white/5 text-ink-300 ring-1 ring-white/15 hover:bg-white/10"
                 }`}
               >
                 Per Dokumen
@@ -418,26 +438,27 @@ export function TransactionHistoryPage() {
                 onClick={() => switchView("baris")}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                   view === "baris"
-                    ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
-                    : "bg-white text-ink-600 ring-1 ring-ink-200 hover:bg-ink-50"
+                    ? "bg-brand-500/15 text-brand-100 ring-1 ring-brand-500/25"
+                    : "bg-white/5 text-ink-300 ring-1 ring-white/15 hover:bg-white/10"
                 }`}
               >
                 Rincian per Barang
               </button>
             </div>
             {view === "baris" && (
-              <Button variant="outline" size="sm" onClick={handleExportLines}>
+              <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={handleExportLines}>
                 Export CSV
               </Button>
             )}
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="w-full space-y-1.5 sm:max-w-xs">
-              <Label htmlFor="filter-type">Tipe</Label>
+              <Label htmlFor="filter-type" className="text-ink-100">Tipe</Label>
               <Select
                 id="filter-type"
                 placeholder="Semua tipe"
                 value={typeFilter}
+                className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                 onValueChange={setTypeFilter}
                 options={Object.entries(TRANSACTION_TYPE_LABELS).map(
                   ([value, label]) => ({ value, label })
@@ -445,11 +466,12 @@ export function TransactionHistoryPage() {
               />
             </div>
             <div className="w-full space-y-1.5 sm:max-w-xs">
-              <Label htmlFor="filter-status">Status</Label>
+              <Label htmlFor="filter-status" className="text-ink-100">Status</Label>
               <Select
                 id="filter-status"
                 placeholder="Semua status"
                 value={statusFilter}
+                className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                 onValueChange={setStatusFilter}
                 options={Object.entries(TRANSACTION_STATUS_LABELS).map(
                   ([value, label]) => ({ value, label })
@@ -478,7 +500,7 @@ export function TransactionHistoryPage() {
             />
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <Dialog open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
         {selected && (

@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
+import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Download, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
+import { badgeDarkClass } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { formatDate, formatQty } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
 import { PageHeader } from "../components/PageHeader";
 import { DataTable } from "../components/DataTable";
 import { Badge } from "../components/ui/badge";
-import { Card, CardContent } from "../components/ui/card";
+import { CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Select } from "../components/ui/select";
 import { Label } from "../components/ui/label";
@@ -53,6 +56,23 @@ function classifyJenisStok(code: string): { label: string; variant: "success" | 
   if (c.includes("BARU")) return { label: "Baru", variant: "success" };
   return null;
 }
+
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function TransactionLogPage() {
   const { isSuperAdmin } = useAuth();
@@ -249,9 +269,9 @@ export function TransactionLogPage() {
       id: "in",
       cell: ({ row }) =>
         row.original.qtyChange > 0 ? (
-          <span className="tnum font-semibold text-ok-600">+{formatQty(row.original.qtyChange)}</span>
+          <span className="tnum font-semibold text-ok-100">+{formatQty(row.original.qtyChange)}</span>
         ) : (
-          <span className="text-ink-500">—</span>
+          <span className="text-ink-300">—</span>
         ),
     },
     {
@@ -259,9 +279,9 @@ export function TransactionLogPage() {
       id: "out",
       cell: ({ row }) =>
         row.original.qtyChange < 0 ? (
-          <span className="tnum font-semibold text-brand-600">-{formatQty(Math.abs(row.original.qtyChange))}</span>
+          <span className="tnum font-semibold text-brand-200">-{formatQty(Math.abs(row.original.qtyChange))}</span>
         ) : (
-          <span className="text-ink-500">—</span>
+          <span className="text-ink-300">—</span>
         ),
     },
     {
@@ -270,11 +290,11 @@ export function TransactionLogPage() {
       cell: ({ row }) => {
         const info = classifyJenisStok(row.original.locationCode);
         return info ? (
-          <Badge variant={info.variant} title={row.original.location}>
+          <Badge variant={info.variant} className={badgeDarkClass[info.variant]} title={row.original.location}>
             {info.label}
           </Badge>
         ) : (
-          <span className="text-ink-400" title={row.original.location}>
+          <span className="text-ink-300" title={row.original.location}>
             —
           </span>
         );
@@ -289,7 +309,7 @@ export function TransactionLogPage() {
       header: "Keterangan",
       accessorKey: "notes",
       cell: ({ row }) => (
-        <span className="block max-w-56 truncate text-ink-500" title={row.original.notes || row.original.docNumber}>
+        <span className="block max-w-56 truncate text-ink-300" title={row.original.notes || row.original.docNumber}>
           {row.original.notes || row.original.docNumber || "—"}
         </span>
       ),
@@ -309,6 +329,7 @@ export function TransactionLogPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className={DARK_OUTLINE_BTN}
                   title="Koreksi jenis stok"
                   onClick={() => {
                     setEditRow(row.original);
@@ -322,7 +343,7 @@ export function TransactionLogPage() {
                   variant="outline"
                   size="sm"
                   title="Hapus log transaksi (stok dikembalikan)"
-                  className="text-red-600 hover:text-red-700"
+                  className={cn(DARK_OUTLINE_BTN, "text-brand-200 hover:text-brand-100")}
                   onClick={() => setDeleteRow(row.original)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -414,54 +435,54 @@ export function TransactionLogPage() {
         title="Log Transaksi"
         description="Buku kas pergerakan barang — setiap baris IN/OUT tercatat detail."
         actions={
-          <Button variant="outline" size="sm" onClick={handleExport}>
+          <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={handleExport}>
             <Download className="mr-1 h-4 w-4" /> Export CSV
           </Button>
         }
       />
 
       <div className="grid grid-cols-3 gap-3">
-        <Card>
+        <GlassCard>
           <CardContent className="pt-4">
-            <p className="text-xs text-ink-500">TOTAL IN</p>
-            <p className="tnum font-display text-xl font-bold text-ok-600">+{formatQty(totalIn)}</p>
+            <p className="text-xs text-ink-300">TOTAL IN</p>
+            <p className="tnum font-display text-xl font-bold text-ok-100">+{formatQty(totalIn)}</p>
           </CardContent>
-        </Card>
-        <Card>
+        </GlassCard>
+        <GlassCard>
           <CardContent className="pt-4">
-            <p className="text-xs text-ink-500">TOTAL OUT</p>
-            <p className="tnum font-display text-xl font-bold text-brand-600">-{formatQty(totalOut)}</p>
+            <p className="text-xs text-ink-300">TOTAL OUT</p>
+            <p className="tnum font-display text-xl font-bold text-brand-200">-{formatQty(totalOut)}</p>
           </CardContent>
-        </Card>
-        <Card>
+        </GlassCard>
+        <GlassCard>
           <CardContent className="pt-4">
-            <p className="text-xs text-ink-500">SELISIH IN − OUT</p>
-            <p className={`tnum font-display text-xl font-bold ${totalIn - totalOut >= 0 ? "text-warn-600" : "text-brand-600"}`}>
+            <p className="text-xs text-ink-300">SELISIH IN − OUT</p>
+            <p className={`tnum font-display text-xl font-bold ${totalIn - totalOut >= 0 ? "text-warn-100" : "text-brand-200"}`}>
               {totalIn - totalOut >= 0 ? "+" : ""}{formatQty(totalIn - totalOut)}
             </p>
           </CardContent>
-        </Card>
+        </GlassCard>
       </div>
 
-      <Card>
+      <GlassCard>
         <CardContent className="space-y-4 pt-6">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm text-ink-500">Filter:</span>
+            <span className="text-sm text-ink-300">Filter:</span>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="h-9 rounded-lg border border-ink-200 bg-ink-100 px-3 text-sm text-ink-800"
+              className="h-9 rounded-lg border border-white/15 bg-white/10 px-3 text-sm text-white [color-scheme:dark]"
             />
-            <span className="text-sm text-ink-500">s/d</span>
+            <span className="text-sm text-ink-300">s/d</span>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="h-9 rounded-lg border border-ink-200 bg-ink-100 px-3 text-sm text-ink-800"
+              className="h-9 rounded-lg border border-white/15 bg-white/10 px-3 text-sm text-white [color-scheme:dark]"
             />
             {(dateFrom || dateTo || jenis || jenisStok) && (
-              <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setJenis(""); setJenisStok(""); }}>
+              <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={() => { setDateFrom(""); setDateTo(""); setJenis(""); setJenisStok(""); }}>
                 Reset
               </Button>
             )}
@@ -470,6 +491,7 @@ export function TransactionLogPage() {
                 <Select
                   placeholder="Jenis stok: Semua"
                   value={jenisStok}
+                  className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                   onValueChange={setJenisStok}
                   options={[
                     { value: "baru", label: "Stok Baru" },
@@ -482,6 +504,7 @@ export function TransactionLogPage() {
                 <Select
                   placeholder="Semua IN & OUT"
                   value={jenis}
+                  className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                   onValueChange={setJenis}
                   options={[
                     { value: "in", label: "IN saja" },
@@ -501,7 +524,7 @@ export function TransactionLogPage() {
             emptyDescription="Belum ada pergerakan barang pada filter saat ini."
           />
         </CardContent>
-      </Card>
+      </GlassCard>
 
       {/* Dialog koreksi jenis stok (khusus super admin) */}
       <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>

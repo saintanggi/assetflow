@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeftRight,
@@ -13,19 +14,33 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { badgeDarkClass } from "../lib/statusColors";
+import { cn } from "../lib/utils";
 import { formatDateTime, formatQty, formatRupiah, timeAgo } from "../lib/format";
 import { StatCard } from "../components/StatCard";
 import { PageHeader } from "../components/PageHeader";
 import { Skeleton } from "../components/ui/skeleton";
 import { Badge } from "../components/ui/badge";
 import {
-  Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
 import { EmptyState } from "../components/EmptyState";
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
 
 interface AuditRow {
   id: string;
@@ -215,31 +230,31 @@ export function SuperAdminDashboardPage() {
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <Card>
+        <GlassCard>
           <CardHeader>
-            <CardTitle className="text-base">Aktivitas Terakhir</CardTitle>
-            <CardDescription>5 kejadian terbaru di audit log</CardDescription>
+            <CardTitle className="text-base text-white">Aktivitas Terakhir</CardTitle>
+            <CardDescription className="text-ink-300">5 kejadian terbaru di audit log</CardDescription>
           </CardHeader>
           <CardContent>
             {audit.length === 0 ? (
-              <EmptyState title="Belum ada aktivitas" description="Audit log masih kosong." />
+              <EmptyState dark title="Belum ada aktivitas" description="Audit log masih kosong." />
             ) : (
-              <ul className="divide-y divide-ink-200">
+              <ul className="divide-y divide-white/10">
                 {audit.map((row) => (
                   <li key={row.id} className="flex items-start justify-between gap-3 py-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink-800">
+                      <p className="truncate text-sm font-medium text-white">
                         {row.action}
-                        <span className="ml-2 font-normal text-ink-500">
+                        <span className="ml-2 font-normal text-ink-300">
                           {row.entity_type}
                           {row.entity_id ? ` • ${row.entity_id.slice(0, 8)}` : ""}
                         </span>
                       </p>
-                      <p className="mt-0.5 truncate text-xs text-ink-500">
+                      <p className="mt-0.5 truncate text-xs text-ink-300">
                         {auditActor(row)}
                       </p>
                     </div>
-                    <span className="shrink-0 text-xs text-ink-500" title={formatDateTime(row.created_at)}>
+                    <span className="shrink-0 text-xs text-ink-300" title={formatDateTime(row.created_at)}>
                       {timeAgo(row.created_at)}
                     </span>
                   </li>
@@ -247,35 +262,35 @@ export function SuperAdminDashboardPage() {
               </ul>
             )}
           </CardContent>
-        </Card>
+        </GlassCard>
 
-        <Card>
+        <GlassCard>
           <CardHeader>
-            <CardTitle className="text-base">Peringatan Stok Rendah</CardTitle>
-            <CardDescription>5 SKU dengan selisih stok vs minimum terendah</CardDescription>
+            <CardTitle className="text-base text-white">Peringatan Stok Rendah</CardTitle>
+            <CardDescription className="text-ink-300">5 SKU dengan selisih stok vs minimum terendah</CardDescription>
           </CardHeader>
           <CardContent>
             {lowStock.length === 0 ? (
-              <EmptyState title="Stok aman" description="Tidak ada SKU di bawah stok minimum." />
+              <EmptyState dark title="Stok aman" description="Tidak ada SKU di bawah stok minimum." />
             ) : (
-              <ul className="divide-y divide-ink-200">
+              <ul className="divide-y divide-white/10">
                 {lowStock.map((item) => (
                   <li key={item.id} className="flex items-center justify-between gap-3 py-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className="rounded-lg bg-warn-50 p-2">
-                        <TriangleAlert className="h-4 w-4 text-warn-600" />
+                      <div className="rounded-lg bg-warn-500/15 p-2">
+                        <TriangleAlert className="h-4 w-4 text-warn-100" />
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ink-800">
+                        <p className="truncate text-sm font-medium text-white">
                           {item.name}
-                          <span className="ml-2 font-mono text-xs text-ink-500">{item.sku}</span>
+                          <span className="ml-2 font-mono text-xs text-ink-300">{item.sku}</span>
                         </p>
-                        <p className="mt-0.5 text-xs text-ink-500">
+                        <p className="mt-0.5 text-xs text-ink-300">
                           Stok {formatQty(item.balance)} / Min {formatQty(item.minStock)}
                         </p>
                       </div>
                     </div>
-                    <Badge variant={item.balance < item.minStock ? "warning" : "success"}>
+                    <Badge variant={item.balance < item.minStock ? "warning" : "success"} className={badgeDarkClass[item.balance < item.minStock ? "warning" : "success"]}>
                       {item.balance < item.minStock ? "Di bawah minimum" : "Sesuai minimum"}
                     </Badge>
                   </li>
@@ -283,12 +298,12 @@ export function SuperAdminDashboardPage() {
               </ul>
             )}
           </CardContent>
-        </Card>
+        </GlassCard>
       </div>
 
-      <Card className="mt-6">
+      <GlassCard className="mt-6">
         <CardHeader>
-          <CardTitle className="text-base">Aksi Cepat</CardTitle>
+          <CardTitle className="text-base text-white">Aksi Cepat</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -296,20 +311,20 @@ export function SuperAdminDashboardPage() {
               <Link
                 key={to}
                 to={to}
-                className="flex items-center gap-3 rounded-xl border border-ink-200 p-4 transition-colors hover:border-brand-200 hover:bg-brand-50"
+                className="flex items-center gap-3 rounded-xl border border-white/15 p-4 transition-colors hover:border-white/25 hover:bg-white/[0.09]"
               >
-                <div className="rounded-lg bg-ink-100 p-2.5 text-ink-700">
+                <div className="rounded-lg bg-white/10 p-2.5 text-ink-100">
                   <Icon className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-ink-800">{title}</p>
-                  <p className="text-xs text-ink-500">{description}</p>
+                  <p className="text-sm font-semibold text-white">{title}</p>
+                  <p className="text-xs text-ink-300">{description}</p>
                 </div>
               </Link>
             ))}
           </div>
         </CardContent>
-      </Card>
+      </GlassCard>
     </div>
   );
 }

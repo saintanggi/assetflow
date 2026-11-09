@@ -6,7 +6,8 @@ import { z } from "zod";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ImageOff, Plus, ScanLine, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { stockStatusVariant } from "../lib/statusColors";
+import { badgeDarkClass, stockStatusVariant } from "../lib/statusColors";
+import { cn } from "../lib/utils";
 import { useAuth } from "../context/AuthContext";
 import { formatQty } from "../lib/format";
 import { DataTable } from "../components/DataTable";
@@ -40,6 +41,11 @@ import type {
 import { toast } from "sonner";
 
 const ITEM_SELECT = "*, asset_categories(code,name), units(code,name)";
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
+
 
 type StockStatus = "habis" | "menipis" | "aman";
 
@@ -325,11 +331,14 @@ export function InventoryListPage() {
     }
   };
 
-  const stockBadge = (row: ItemRow) => (
-    <Badge variant={stockStatusVariant[row.stock_status]}>
-      {row.stock_status === "habis" ? "Habis" : row.stock_status === "menipis" ? "Menipis" : "Aman"}
-    </Badge>
-  );
+  const stockBadge = (row: ItemRow) => {
+    const v = stockStatusVariant[row.stock_status];
+    return (
+      <Badge variant={v} className={badgeDarkClass[v]}>
+        {row.stock_status === "habis" ? "Habis" : row.stock_status === "menipis" ? "Menipis" : "Aman"}
+      </Badge>
+    );
+  };
 
   const columns: ColumnDef<ItemRow>[] = useMemo(
     () => [
@@ -339,7 +348,7 @@ export function InventoryListPage() {
         cell: ({ row }) => (
           <Link
             to={`/persediaan/${row.original.id}`}
-            className="font-medium text-brand-700 hover:underline"
+            className="font-medium text-brand-200 hover:underline"
           >
             {row.original.name}
           </Link>
@@ -362,14 +371,14 @@ export function InventoryListPage() {
         header: "Stok Baru",
         id: "stock_baru",
         cell: ({ row }) => (
-          <span className="tnum font-semibold text-ok-600">{formatQty(row.original.stock_baru)}</span>
+          <span className="tnum font-semibold text-ok-100">{formatQty(row.original.stock_baru)}</span>
         ),
       },
       {
         header: "Stok Retur",
         id: "stock_retur",
         cell: ({ row }) => (
-          <span className="tnum font-semibold text-warn-600">{formatQty(row.original.stock_retur)}</span>
+          <span className="tnum font-semibold text-warn-100">{formatQty(row.original.stock_retur)}</span>
         ),
       },
       {
@@ -387,9 +396,9 @@ export function InventoryListPage() {
         accessorKey: "is_active",
         cell: ({ row }) =>
           row.original.is_active ? (
-            <Badge variant="success">Ya</Badge>
+            <Badge variant="success" className={badgeDarkClass.success}>Ya</Badge>
           ) : (
-            <Badge variant="secondary">Tidak</Badge>
+            <Badge variant="secondary" className={badgeDarkClass.secondary}>Tidak</Badge>
           ),
       },
       {
@@ -400,6 +409,7 @@ export function InventoryListPage() {
             <Button
               variant="outline"
               size="sm"
+              className={DARK_OUTLINE_BTN}
               onClick={() => openAdjust(row.original)}
             >
               Atur Stok
@@ -409,7 +419,7 @@ export function InventoryListPage() {
                 variant="outline"
                 size="sm"
                 title="Hapus barang (super admin)"
-                className="text-red-600 hover:text-red-700"
+                className={cn(DARK_OUTLINE_BTN, "text-brand-200")}
                 onClick={() => setDeleteItem(row.original)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -452,13 +462,14 @@ export function InventoryListPage() {
         <Button
           variant={onlyNoPhoto ? "default" : "outline"}
           size="sm"
+          className={onlyNoPhoto ? undefined : DARK_OUTLINE_BTN}
           onClick={() => setOnlyNoPhoto((v) => !v)}
         >
           <ImageOff className="mr-1.5 h-4 w-4" />
           Tanpa Foto ({noPhotoCount})
         </Button>
         {onlyNoPhoto && (
-          <span className="text-xs text-ink-500">
+          <span className="text-xs text-ink-300">
             Menampilkan {filteredItems.length} barang tanpa foto — klik nama barang lalu upload foto di detail.
           </span>
         )}
@@ -474,7 +485,7 @@ export function InventoryListPage() {
         searchValue={search}
         onSearchChange={setSearch}
         searchActions={
-          <Button variant="outline" onClick={() => setScanOpen(true)}>
+          <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={() => setScanOpen(true)}>
             <ScanLine className="mr-2 h-4 w-4" /> Scan Barcode
           </Button>
         }
@@ -483,13 +494,13 @@ export function InventoryListPage() {
             <div className="flex items-start justify-between gap-2">
               <Link
                 to={`/persediaan/${row.id}`}
-                className="font-medium text-brand-700 hover:underline"
+                className="font-medium text-brand-200 hover:underline"
               >
                 {row.name}
               </Link>
               {stockBadge(row)}
             </div>
-            <div className="text-xs text-ink-500">
+            <div className="text-xs text-ink-300">
               <span className="font-mono">{row.sku}</span>
               {row.brand ? ` • ${row.brand}` : ""}
               {row.asset_categories?.name ? ` • ${row.asset_categories.name}` : ""}
@@ -497,13 +508,13 @@ export function InventoryListPage() {
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
               <span>
                 Baru:{" "}
-                <span className="tnum font-semibold text-ok-600">
+                <span className="tnum font-semibold text-ok-100">
                   {formatQty(row.stock_baru)}
                 </span>
               </span>
               <span>
                 Retur:{" "}
-                <span className="tnum font-semibold text-warn-600">
+                <span className="tnum font-semibold text-warn-100">
                   {formatQty(row.stock_retur)}
                 </span>
               </span>
@@ -515,7 +526,7 @@ export function InventoryListPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="flex-1"
+                className={cn(DARK_OUTLINE_BTN, "flex-1")}
                 onClick={() => openAdjust(row)}
               >
                 Atur Stok
@@ -525,7 +536,7 @@ export function InventoryListPage() {
                   variant="outline"
                   size="sm"
                   title="Hapus barang (super admin)"
-                  className="text-red-600 hover:text-red-700"
+                  className={cn(DARK_OUTLINE_BTN, "text-brand-200")}
                   onClick={() => setDeleteItem(row)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />

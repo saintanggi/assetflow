@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import * as XLSX from "xlsx";
 import { Download, Hourglass } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
-import { pendingJenisVariant } from "../lib/statusColors";
+import { pendingJenisVariant, badgeDarkClass } from "../lib/statusColors";
 import { buildSearchPattern } from "../lib/format";
+import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
-import { Card, CardContent } from "../components/ui/card";
+import { CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -41,6 +43,23 @@ interface PendingRow {
 
 const fmt = (n: number) => Number(n).toLocaleString("id-ID", { maximumFractionDigits: 3 });
 
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
+
 export function PendingPartialPage() {
   const [rows, setRows] = useState<PendingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +79,7 @@ export function PendingPartialPage() {
     cell: ({ row }) => (
       <Link
         to={`/permintaan/${row.original.request_id}`}
-        className="font-mono text-sm text-brand-700 hover:underline"
+        className="font-mono text-sm text-brand-200 hover:underline"
       >
         {row.original.request_number}
       </Link>
@@ -80,7 +99,7 @@ export function PendingPartialPage() {
     cell: ({ row }) => (
       <div>
         <div className="font-medium">{row.original.name}</div>
-        <div className="font-mono text-xs text-ink-500">{row.original.sku}</div>
+        <div className="font-mono text-xs text-ink-300">{row.original.sku}</div>
       </div>
     ),
   },
@@ -88,28 +107,33 @@ export function PendingPartialPage() {
     header: "Jenis",
     accessorKey: "jenis",
     cell: ({ row }) => (
-      <Badge variant={pendingJenisVariant[row.original.jenis]}>{row.original.jenis}</Badge>
+      <Badge
+        variant={pendingJenisVariant[row.original.jenis]}
+        className={badgeDarkClass[pendingJenisVariant[row.original.jenis]]}
+      >
+        {row.original.jenis}
+      </Badge>
     ),
   },
   {
     header: "Sisa Belum Terkirim",
     accessorKey: "sisa",
     cell: ({ row }) => (
-      <span className="tnum font-semibold text-warn-600">{fmt(row.original.sisa)}</span>
+      <span className="tnum font-semibold text-warn-100">{fmt(row.original.sisa)}</span>
     ),
   },
   {
     header: "Keterangan Gudang",
     accessorKey: "keterangan",
     cell: ({ row }) => (
-      <span className="text-xs text-ink-500">{row.original.keterangan ?? "—"}</span>
+      <span className="text-xs text-ink-300">{row.original.keterangan ?? "—"}</span>
     ),
   },
   {
     header: "Minta / Setuju / Kirim",
     accessorKey: "qty_requested",
     cell: ({ row }) => (
-      <span className="tnum text-xs text-ink-500">
+      <span className="tnum text-xs text-ink-300">
         {fmt(row.original.qty_requested)} / {fmt(row.original.qty_approved)} /{" "}
         {fmt(row.original.qty_shipped)}
       </span>
@@ -121,13 +145,14 @@ export function PendingPartialPage() {
     cell: ({ row }) => (
       <div className="flex gap-1">
         <Link to={`/permintaan/${row.original.request_id}`}>
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" className={DARK_OUTLINE_BTN}>
             {row.original.jenis === "Menunggu Stok" ? "Setujui" : "Kirim Susulan"}
           </Button>
         </Link>
         <Button
           size="sm"
           variant="outline"
+          className={DARK_OUTLINE_BTN}
           onClick={() => {
             setGantiRow(row.original);
             setGantiQuery("");
@@ -355,27 +380,27 @@ export function PendingPartialPage() {
         title="Sisa Belum Terkirim"
         description="Barang dengan sisa yang belum terpenuhi — menunggu stok atau kiriman susulan."
         actions={
-          <Button variant="outline" onClick={exportExcel} disabled={loading || rows.length === 0}>
+          <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={exportExcel} disabled={loading || rows.length === 0}>
             <Download className="mr-1 h-4 w-4" /> Export Excel
           </Button>
         }
       />
 
-      <Card className="mb-4">
+      <GlassCard className="mb-4">
         <CardContent className="flex items-center gap-4 p-5">
-          <div className="rounded-xl bg-warn-50 p-2.5 text-warn-600 ring-1 ring-warn-100">
+          <div className="rounded-xl bg-warn-500/15 p-2.5 text-warn-100 ring-1 ring-warn-500/25">
             <Hourglass className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-ink-500">
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-300">
               Item menunggu stok / kiriman susulan
             </p>
-            <p className="tnum font-display text-2xl font-bold text-ink-800">
+            <p className="tnum font-display text-2xl font-bold text-white">
               {rows.length.toLocaleString("id-ID")}
             </p>
           </div>
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <DataTable<PendingRow>
         columns={columns}
@@ -391,42 +416,45 @@ export function PendingPartialPage() {
               <div className="min-w-0">
                 <Link
                   to={`/permintaan/${row.request_id}`}
-                  className="font-mono text-sm font-medium text-brand-700 hover:underline"
+                  className="font-mono text-sm font-medium text-brand-200 hover:underline"
                 >
                   {row.request_number}
                 </Link>
-                <div className="truncate text-xs text-ink-500">
+                <div className="truncate text-xs text-ink-300">
                   {row.ticket_no} • {row.branch_name}
                 </div>
               </div>
-              <Badge variant={pendingJenisVariant[row.jenis]} className="shrink-0">
+              <Badge
+                variant={pendingJenisVariant[row.jenis]}
+                className={cn(badgeDarkClass[pendingJenisVariant[row.jenis]], "shrink-0")}
+              >
                 {row.jenis}
               </Badge>
             </div>
             <div>
               <div className="font-medium">{row.name}</div>
-              <div className="font-mono text-xs text-ink-500">{row.sku}</div>
+              <div className="font-mono text-xs text-ink-300">{row.sku}</div>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-xs text-ink-500">Sisa belum terkirim</span>
-              <span className="tnum text-lg font-bold text-warn-600">{fmt(row.sisa)}</span>
-              <span className="tnum text-xs text-ink-500">
+              <span className="text-xs text-ink-300">Sisa belum terkirim</span>
+              <span className="tnum text-lg font-bold text-warn-100">{fmt(row.sisa)}</span>
+              <span className="tnum text-xs text-ink-300">
                 ({fmt(row.qty_requested)} / {fmt(row.qty_approved)} / {fmt(row.qty_shipped)})
               </span>
             </div>
             {row.keterangan && (
-              <p className="text-xs text-ink-500">{row.keterangan}</p>
+              <p className="text-xs text-ink-300">{row.keterangan}</p>
             )}
             <div className="flex gap-2">
               <Link to={`/permintaan/${row.request_id}`} className="flex-1">
-                <Button size="sm" variant="outline" className="w-full">
+                <Button size="sm" variant="outline" className={cn(DARK_OUTLINE_BTN, "w-full")}>
                   {row.jenis === "Menunggu Stok" ? "Setujui" : "Kirim Susulan"}
                 </Button>
               </Link>
               <Button
                 size="sm"
                 variant="outline"
-                className="flex-1"
+                className={cn(DARK_OUTLINE_BTN, "flex-1")}
                 onClick={() => {
                   setGantiRow(row);
                   setGantiQuery("");

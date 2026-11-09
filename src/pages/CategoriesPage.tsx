@@ -1,10 +1,11 @@
 import { CrudPage } from "../components/CrudPage";
 import { Badge } from "../components/ui/badge";
+import { badgeDarkClass } from "../lib/statusColors";
 
 function statusBadge(row: Record<string, unknown>) {
   const aktif = Boolean(row.is_active);
   return (
-    <Badge variant={aktif ? "success" : "secondary"}>
+    <Badge variant={aktif ? "success" : "secondary"} className={badgeDarkClass[aktif ? "success" : "secondary"]}>
       {aktif ? "Aktif" : "Nonaktif"}
     </Badge>
   );

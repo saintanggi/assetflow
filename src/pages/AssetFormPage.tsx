@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ArrowLeft, Upload } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
@@ -12,7 +14,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
 import { Checkbox } from "../components/ui/checkbox";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { assetSchema } from "../schemas/asset";
 import type {
@@ -62,6 +64,23 @@ type AssetPageFormValues = z.input<typeof assetFormSchema>;
 interface LocationRow extends Location {
   warehouses?: { code: string; name: string } | null;
 }
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function AssetFormPage() {
   const { id } = useParams<{ id: string }>();
@@ -324,6 +343,7 @@ export function AssetFormPage() {
         actions={
           <Button
             variant="outline"
+            className={DARK_OUTLINE_BTN}
             onClick={() => navigate(isEdit && id ? `/aset/${id}` : "/aset")}
           >
             <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
@@ -333,21 +353,21 @@ export function AssetFormPage() {
 
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="grid gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
+          <GlassCard className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Data Aset</CardTitle>
+              <CardTitle className="text-white">Data Aset</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div>
-                <Label htmlFor="asset_code">Kode Aset *</Label>
-                <Input id="asset_code" {...register("asset_code")} placeholder="AST-0001" />
+                <Label className="text-white" htmlFor="asset_code">Kode Aset *</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300" id="asset_code" {...register("asset_code")} placeholder="AST-0001" />
                 {fieldError("asset_code") && (
-                  <p className="mt-1 text-xs text-brand-600">{fieldError("asset_code")}</p>
+                  <p className="mt-1 text-xs text-brand-200">{fieldError("asset_code")}</p>
                 )}
               </div>
               <div>
-                <Label htmlFor="public_code">Kode Publik *</Label>
-                <Input
+                <Label className="text-white" htmlFor="public_code">Kode Publik *</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                   id="public_code"
                   {...register("public_code", {
                     onChange: () => setPublicTouched(true),
@@ -355,19 +375,19 @@ export function AssetFormPage() {
                   placeholder="ast-0001"
                 />
                 {fieldError("public_code") && (
-                  <p className="mt-1 text-xs text-brand-600">{fieldError("public_code")}</p>
+                  <p className="mt-1 text-xs text-brand-200">{fieldError("public_code")}</p>
                 )}
               </div>
               <div className="sm:col-span-2">
-                <Label htmlFor="name">Nama Aset *</Label>
-                <Input id="name" {...register("name")} placeholder="Laptop Dell Latitude 5440" />
+                <Label className="text-white" htmlFor="name">Nama Aset *</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300" id="name" {...register("name")} placeholder="Laptop Dell Latitude 5440" />
                 {fieldError("name") && (
-                  <p className="mt-1 text-xs text-brand-600">{fieldError("name")}</p>
+                  <p className="mt-1 text-xs text-brand-200">{fieldError("name")}</p>
                 )}
               </div>
               <div>
-                <Label htmlFor="category_id">Kategori</Label>
-                <Select
+                <Label className="text-white" htmlFor="category_id">Kategori</Label>
+                <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                   id="category_id"
                   placeholder="Pilih kategori"
                   options={categories.map((c) => ({ value: c.id, label: c.name }))}
@@ -376,12 +396,12 @@ export function AssetFormPage() {
                   })}
                 />
                 {fieldError("category_id") && (
-                  <p className="mt-1 text-xs text-brand-600">{fieldError("category_id")}</p>
+                  <p className="mt-1 text-xs text-brand-200">{fieldError("category_id")}</p>
                 )}
               </div>
               <div>
-                <Label htmlFor="location_id">Lokasi</Label>
-                <Select
+                <Label className="text-white" htmlFor="location_id">Lokasi</Label>
+                <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                   id="location_id"
                   placeholder="Pilih gudang — lokasi"
                   options={locationOptions}
@@ -390,28 +410,28 @@ export function AssetFormPage() {
                   })}
                 />
                 {fieldError("location_id") && (
-                  <p className="mt-1 text-xs text-brand-600">{fieldError("location_id")}</p>
+                  <p className="mt-1 text-xs text-brand-200">{fieldError("location_id")}</p>
                 )}
               </div>
               <div>
-                <Label htmlFor="brand">Merek</Label>
-                <Input id="brand" {...register("brand")} placeholder="Dell" />
+                <Label className="text-white" htmlFor="brand">Merek</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300" id="brand" {...register("brand")} placeholder="Dell" />
               </div>
               <div>
-                <Label htmlFor="model">Model</Label>
-                <Input id="model" {...register("model")} placeholder="Latitude 5440" />
+                <Label className="text-white" htmlFor="model">Model</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300" id="model" {...register("model")} placeholder="Latitude 5440" />
               </div>
               <div>
-                <Label htmlFor="serial_number">Nomor Seri</Label>
-                <Input id="serial_number" {...register("serial_number")} />
+                <Label className="text-white" htmlFor="serial_number">Nomor Seri</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300" id="serial_number" {...register("serial_number")} />
               </div>
               <div>
-                <Label htmlFor="custodian">Penanggung Jawab</Label>
-                <Input id="custodian" {...register("custodian")} placeholder="Nama pemegang aset" />
+                <Label className="text-white" htmlFor="custodian">Penanggung Jawab</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300" id="custodian" {...register("custodian")} placeholder="Nama pemegang aset" />
               </div>
               <div>
-                <Label htmlFor="purchase_date">Tanggal Beli</Label>
-                <Input
+                <Label className="text-white" htmlFor="purchase_date">Tanggal Beli</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]"
                   id="purchase_date"
                   type="date"
                   {...register("purchase_date", {
@@ -420,8 +440,8 @@ export function AssetFormPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="purchase_price">Harga Beli (Rp)</Label>
-                <Input
+                <Label className="text-white" htmlFor="purchase_price">Harga Beli (Rp)</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                   id="purchase_price"
                   type="number"
                   min={0}
@@ -431,12 +451,12 @@ export function AssetFormPage() {
                   })}
                 />
                 {fieldError("purchase_price") && (
-                  <p className="mt-1 text-xs text-brand-600">{fieldError("purchase_price")}</p>
+                  <p className="mt-1 text-xs text-brand-200">{fieldError("purchase_price")}</p>
                 )}
               </div>
               <div>
-                <Label htmlFor="department_id">Departemen</Label>
-                <Select
+                <Label className="text-white" htmlFor="department_id">Departemen</Label>
+                <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                   id="department_id"
                   placeholder="Pilih departemen"
                   options={departments.map((d) => ({ value: d.id, label: d.name }))}
@@ -446,44 +466,44 @@ export function AssetFormPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="condition">Kondisi *</Label>
-                <Select
+                <Label className="text-white" htmlFor="condition">Kondisi *</Label>
+                <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                   id="condition"
                   options={CONDITION_OPTIONS}
                   {...register("condition")}
                 />
               </div>
               <div>
-                <Label htmlFor="status">Status *</Label>
-                <Select id="status" options={STATUS_OPTIONS} {...register("status")} />
+                <Label className="text-white" htmlFor="status">Status *</Label>
+                <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]" id="status" options={STATUS_OPTIONS} {...register("status")} />
               </div>
               {canPublish && (
                 <div className="flex items-center gap-2 sm:col-span-2">
-                  <Checkbox id="is_published" {...register("is_published")} />
-                  <Label htmlFor="is_published" className="font-normal">
+                  <Checkbox id="is_published" {...register("is_published")} className="border-white/30 bg-white/10" />
+                  <Label htmlFor="is_published" className="font-normal text-white">
                     Publikasikan (halaman publik dapat diakses via QR code)
                   </Label>
                 </div>
               )}
             </CardContent>
-          </Card>
+          </GlassCard>
 
           <div className="space-y-6">
-            <Card>
+            <GlassCard>
               <CardHeader>
-                <CardTitle>Foto Aset</CardTitle>
+                <CardTitle className="text-white">Foto Aset</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {photoPreview && (
                   <img
                     src={photoPreview}
                     alt="Pratinjau foto aset"
-                    className="h-40 w-full rounded-lg border object-cover"
+                    className="h-40 w-full rounded-lg border border-white/15 object-cover"
                   />
                 )}
                 <Label
                   htmlFor="photo"
-                  className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-ink-200 px-4 py-6 text-sm text-ink-500 hover:bg-ink-50"
+                  className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 px-4 py-6 text-sm text-ink-500 hover:bg-white/10 text-white"
                 >
                   <Upload className="h-4 w-4" />
                   {photoFile ? photoFile.name : "Pilih foto (opsional, maks 5 MB)"}
@@ -495,11 +515,11 @@ export function AssetFormPage() {
                   className="hidden"
                   onChange={onPhotoChange}
                 />
-                <p className="text-xs text-ink-500">
+                <p className="text-xs text-ink-300">
                   Format gambar apa pun, ukuran maksimal 5 MB.
                 </p>
               </CardContent>
-            </Card>
+            </GlassCard>
 
             <Button type="submit" className="w-full" disabled={saving}>
               {saving ? "Menyimpan…" : isEdit ? "Simpan Perubahan" : "Tambah Aset"}

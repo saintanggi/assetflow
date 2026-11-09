@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import * as XLSX from "xlsx";
@@ -9,12 +10,13 @@ import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
+import { CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { DataTable } from "../components/DataTable";
-import { requestStatusVariant } from "../lib/statusColors";
+import { requestStatusVariant, badgeDarkClass } from "../lib/statusColors";
+import { cn } from "../lib/utils";
 import {
   Dialog,
   DialogDescription,
@@ -36,6 +38,23 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "selesai", label: "Selesai" },
   { id: "ditolak", label: "Ditolak" },
 ];
+
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function RequestListPage() {
   const { hasPermission, isSuperAdmin } = useAuth();
@@ -320,7 +339,7 @@ export function RequestListPage() {
       cell: ({ row }) => (
         <Link
           to={`/permintaan/${row.original.id}`}
-          className="font-mono text-sm text-brand-700 hover:underline"
+          className="font-mono text-sm text-brand-200 hover:underline"
         >
           {row.original.request_number}
         </Link>
@@ -335,7 +354,7 @@ export function RequestListPage() {
         <div>
           <div className="font-medium">{row.original.branch_name}</div>
           {row.original.branch_code && (
-            <div className="font-mono text-xs text-ink-500">{row.original.branch_code}</div>
+            <div className="font-mono text-xs text-ink-300">{row.original.branch_code}</div>
           )}
         </div>
       ),
@@ -344,7 +363,10 @@ export function RequestListPage() {
       header: "Status",
       accessorKey: "status",
       cell: ({ row }) => (
-        <Badge variant={requestStatusVariant[row.original.status]}>
+        <Badge
+          variant={requestStatusVariant[row.original.status]}
+          className={badgeDarkClass[requestStatusVariant[row.original.status]]}
+        >
           {REQUEST_STATUS_LABELS[row.original.status]}
         </Badge>
       ),
@@ -356,13 +378,13 @@ export function RequestListPage() {
             id: "aksi",
             cell: ({ row }: { row: { original: Request } }) => (
               <div className="flex gap-1">
-                <Button variant="outline" size="sm" onClick={() => openEdit(row.original)}>
+                <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={() => openEdit(row.original)}>
                   <Pencil className="h-3 w-3" />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="text-brand-600 hover:text-brand-700"
+                  className={cn(DARK_OUTLINE_BTN, "text-brand-200 hover:text-brand-100")}
                   onClick={() => setDelReq(row.original)}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -404,6 +426,7 @@ export function RequestListPage() {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
+              className={DARK_OUTLINE_BTN}
               onClick={exportRekapExcel}
               disabled={exporting || loading}
             >
@@ -422,7 +445,7 @@ export function RequestListPage() {
       />
 
       {/* Filter tanggal & pencarian penuh ke database (Resi / Barcode / SN / Tiket / Gerai) */}
-      <Card className="mb-4">
+      <GlassCard className="mb-4">
         <CardContent className="grid gap-3 p-4 sm:grid-cols-12 sm:items-end">
           <form
             className="sm:col-span-6"
@@ -431,7 +454,7 @@ export function RequestListPage() {
               void load();
             }}
           >
-            <Label htmlFor="req-track" className="mb-1 block text-xs text-ink-500">
+            <Label htmlFor="req-track" className="mb-1 block text-xs text-ink-300">
               Lacak Database (No Tiket, Gerai, No Resi, Barcode, atau Serial Number)
             </Label>
             <div className="flex gap-2">
@@ -440,35 +463,38 @@ export function RequestListPage() {
                 value={serverQuery}
                 onChange={(e) => setServerQuery(e.target.value)}
                 placeholder="Ketik resi, barcode, SN, no tiket, atau nama gerai…"
+                className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
               />
-              <Button type="submit" variant="outline" disabled={loading}>
+              <Button type="submit" variant="outline" className={DARK_OUTLINE_BTN} disabled={loading}>
                 <Search className="mr-1 h-4 w-4" /> Cari
               </Button>
             </div>
           </form>
           <div className="sm:col-span-2">
-            <Label htmlFor="req-from" className="mb-1 block text-xs text-ink-500">Dari Tanggal</Label>
+            <Label htmlFor="req-from" className="mb-1 block text-xs text-ink-300">Dari Tanggal</Label>
             <Input
               id="req-from"
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
+              className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]"
             />
           </div>
           <div className="sm:col-span-2">
-            <Label htmlFor="req-to" className="mb-1 block text-xs text-ink-500">Sampai Tanggal</Label>
+            <Label htmlFor="req-to" className="mb-1 block text-xs text-ink-300">Sampai Tanggal</Label>
             <Input
               id="req-to"
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
+              className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]"
             />
           </div>
           <div className="sm:col-span-2">
             {(serverQuery || dateFrom || dateTo) && (
               <Button
                 variant="ghost"
-                className="w-full"
+                className="w-full text-ink-300 hover:bg-white/10 hover:text-white"
                 onClick={() => {
                   setServerQuery("");
                   setDateFrom("");
@@ -481,7 +507,7 @@ export function RequestListPage() {
             )}
           </div>
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map((t) => (
@@ -490,8 +516,8 @@ export function RequestListPage() {
             onClick={() => setTab(t.id)}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
               tab === t.id
-                ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
-                : "bg-white text-ink-600 ring-1 ring-ink-200 hover:bg-ink-50"
+                ? "bg-brand-500/15 text-brand-100 ring-1 ring-brand-500/25"
+                : "bg-white/[0.07] text-ink-300 ring-1 ring-white/15 hover:bg-white/10"
             }`}
           >
             {t.label}
@@ -514,22 +540,25 @@ export function RequestListPage() {
               <div className="min-w-0">
                 <Link
                   to={`/permintaan/${row.id}`}
-                  className="font-mono text-sm font-medium text-brand-700 hover:underline"
+                  className="font-mono text-sm font-medium text-brand-200 hover:underline"
                 >
                   {row.request_number}
                 </Link>
-                <div className="truncate text-xs text-ink-500">
+                <div className="truncate text-xs text-ink-300">
                   {row.ticket_no} • {row.request_date}
                 </div>
               </div>
-              <Badge variant={requestStatusVariant[row.status]}>
+              <Badge
+                variant={requestStatusVariant[row.status]}
+                className={badgeDarkClass[requestStatusVariant[row.status]]}
+              >
                 {REQUEST_STATUS_LABELS[row.status]}
               </Badge>
             </div>
             <div>
               <div className="font-medium">{row.branch_name}</div>
               {row.branch_code && (
-                <div className="font-mono text-xs text-ink-500">{row.branch_code}</div>
+                <div className="font-mono text-xs text-ink-300">{row.branch_code}</div>
               )}
             </div>
             {isSuperAdmin && (
@@ -537,7 +566,7 @@ export function RequestListPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex-1"
+                  className={cn(DARK_OUTLINE_BTN, "flex-1")}
                   onClick={() => openEdit(row)}
                 >
                   <Pencil className="mr-1 h-3 w-3" /> Ubah
@@ -545,7 +574,7 @@ export function RequestListPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex-1 text-brand-600 hover:text-brand-700"
+                  className={cn(DARK_OUTLINE_BTN, "flex-1 text-brand-200 hover:text-brand-100")}
                   onClick={() => setDelReq(row)}
                 >
                   <Trash2 className="mr-1 h-3 w-3" /> Hapus

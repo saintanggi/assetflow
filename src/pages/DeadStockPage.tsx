@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Clock, PackageX } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { badgeDarkClass } from "../lib/statusColors";
+import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
-import { Card, CardContent } from "../components/ui/card";
+import { CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTable } from "../components/DataTable";
@@ -12,6 +15,24 @@ import { exportToCsv } from "../lib/csv";
 
 const fmt = (n: number) => n.toLocaleString("id-ID", { maximumFractionDigits: 3 });
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
+
 
 interface DeadRow {
   id: string;
@@ -33,7 +54,7 @@ const deadColumns: ColumnDef<DeadRow, unknown>[] = [
     cell: ({ row }) => (
       <div>
         <div className="font-medium">{row.original.name}</div>
-        {row.original.brand && <div className="text-xs text-ink-500">{row.original.brand}</div>}
+        {row.original.brand && <div className="text-xs text-ink-300">{row.original.brand}</div>}
       </div>
     ),
   },
@@ -66,7 +87,10 @@ const deadColumns: ColumnDef<DeadRow, unknown>[] = [
     header: "Tidak Bergerak",
     accessorKey: "daysIdle",
     cell: ({ row }) => (
-      <Badge variant={row.original.daysIdle !== null && row.original.daysIdle >= 180 ? "destructive" : "secondary"}>
+      <Badge
+        variant={row.original.daysIdle !== null && row.original.daysIdle >= 180 ? "destructive" : "secondary"}
+        className={badgeDarkClass[row.original.daysIdle !== null && row.original.daysIdle >= 180 ? "destructive" : "secondary"]}
+      >
         {row.original.daysIdle !== null ? `${row.original.daysIdle} hari` : "—"}
       </Badge>
     ),
@@ -191,14 +215,14 @@ export function DeadStockPage() {
             <select
               value={threshold}
               onChange={(e) => setThreshold(Number(e.target.value))}
-              className="h-9 rounded-lg border border-ink-200 bg-white px-2 text-sm"
+              className="h-9 rounded-lg border border-white/15 bg-white/10 px-2 text-sm text-white [color-scheme:dark]"
             >
               <option value={30}>Tidak bergerak ≥ 30 hari</option>
               <option value={60}>Tidak bergerak ≥ 60 hari</option>
               <option value={90}>Tidak bergerak ≥ 90 hari</option>
               <option value={180}>Tidak bergerak ≥ 180 hari</option>
             </select>
-            <Button variant="outline" size="sm" onClick={exportCsv}>
+            <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={exportCsv}>
               Export CSV
             </Button>
           </div>
@@ -206,24 +230,24 @@ export function DeadStockPage() {
       />
 
       <div className="mb-4 grid gap-4 sm:grid-cols-3">
-        <Card>
+        <GlassCard>
           <CardContent className="p-5">
-            <p className="text-xs font-medium uppercase tracking-widest text-ink-500">Item Dead Stock</p>
-            <p className="tnum mt-2 text-3xl font-bold text-ink-800">{rows.length.toLocaleString("id-ID")}</p>
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-300">Item Dead Stock</p>
+            <p className="tnum mt-2 text-3xl font-bold text-white">{rows.length.toLocaleString("id-ID")}</p>
           </CardContent>
-        </Card>
-        <Card>
+        </GlassCard>
+        <GlassCard>
           <CardContent className="p-5">
-            <p className="text-xs font-medium uppercase tracking-widest text-ink-500">Total Unit Mengendap</p>
-            <p className="tnum mt-2 text-3xl font-bold text-ink-800">{fmt(totalUnits)}</p>
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-300">Total Unit Mengendap</p>
+            <p className="tnum mt-2 text-3xl font-bold text-white">{fmt(totalUnits)}</p>
           </CardContent>
-        </Card>
-        <Card>
+        </GlassCard>
+        <GlassCard>
           <CardContent className="p-5">
-            <p className="text-xs font-medium uppercase tracking-widest text-ink-500">Nilai Modal Mengendap</p>
-            <p className="tnum mt-2 text-3xl font-bold text-ink-800">{fmtRp(totalValue)}</p>
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-300">Nilai Modal Mengendap</p>
+            <p className="tnum mt-2 text-3xl font-bold text-white">{fmtRp(totalValue)}</p>
           </CardContent>
-        </Card>
+        </GlassCard>
       </div>
 
       <DataTable<DeadRow>
@@ -237,7 +261,7 @@ export function DeadStockPage() {
       />
 
       {rows.length > 0 && (
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-500">
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-300">
           <Clock className="h-3.5 w-3.5" />
           Pertimbangkan: obral / pindahkan ke cabang lain / jangan restock dulu.
           <PackageX className="ml-2 h-3.5 w-3.5" />

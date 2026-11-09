@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { Download, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
@@ -10,6 +11,7 @@ import {
   formatRupiah,
 } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
+import { badgeDarkClass } from "../lib/statusColors";
 import {
   ASSET_CONDITION_LABELS,
   ASSET_STATUS_LABELS,
@@ -101,6 +103,23 @@ function todayStr(): string {
     d.getDate()
   ).padStart(2, "0")}`;
 }
+
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function ReportsPage() {
   const { isSuperAdmin, hasPermission } = useAuth();
@@ -333,11 +352,11 @@ export function ReportsPage() {
         actions={
           <>
             {canExport && (
-              <Button variant="outline" onClick={handleExport}>
+              <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={handleExport}>
                 <Download className="mr-2 h-4 w-4" /> Ekspor CSV
               </Button>
             )}
-            <Button variant="outline" onClick={() => window.print()}>
+            <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={() => window.print()}>
               <Printer className="mr-2 h-4 w-4" /> Cetak
             </Button>
           </>
@@ -345,7 +364,7 @@ export function ReportsPage() {
       />
 
       {/* Tab */}
-      <div className="mb-6 border-b border-ink-200">
+      <div className="mb-6 border-b border-white/15">
         <div className="-mb-px flex flex-wrap gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <button
@@ -356,8 +375,8 @@ export function ReportsPage() {
               className={cn(
                 "whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600",
                 tab === t.id
-                  ? "border-brand-600 text-brand-700"
-                  : "border-transparent text-ink-500 hover:border-ink-300 hover:text-ink-800"
+                  ? "border-brand-600 text-brand-200"
+                  : "border-transparent text-ink-300 hover:border-white/25 hover:text-white"
               )}
             >
               {t.label}
@@ -367,25 +386,27 @@ export function ReportsPage() {
       </div>
 
       {/* Filter bersama */}
-      <div className="mb-6 grid grid-cols-1 gap-3 rounded-xl border border-ink-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
+      <GlassCard className="mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
         {(tab === "kartu" || tab === "transaksi") && (
           <>
             <div className="space-y-1.5">
-              <Label htmlFor="flt-from">Dari</Label>
+              <Label htmlFor="flt-from" className="text-ink-100">Dari</Label>
               <Input
                 id="flt-from"
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
+                className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]"
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="flt-to">Sampai</Label>
+              <Label htmlFor="flt-to" className="text-ink-100">Sampai</Label>
               <Input
                 id="flt-to"
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
+                className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]"
               />
             </div>
           </>
@@ -393,17 +414,18 @@ export function ReportsPage() {
         {(tab === "aset" || tab === "stok" || tab === "menipis") && (
           <>
             <div className="space-y-1.5">
-              <Label htmlFor="flt-cat">Kategori</Label>
+              <Label htmlFor="flt-cat" className="text-ink-100">Kategori</Label>
               <Select
                 id="flt-cat"
                 options={categories.map((c) => ({ value: c.id, label: c.name }))}
                 placeholder="Semua kategori"
                 value={categoryId}
                 onValueChange={setCategoryId}
+                className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="flt-loc">Lokasi</Label>
+              <Label htmlFor="flt-loc" className="text-ink-100">Lokasi</Label>
               <Select
                 id="flt-loc"
                 options={locations.map((l) => ({
@@ -413,13 +435,14 @@ export function ReportsPage() {
                 placeholder="Semua lokasi"
                 value={locationId}
                 onValueChange={setLocationId}
+                className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
               />
             </div>
           </>
         )}
         {tab === "aset" && (
           <div className="space-y-1.5">
-            <Label htmlFor="flt-status">Status</Label>
+            <Label htmlFor="flt-status" className="text-ink-100">Status</Label>
             <Select
               id="flt-status"
               options={Object.entries(ASSET_STATUS_LABELS).map(([v, l]) => ({
@@ -429,12 +452,13 @@ export function ReportsPage() {
               placeholder="Semua status"
               value={status}
               onValueChange={setStatus}
+              className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
             />
           </div>
         )}
         {tab === "transaksi" && (
           <div className="space-y-1.5">
-            <Label htmlFor="flt-tipe">Tipe</Label>
+            <Label htmlFor="flt-tipe" className="text-ink-100">Tipe</Label>
             <Select
               id="flt-tipe"
               options={Object.entries(TRANSACTION_TYPE_LABELS).map(([v, l]) => ({
@@ -444,22 +468,24 @@ export function ReportsPage() {
               placeholder="Semua tipe"
               value={txType}
               onValueChange={setTxType}
+              className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
             />
           </div>
         )}
         {tab === "kartu" && (
           <div className="space-y-1.5 lg:col-span-2">
-            <Label htmlFor="flt-sku">SKU Barang</Label>
+            <Label htmlFor="flt-sku" className="text-ink-100">SKU Barang</Label>
             <Select
               id="flt-sku"
               options={items.map((i) => ({ value: i.id, label: `${i.code} — ${i.name}` }))}
               placeholder="Pilih barang…"
               value={kartuItemId}
               onValueChange={setKartuItemId}
+              className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
             />
           </div>
         )}
-      </div>
+      </GlassCard>
 
       {/* Isi tab */}
       {tab === "aset" && (
@@ -489,7 +515,7 @@ export function ReportsPage() {
               id: "status",
               header: "Status",
               cell: ({ row }) => (
-                <Badge variant="secondary">
+                <Badge variant="secondary" className={badgeDarkClass.secondary}>
                   {ASSET_STATUS_LABELS[row.original.status] ?? "—"}
                 </Badge>
               ),
@@ -544,7 +570,7 @@ export function ReportsPage() {
                     row.original.min_stock != null &&
                     Number(row.original.min_stock) > 0 &&
                     row.original.total < Number(row.original.min_stock)
-                      ? "font-semibold text-brand-600"
+                      ? "font-semibold text-brand-200"
                       : "font-semibold"
                   }
                 >
@@ -586,7 +612,7 @@ export function ReportsPage() {
               header: "Perubahan",
               cell: ({ row }) => (
                 <span
-                  className={row.original.qty_change >= 0 ? "text-ok-600" : "text-brand-600"}
+                  className={row.original.qty_change >= 0 ? "text-ok-100" : "text-brand-200"}
                 >
                   {row.original.qty_change >= 0 ? "+" : ""}
                   {formatQty(row.original.qty_change)}
@@ -625,13 +651,19 @@ export function ReportsPage() {
               id: "tipe",
               header: "Tipe",
               cell: ({ row }) => (
-                <Badge variant="info">{TRANSACTION_TYPE_LABELS[row.original.type]}</Badge>
+                <Badge variant="info" className={badgeDarkClass.info}>
+                  {TRANSACTION_TYPE_LABELS[row.original.type]}
+                </Badge>
               ),
             },
             {
               id: "status",
               header: "Status",
-              cell: ({ row }) => <Badge variant="secondary">{row.original.status}</Badge>,
+              cell: ({ row }) => (
+                <Badge variant="secondary" className={badgeDarkClass.secondary}>
+                  {row.original.status}
+                </Badge>
+              ),
             },
             {
               id: "ref",
@@ -647,7 +679,7 @@ export function ReportsPage() {
         (isSuperAdmin ? (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div>
-              <h2 className="mb-3 text-sm font-semibold text-ink-800">Per Kategori</h2>
+              <h2 className="mb-3 text-sm font-semibold text-white">Per Kategori</h2>
               <DataTable
                 loading={loading}
                 searchPlaceholder="Cari kategori…"
@@ -663,7 +695,7 @@ export function ReportsPage() {
               />
             </div>
             <div>
-              <h2 className="mb-3 text-sm font-semibold text-ink-800">Per Departemen</h2>
+              <h2 className="mb-3 text-sm font-semibold text-white">Per Departemen</h2>
               <DataTable
                 loading={loading}
                 searchPlaceholder="Cari departemen…"
@@ -681,6 +713,7 @@ export function ReportsPage() {
           </div>
         ) : (
           <EmptyState
+            dark
             title="Akses terbatas"
             description="Laporan nilai aset membutuhkan akses Super Admin."
           />

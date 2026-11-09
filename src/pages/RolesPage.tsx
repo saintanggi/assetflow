@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Info } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { badgeDarkClass } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { PERMISSIONS, PUBLISH_PERMISSION } from "../lib/permissions";
 import type { Role } from "../types/database";
@@ -98,11 +99,11 @@ export function RolesPage() {
         description="Atur izin bawaan untuk setiap peran."
       />
 
-      <div className="mb-6 flex items-start gap-3 rounded-xl border border-info-100 bg-info-50 p-4 text-sm text-info-700">
-        <Info className="mt-0.5 h-5 w-5 shrink-0 text-info-600" />
+      <div className="mb-6 flex items-start gap-3 rounded-xl border border-info-500/25 bg-info-500/10 p-4 text-sm text-info-100">
+        <Info className="mt-0.5 h-5 w-5 shrink-0 text-info-100" />
         <div>
           <p className="font-semibold">Cara kerja matriks izin</p>
-          <p className="mt-1 text-info-600">
+          <p className="mt-1 text-info-100">
             Setiap peran memiliki izin bawaan. Izin khusus per pengguna (di halaman Pengguna) akan
             menimpa izin peran: centang berarti diberikan, tidak dicentang berarti dicabut untuk
             pengguna tersebut. Izin <span className="font-mono font-semibold">assets.publish</span>{" "}
@@ -113,48 +114,47 @@ export function RolesPage() {
 
       {loading ? (
         <div className="space-y-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-10 w-full bg-white/10" />
+          <Skeleton className="h-64 w-full bg-white/10" />
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-ink-200">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-64">Izin</TableHead>
-                {orderedRoles.map((r) => (
-                  <TableHead key={r.id} className="text-center">
-                    {r.name === "super_admin" ? (
-                      <Badge variant="default">Super Admin</Badge>
-                    ) : (
-                      <Badge variant="secondary">Admin</Badge>
+        <Table dark>
+          <TableHeader dark>
+            <TableRow dark>
+              <TableHead dark className="min-w-64">Izin</TableHead>
+              {orderedRoles.map((r) => (
+                <TableHead dark key={r.id} className="text-center">
+                  {r.name === "super_admin" ? (
+                    <Badge variant="default" className={badgeDarkClass.default}>Super Admin</Badge>
+                  ) : (
+                    <Badge variant="secondary" className={badgeDarkClass.secondary}>Admin</Badge>
+                  )}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {PERMISSIONS.map((p) => (
+              <TableRow dark key={p.code}>
+                <TableCell>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs font-semibold text-white">
+                      {p.code}
+                    </span>
+                    {p.code === PUBLISH_PERMISSION && (
+                      <Badge variant="warning" className={badgeDarkClass.warning} title="Hanya Super Admin yang dapat memberi izin ini — ditegakkan di database (RPC)">
+                        Super Admin
+                      </Badge>
                     )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {PERMISSIONS.map((p) => (
-                <TableRow key={p.code}>
-                  <TableCell>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs font-semibold text-ink-800">
-                        {p.code}
+                    <span className="w-full text-xs text-ink-300">{p.description}</span>
+                    {p.code === PUBLISH_PERMISSION && (
+                      <span className="w-full text-xs text-warn-100">
+                        Hanya Super Admin yang dapat memberi izin ini — ditegakkan di database
+                        (RPC).
                       </span>
-                      {p.code === PUBLISH_PERMISSION && (
-                        <Badge variant="warning" title="Hanya Super Admin yang dapat memberi izin ini — ditegakkan di database (RPC)">
-                          Super Admin
-                        </Badge>
-                      )}
-                      <span className="w-full text-xs text-ink-500">{p.description}</span>
-                      {p.code === PUBLISH_PERMISSION && (
-                        <span className="w-full text-xs text-warn-600">
-                          Hanya Super Admin yang dapat memberi izin ini — ditegakkan di database
-                          (RPC).
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
+                    )}
+                  </div>
+                </TableCell>
                   {orderedRoles.map((r) => {
                     const permId = permIdByCode[p.code];
                     const key = `${r.id}:${permId}`;
@@ -175,7 +175,6 @@ export function RolesPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
       )}
     </div>
   );

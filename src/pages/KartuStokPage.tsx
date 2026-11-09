@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { Plus, Trash2, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { buildSearchPattern } from "../lib/format";
+import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Select } from "../components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import {
   EXCEL_STATUS_ASET,
   type ExcelStatusAset,
@@ -74,6 +76,23 @@ function newRow(): KartuRow {
 }
 
 const STATUS_OPTIONS = EXCEL_STATUS_ASET.map((s) => ({ value: s, label: s }));
+
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function KartuStokPage() {
   const [date, setDate] = useState(todayLocal);
@@ -306,12 +325,12 @@ export function KartuStokPage() {
         title="Input Kartu Stok"
         description="Catat pergerakan harian ala Excel KARTU STOK: tiket, IN/OUT, resi, gerai, status aset."
       />
-      <Card>
+      <GlassCard>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-white">
             <ClipboardList className="h-5 w-5" /> Form Kartu Stok
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-ink-300">
             Satu tiket bisa berisi baris IN dan OUT sekaligus — sistem otomatis
             memisahnya menjadi transaksi masuk & keluar.
           </CardDescription>
@@ -320,41 +339,44 @@ export function KartuStokPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
-                <Label htmlFor="ks-date">Tanggal</Label>
+                <Label htmlFor="ks-date" className="text-ink-100">Tanggal</Label>
                 <Input
                   id="ks-date"
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required
+                  className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ks-ticket">No. Tiket</Label>
+                <Label htmlFor="ks-ticket" className="text-ink-100">No. Tiket</Label>
                 <Input
                   id="ks-ticket"
                   value={ticket}
                   onChange={(e) => setTicket(e.target.value)}
                   placeholder="cth: A2609281981"
                   maxLength={50}
+                  className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ks-warehouse">Gudang</Label>
+                <Label htmlFor="ks-warehouse" className="text-ink-100">Gudang</Label>
                 <Select
                   id="ks-warehouse"
                   options={warehouseOptions}
                   placeholder="Pilih gudang"
                   value={warehouseId}
                   onValueChange={setWarehouseId}
+                  className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                 />
               </div>
             </div>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Baris Kartu Stok</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addRow}>
+                <Label className="text-ink-100">Baris Kartu Stok</Label>
+                <Button type="button" variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={addRow}>
                   <Plus className="mr-1 h-4 w-4" /> Tambah Baris
                 </Button>
               </div>
@@ -362,7 +384,7 @@ export function KartuStokPage() {
               {rows.map((row, idx) => (
                 <div
                   key={row.key}
-                  className="space-y-2 rounded-lg border border-ink-200 p-3"
+                  className="space-y-2 rounded-lg border border-white/15 bg-white/5 p-3"
                 >
                   <div className="grid gap-2 md:grid-cols-[1fr_170px_90px_90px_40px]">
                     <div className="relative">
@@ -373,13 +395,14 @@ export function KartuStokPage() {
                         onBlur={() => setTimeout(() => updateRow(row.key, { open: false }), 150)}
                         onFocus={() => row.results.length > 0 && updateRow(row.key, { open: true })}
                         aria-label={`Barang baris ${idx + 1}`}
+                        className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                       />
                       {row.open && (
-                        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-ink-200 bg-white shadow-lg">
+                        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-white/15 bg-white/[0.07] text-white shadow-lg backdrop-blur-xl">
                           {row.searching ? (
-                            <div className="px-3 py-2 text-sm text-ink-500">Mencari…</div>
+                            <div className="px-3 py-2 text-sm text-ink-300">Mencari…</div>
                           ) : row.results.length === 0 ? (
-                            <div className="px-3 py-2 text-sm text-ink-500">
+                            <div className="px-3 py-2 text-sm text-ink-300">
                               Tidak ada barang yang cocok.
                             </div>
                           ) : (
@@ -387,14 +410,14 @@ export function KartuStokPage() {
                               <button
                                 key={r.id}
                                 type="button"
-                                className="block w-full px-3 py-2 text-left text-sm hover:bg-ink-100"
+                                className="block w-full px-3 py-2 text-left text-sm hover:bg-white/10"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   pickItem(row.key, r);
                                 }}
                               >
                                 <span className="font-medium">{r.sku}</span>
-                                <span className="text-ink-500"> — {r.name}</span>
+                                <span className="text-ink-300"> — {r.name}</span>
                               </button>
                             ))
                           )}
@@ -408,6 +431,7 @@ export function KartuStokPage() {
                         updateRow(row.key, { statusAset: v as ExcelStatusAset })
                       }
                       aria-label={`Status aset baris ${idx + 1}`}
+                      className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                     />
                     <Input
                       type="number"
@@ -417,6 +441,7 @@ export function KartuStokPage() {
                       aria-label={`Qty IN baris ${idx + 1}`}
                       value={row.qtyIn}
                       onChange={(e) => updateRow(row.key, { qtyIn: e.target.value })}
+                      className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                     />
                     <Input
                       type="number"
@@ -426,6 +451,7 @@ export function KartuStokPage() {
                       aria-label={`Qty OUT baris ${idx + 1}`}
                       value={row.qtyOut}
                       onChange={(e) => updateRow(row.key, { qtyOut: e.target.value })}
+                      className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                     />
                     <Button
                       type="button"
@@ -434,8 +460,9 @@ export function KartuStokPage() {
                       disabled={rows.length === 1}
                       onClick={() => removeRow(row.key)}
                       aria-label={`Hapus baris ${idx + 1}`}
+                      className="text-ink-300 hover:bg-white/10 hover:text-white"
                     >
-                      <Trash2 className="h-4 w-4 text-red-600" />
+                      <Trash2 className="h-4 w-4 text-brand-200" />
                     </Button>
                   </div>
                   <div className="grid gap-2 md:grid-cols-3">
@@ -444,18 +471,21 @@ export function KartuStokPage() {
                       aria-label={`Resi baris ${idx + 1}`}
                       value={row.resi}
                       onChange={(e) => updateRow(row.key, { resi: e.target.value })}
+                      className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                     />
                     <Input
                       placeholder="Nama gerai tujuan/asal"
                       aria-label={`Gerai baris ${idx + 1}`}
                       value={row.gerai}
                       onChange={(e) => updateRow(row.key, { gerai: e.target.value })}
+                      className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                     />
                     <Input
                       placeholder="Keterangan"
                       aria-label={`Keterangan baris ${idx + 1}`}
                       value={row.keterangan}
                       onChange={(e) => updateRow(row.key, { keterangan: e.target.value })}
+                      className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                     />
                   </div>
                 </div>
@@ -463,7 +493,7 @@ export function KartuStokPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="ks-notes">Catatan tiket (opsional)</Label>
+              <Label htmlFor="ks-notes" className="text-ink-100">Catatan tiket (opsional)</Label>
               <Textarea
                 id="ks-notes"
                 value={notes}
@@ -471,6 +501,7 @@ export function KartuStokPage() {
                 placeholder="Catatan untuk seluruh tiket…"
                 maxLength={500}
                 rows={2}
+                className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
               />
             </div>
 
@@ -481,7 +512,7 @@ export function KartuStokPage() {
             </div>
           </form>
         </CardContent>
-      </Card>
+      </GlassCard>
     </div>
   );
 }

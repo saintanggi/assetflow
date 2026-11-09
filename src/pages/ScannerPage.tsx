@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { useNavigate } from "react-router-dom";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import type { CameraDevice } from "html5-qrcode";
 import { Camera, CameraOff, Search, Copy, Check, RotateCcw, ExternalLink } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { toast } from "sonner";
 
 /**
@@ -17,6 +19,23 @@ import { toast } from "sonner";
  * Scanner hanya menampilkan hasil konfirmasi + tautan. Validasi izin
  * (mis. assets.view / inventory.view) dan status dilakukan di halaman tujuan.
  */
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 type ScanResult =
   | { kind: "public"; url: string; publicCode: string }
@@ -233,19 +252,19 @@ export function ScannerPage() {
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <GlassCard>
           <CardHeader>
-            <CardTitle>Kamera</CardTitle>
+            <CardTitle className="text-white">Kamera</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {cameraError && (
-              <div className="rounded-lg border border-brand-200 bg-brand-50 p-3 text-sm text-brand-600">
+              <div className="rounded-lg border border-brand-500/25 bg-brand-500/15 p-3 text-sm text-brand-100">
                 {cameraError} Pastikan izin kamera diberikan dan halaman diakses via HTTPS.
               </div>
             )}
             <div>
-              <Label htmlFor="camera">Pilih Kamera</Label>
-              <Select
+              <Label className="text-white" htmlFor="camera">Pilih Kamera</Label>
+              <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                 id="camera"
                 value={cameraId}
                 onValueChange={setCameraId}
@@ -260,7 +279,7 @@ export function ScannerPage() {
 
             <div
               id="qr-reader"
-              className="overflow-hidden rounded-lg border bg-white"
+              className="overflow-hidden rounded-lg border border-white/15 bg-ink-800"
               style={{ minHeight: scanning ? 320 : 0 }}
             />
 
@@ -280,18 +299,18 @@ export function ScannerPage() {
               )}
             </div>
           </CardContent>
-        </Card>
+        </GlassCard>
 
         <div className="space-y-6">
-          <Card>
+          <GlassCard>
             <CardHeader>
-              <CardTitle>Input Manual</CardTitle>
+              <CardTitle className="text-white">Input Manual</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <Label htmlFor="manual">Kode / hasil pindaian</Label>
+                <Label className="text-white" htmlFor="manual">Kode / hasil pindaian</Label>
                 <div className="flex gap-2">
-                  <Input
+                  <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                     id="manual"
                     value={manual}
                     onChange={(e) => setManual(e.target.value)}
@@ -305,22 +324,22 @@ export function ScannerPage() {
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-ink-500">
+              <p className="text-xs text-ink-300">
                 Fallback bila kamera tidak tersedia atau kode tidak terbaca.
               </p>
             </CardContent>
-          </Card>
+          </GlassCard>
 
-          <Card>
+          <GlassCard>
             <CardHeader>
-              <CardTitle>Hasil Konfirmasi</CardTitle>
+              <CardTitle className="text-white">Hasil Konfirmasi</CardTitle>
             </CardHeader>
             <CardContent>
               {resolving && (
-                <p className="text-sm text-ink-500">Mencari di database…</p>
+                <p className="text-sm text-ink-300">Mencari di database…</p>
               )}
               {!resolving && !result && (
-                <p className="text-sm text-ink-500">
+                <p className="text-sm text-ink-300">
                   Belum ada hasil. Mulai scan atau gunakan input manual.
                 </p>
               )}
@@ -328,9 +347,9 @@ export function ScannerPage() {
                 <div className="space-y-3">
                   {result.kind === "public" && (
                     <>
-                      <p className="text-sm">
+                      <p className="text-sm text-white">
                         Terdeteksi <strong>tautan publik aset</strong> dengan kode{" "}
-                        <code className="rounded bg-ink-100 px-1">{result.publicCode}</code>.
+                        <code className="rounded bg-white/10 px-1 text-ink-100">{result.publicCode}</code>.
                       </p>
                       <Button
                         onClick={() => window.open(result.url, "_blank", "noreferrer")}
@@ -341,9 +360,9 @@ export function ScannerPage() {
                   )}
                   {result.kind === "asset" && (
                     <>
-                      <p className="text-sm">
+                      <p className="text-sm text-white">
                         Aset ditemukan: <strong>{result.name}</strong>{" "}
-                        <span className="text-ink-500">({result.asset_code})</span>
+                        <span className="text-ink-300">({result.asset_code})</span>
                       </p>
                       <Button onClick={() => navigate(`/aset/${result.id}`)}>
                         Buka Detail Aset
@@ -352,9 +371,9 @@ export function ScannerPage() {
                   )}
                   {result.kind === "item" && (
                     <>
-                      <p className="text-sm">
+                      <p className="text-sm text-white">
                         Barang ditemukan: <strong>{result.name}</strong>{" "}
-                        <span className="text-ink-500">({result.sku})</span>
+                        <span className="text-ink-300">({result.sku})</span>
                       </p>
                       <Button onClick={() => navigate(`/persediaan/${result.id}`)}>
                         Buka Detail Barang
@@ -363,13 +382,13 @@ export function ScannerPage() {
                   )}
                   {result.kind === "raw" && (
                     <>
-                      <p className="text-sm text-ink-500">
+                      <p className="text-sm text-ink-300">
                         Tidak ditemukan di database. Teks mentah hasil pindaian:
                       </p>
-                      <code className="block break-all rounded bg-ink-100 p-3 text-sm">
+                      <code className="block break-all rounded bg-white/10 p-3 text-sm text-white">
                         {result.text}
                       </code>
-                      <Button variant="outline" onClick={() => void copyRaw(result.text)}>
+                      <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={() => void copyRaw(result.text)}>
                         {copied ? (
                           <>
                             <Check className="mr-2 h-4 w-4" /> Tersalin
@@ -386,6 +405,7 @@ export function ScannerPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="text-ink-300 hover:bg-white/10 hover:text-white"
                       onClick={() => {
                         setResult(null);
                         setCopied(false);
@@ -397,7 +417,7 @@ export function ScannerPage() {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </GlassCard>
         </div>
       </div>
     </div>

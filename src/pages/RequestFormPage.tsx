@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
 import { buildSearchPattern } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -21,6 +23,23 @@ import {
   type StatusRequest,
 } from "../types/database";
 import { formatRequestStatus } from "../lib/requestStatus";
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 interface ItemSearchResult {
   id: string;
@@ -190,42 +209,42 @@ export function RequestFormPage() {
         description="Input permintaan harian dari kantor pusat untuk diproses gudang."
       />
 
-      <Card>
+      <GlassCard>
         <CardHeader>
-          <CardTitle className="font-display text-base text-ink-800">Data Permintaan</CardTitle>
+          <CardTitle className="font-display text-base text-white">Data Permintaan</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
-            <Label>Tanggal Input</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Label className="text-white">Tanggal Input</Label>
+            <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>No Tiket</Label>
-            <Input
+            <Label className="text-white">No Tiket</Label>
+            <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
               value={ticketNo}
               onChange={(e) => setTicketNo(e.target.value)}
               placeholder="cth: A2609281981"
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Cabang / Gerai</Label>
-            <Input
+            <Label className="text-white">Cabang / Gerai</Label>
+            <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
               placeholder="cth: Jakarta Sortation"
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Kode Gerai (opsional)</Label>
-            <Input
+            <Label className="text-white">Kode Gerai (opsional)</Label>
+            <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
               value={branchCode}
               onChange={(e) => setBranchCode(e.target.value)}
               placeholder="cth: JKT-SRT-01"
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
-            <Label>Catatan (opsional)</Label>
-            <Textarea
+            <Label className="text-white">Catatan (opsional)</Label>
+            <Textarea className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Keterangan tambahan untuk admin gudang…"
@@ -233,12 +252,12 @@ export function RequestFormPage() {
             />
           </div>
         </CardContent>
-      </Card>
+      </GlassCard>
 
-      <Card className="mt-4">
+      <GlassCard className="mt-4">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="font-display text-base text-ink-800">Daftar Barang</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => setRows((p) => [...p, newRow()])}>
+          <CardTitle className="font-display text-base text-white">Daftar Barang</CardTitle>
+          <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={() => setRows((p) => [...p, newRow()])}>
             <Plus className="mr-1 h-4 w-4" /> Tambah Baris
           </Button>
         </CardHeader>
@@ -246,11 +265,11 @@ export function RequestFormPage() {
           {rows.map((r, i) => (
             <div
               key={r.key}
-              className="grid gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 lg:grid-cols-[repeat(16,minmax(0,1fr))]"
+              className="grid gap-3 rounded-lg border border-white/15 bg-white/5 p-3 lg:grid-cols-[repeat(16,minmax(0,1fr))]"
             >
               <div className="relative lg:col-span-4">
-                <Label>Barang #{i + 1}</Label>
-                <Input
+                <Label className="text-white">Barang #{i + 1}</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                   value={r.query}
                   onChange={(e) => handleQueryChange(r.key, e.target.value)}
                   onBlur={() => setTimeout(() => updateRow(r.key, { open: false }), 150)}
@@ -258,23 +277,23 @@ export function RequestFormPage() {
                   autoComplete="off"
                 />
                 {r.open && r.results.length > 0 && (
-                  <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border border-ink-200 bg-white shadow-xl">
+                  <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border border-white/15 bg-ink-800 shadow-xl">
                     {r.results.map((it) => (
                       <button
                         key={it.id}
                         type="button"
-                        className="block w-full px-3 py-2 text-left text-sm text-ink-800 hover:bg-ink-100"
+                        className="block w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10"
                         onMouseDown={() => pickItem(r.key, it)}
                       >
-                        <span className="font-mono text-xs text-ink-500">{it.sku}</span> — {it.name}
+                        <span className="font-mono text-xs text-ink-300">{it.sku}</span> — {it.name}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
               <div className="lg:col-span-1">
-                <Label>Qty</Label>
-                <Input
+                <Label className="text-white">Qty</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                   type="number"
                   min="0"
                   value={r.qty}
@@ -283,16 +302,16 @@ export function RequestFormPage() {
                 />
               </div>
               <div className="lg:col-span-2">
-                <Label>Type Barang</Label>
-                <Input
+                <Label className="text-white">Type Barang</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                   value={r.itemType}
                   onChange={(e) => updateRow(r.key, { itemType: e.target.value })}
                   placeholder="cth: Elektronik"
                 />
               </div>
               <div className="lg:col-span-2">
-                <Label htmlFor={`sr-${r.key}`}>Status Request</Label>
-                <Select
+                <Label className="text-white" htmlFor={`sr-${r.key}`}>Status Request</Label>
+                <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                   id={`sr-${r.key}`}
                   value={r.statusRequest}
                   onValueChange={(v) => updateRow(r.key, { statusRequest: v as StatusRequest })}
@@ -304,8 +323,8 @@ export function RequestFormPage() {
               </div>
               {r.statusRequest === "PINJAM" && (
                 <div className="lg:col-span-2">
-                  <Label htmlFor={`dur-${r.key}`}>Durasi Pinjam</Label>
-                  <Input
+                  <Label className="text-white" htmlFor={`dur-${r.key}`}>Durasi Pinjam</Label>
+                  <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                     id={`dur-${r.key}`}
                     value={r.durasiPinjam}
                     onChange={(e) => updateRow(r.key, { durasiPinjam: e.target.value })}
@@ -314,8 +333,8 @@ export function RequestFormPage() {
                 </div>
               )}
               <div className="lg:col-span-2">
-                <Label htmlFor={`sa-${r.key}`}>Status Asset</Label>
-                <Select
+                <Label className="text-white" htmlFor={`sa-${r.key}`}>Status Asset</Label>
+                <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                   id={`sa-${r.key}`}
                   value={r.statusAset}
                   onValueChange={(v) => updateRow(r.key, { statusAset: v as ExcelStatusAset })}
@@ -324,13 +343,13 @@ export function RequestFormPage() {
                     label: EXCEL_STATUS_ASET_LABELS[o],
                   }))}
                 />
-                <p className="mt-1 text-xs text-ink-500">
+                <p className="mt-1 text-xs text-ink-300">
                   Stok dipotong dari <b>{EXCEL_STATUS_ASET_LOKASI[r.statusAset]}</b>
                 </p>
               </div>
               <div className="lg:col-span-2">
-                <Label>Serial Number (opsional)</Label>
-                <Input
+                <Label className="text-white">Serial Number (opsional)</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                   value={r.serialNumber}
                   onChange={(e) => updateRow(r.key, { serialNumber: e.target.value })}
                   placeholder="SN…"
@@ -340,6 +359,7 @@ export function RequestFormPage() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  className="text-ink-300 hover:bg-white/10 hover:text-white"
                   title="Hapus baris"
                   aria-label="Hapus baris"
                   onClick={() =>
@@ -347,12 +367,12 @@ export function RequestFormPage() {
                   }
                   disabled={rows.length <= 1}
                 >
-                  <Trash2 className="h-4 w-4 text-brand-600" />
+                  <Trash2 className="h-4 w-4 text-brand-200" />
                 </Button>
               </div>
               <div className="lg:col-span-16">
-                <Label>Keterangan baris (opsional)</Label>
-                <Input
+                <Label className="text-white">Keterangan baris (opsional)</Label>
+                <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                   value={r.notes}
                   onChange={(e) => updateRow(r.key, { notes: e.target.value })}
                   placeholder="cth: untuk penggantian unit rusak…"
@@ -361,10 +381,10 @@ export function RequestFormPage() {
             </div>
           ))}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={() => navigate("/permintaan")}>
+        <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={() => navigate("/permintaan")}>
           Batal
         </Button>
         <Button onClick={handleSubmit} disabled={submitting}>

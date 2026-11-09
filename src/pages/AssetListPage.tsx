@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, Pencil, Eye } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { assetConditionVariant, assetStatusVariant } from "../lib/statusColors";
+import { assetConditionVariant, assetStatusVariant, badgeDarkClass } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { DataTable } from "../components/DataTable";
 import { PageHeader } from "../components/PageHeader";
@@ -67,7 +67,7 @@ export function AssetListPage() {
         cell: ({ row }) => (
           <Link
             to={`/aset/${row.original.id}`}
-            className="font-medium text-brand-700 hover:underline"
+            className="font-medium text-brand-200 hover:underline"
           >
             {row.original.asset_code}
           </Link>
@@ -79,7 +79,7 @@ export function AssetListPage() {
         cell: ({ row }) => (
           <div>
             <div className="font-medium">{row.original.name}</div>
-            <div className="text-xs text-ink-500">
+            <div className="text-xs text-ink-300">
               {row.original.brand ?? ""}
               {row.original.brand && row.original.model ? " · " : ""}
               {row.original.model ?? ""}
@@ -105,7 +105,10 @@ export function AssetListPage() {
         header: "Kondisi",
         accessorKey: "condition",
         cell: ({ row }) => (
-          <Badge variant={assetConditionVariant[row.original.condition]}>
+          <Badge
+            variant={assetConditionVariant[row.original.condition]}
+            className={badgeDarkClass[assetConditionVariant[row.original.condition]]}
+          >
             {ASSET_CONDITION_LABELS[row.original.condition]}
           </Badge>
         ),
@@ -114,7 +117,10 @@ export function AssetListPage() {
         header: "Status",
         accessorKey: "status",
         cell: ({ row }) => (
-          <Badge variant={assetStatusVariant[row.original.status]}>
+          <Badge
+            variant={assetStatusVariant[row.original.status]}
+            className={badgeDarkClass[assetStatusVariant[row.original.status]]}
+          >
             {ASSET_STATUS_LABELS[row.original.status]}
           </Badge>
         ),
@@ -124,9 +130,9 @@ export function AssetListPage() {
         accessorKey: "is_published",
         cell: ({ row }) =>
           row.original.is_published ? (
-            <Badge variant="success">Ya</Badge>
+            <Badge variant="success" className={badgeDarkClass.success}>Ya</Badge>
           ) : (
-            <Badge variant="secondary">Tidak</Badge>
+            <Badge variant="secondary" className={badgeDarkClass.secondary}>Tidak</Badge>
           ),
       },
       {
@@ -137,6 +143,7 @@ export function AssetListPage() {
             <Button
               variant="ghost"
               size="sm"
+              className="text-ink-300 hover:bg-white/10 hover:text-white"
               onClick={() => navigate(`/aset/${row.original.id}`)}
             >
               <Eye className="mr-1 h-4 w-4" /> Lihat
@@ -144,6 +151,7 @@ export function AssetListPage() {
             <Button
               variant="ghost"
               size="sm"
+              className="text-ink-300 hover:bg-white/10 hover:text-white"
               onClick={() => navigate(`/aset/${row.original.id}/ubah`)}
             >
               <Pencil className="mr-1 h-4 w-4" /> Ubah

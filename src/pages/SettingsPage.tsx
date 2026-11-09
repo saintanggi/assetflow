@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Info, KeyRound, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
 import { formatDateTime } from "../lib/format";
 import { DataTable } from "../components/DataTable";
 import { MfaSetup } from "../components/MfaSetup";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import {
-  Card,
   CardContent,
   CardDescription,
   CardHeader,
@@ -26,6 +27,19 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import type { AppSetting } from "../types/database";
+
+/** Permukaan kaca gelap — sama seperti dashboard. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<AppSetting[]>([]);
@@ -126,7 +140,7 @@ export function SettingsPage() {
       id: "value",
       header: "Value (JSON)",
       cell: ({ row }) => (
-        <pre className="max-w-md overflow-hidden text-ellipsis whitespace-pre-wrap break-all font-mono text-xs text-ink-500">
+        <pre className="max-w-md overflow-hidden text-ellipsis whitespace-pre-wrap break-all font-mono text-xs text-ink-300">
           {JSON.stringify(row.original.value, null, 2)}
         </pre>
       ),
@@ -142,7 +156,7 @@ export function SettingsPage() {
       id: "aksi",
       header: "Aksi",
       cell: ({ row }) => (
-        <Button variant="ghost" size="sm" onClick={() => openEdit(row.original)}>
+        <Button variant="ghost" size="sm" className="text-ink-300 hover:bg-white/10 hover:text-white" onClick={() => openEdit(row.original)}>
           <Pencil className="mr-1 h-4 w-4" /> Ubah
         </Button>
       ),
@@ -161,44 +175,46 @@ export function SettingsPage() {
         }
       />
 
-      <div className="mb-6 flex items-start gap-3 rounded-xl border border-warn-100 bg-warn-50 p-4 text-sm text-warn-700">
-        <Info className="mt-0.5 h-5 w-5 shrink-0 text-warn-600" />
+      <div className="mb-6 flex items-start gap-3 rounded-xl border border-warn-500/25 bg-warn-500/10 p-4 text-sm text-warn-100">
+        <Info className="mt-0.5 h-5 w-5 shrink-0 text-warn-100" />
         <p>
           Hanya Super Admin &amp; pemegang izin <span className="font-mono font-semibold">settings.manage</span>{" "}
           yang dapat mengubah pengaturan ini. Nilai harus berupa JSON yang valid.
         </p>
       </div>
 
-      <Card className="mb-6">
+      <GlassCard className="mb-6">
         <CardHeader className="space-y-1">
           <div className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-brand-700" />
-            <CardTitle className="text-lg">Keamanan Akun</CardTitle>
+            <KeyRound className="h-5 w-5 text-brand-200" />
+            <CardTitle className="text-lg text-white">Keamanan Akun</CardTitle>
           </div>
-          <CardDescription>
+          <CardDescription className="text-ink-300">
             Ubah kata sandi akun Anda yang sedang masuk.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid max-w-md gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="pw-baru">Kata sandi baru</Label>
+              <Label htmlFor="pw-baru" className="text-ink-100">Kata sandi baru</Label>
               <Input
                 id="pw-baru"
                 type="password"
                 autoComplete="new-password"
                 placeholder="Minimal 6 karakter"
+                className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                 value={pw1}
                 onChange={(e) => setPw1(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pw-konfirmasi">Konfirmasi kata sandi baru</Label>
+              <Label htmlFor="pw-konfirmasi" className="text-ink-100">Konfirmasi kata sandi baru</Label>
               <Input
                 id="pw-konfirmasi"
                 type="password"
                 autoComplete="new-password"
                 placeholder="Ketik ulang kata sandi baru"
+                className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                 value={pw2}
                 onChange={(e) => setPw2(e.target.value)}
               />
@@ -210,15 +226,15 @@ export function SettingsPage() {
             </div>
           </div>
 
-          <div className="mt-6 border-t border-ink-200 pt-5">
-            <p className="mb-1 text-sm font-medium">Autentikasi Dua Faktor (MFA)</p>
-            <p className="mb-3 text-xs text-ink-500">
+          <div className="mt-6 border-t border-white/15 pt-5">
+            <p className="mb-1 text-sm font-medium text-white">Autentikasi Dua Faktor (MFA)</p>
+            <p className="mb-3 text-xs text-ink-300">
               Disarankan untuk akun super admin — login jadi butuh kode dari aplikasi authenticator.
             </p>
             <MfaSetup />
           </div>
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <DataTable
         columns={columns}

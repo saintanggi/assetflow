@@ -1,16 +1,35 @@
 import { useCallback, useEffect, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Printer, Plus, X, Search } from "lucide-react";
 import { supabase, publicAssetUrl } from "../lib/supabase";
+import { cn } from "../lib/utils";
 import { buildSearchPattern } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { QrLabel } from "../features/barcodes/QrLabel";
 import { BarcodeLabel } from "../features/barcodes/BarcodeLabel";
 import { toast } from "sonner";
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 interface LabelItem {
   kind: "asset" | "item";
@@ -157,18 +176,18 @@ export function LabelPrintPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Panel kiri — disembunyikan saat print */}
         <div className="no-print space-y-6">
-          <Card>
+          <GlassCard>
             <CardHeader>
-              <CardTitle>Cari Aset</CardTitle>
+              <CardTitle className="text-white">Cari Aset</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <Label htmlFor="label-search-asset">Kode / nama aset</Label>
+                <Label className="text-white" htmlFor="label-search-asset">Kode / nama aset</Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-300" />
                   <Input
                     id="label-search-asset"
-                    className="pl-9"
+                    className="border-white/15 bg-white/10 pl-9 text-white placeholder:text-ink-300"
                     placeholder="Ketik min. 2 huruf…"
                     value={assetQuery}
                     onChange={(e) => void searchAssets(e.target.value)}
@@ -176,19 +195,20 @@ export function LabelPrintPage() {
                 </div>
               </div>
               {assetResults.length > 0 && (
-                <ul className="divide-y rounded-lg border">
+                <ul className="divide-y divide-white/10 rounded-lg border border-white/15">
                   {assetResults.map((a) => (
                     <li
                       key={a.id}
-                      className="flex items-center justify-between gap-2 p-2 text-sm"
+                      className="flex items-center justify-between gap-2 p-2 text-sm text-white"
                     >
                       <span>
                         <strong>{a.asset_code}</strong>{" "}
-                        <span className="text-ink-500">{a.name}</span>
+                        <span className="text-ink-300">{a.name}</span>
                       </span>
                       <Button
                         size="sm"
                         variant="outline"
+                        className={DARK_OUTLINE_BTN}
                         onClick={() => {
                           addLabel({
                             kind: "asset",
@@ -209,20 +229,20 @@ export function LabelPrintPage() {
                 </ul>
               )}
             </CardContent>
-          </Card>
+          </GlassCard>
 
-          <Card>
+          <GlassCard>
             <CardHeader>
-              <CardTitle>Cari Barang</CardTitle>
+              <CardTitle className="text-white">Cari Barang</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <Label htmlFor="label-search-item">SKU / nama barang</Label>
+                <Label className="text-white" htmlFor="label-search-item">SKU / nama barang</Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-300" />
                   <Input
                     id="label-search-item"
-                    className="pl-9"
+                    className="border-white/15 bg-white/10 pl-9 text-white placeholder:text-ink-300"
                     placeholder="Ketik min. 2 huruf…"
                     value={itemQuery}
                     onChange={(e) => void searchItems(e.target.value)}
@@ -230,19 +250,20 @@ export function LabelPrintPage() {
                 </div>
               </div>
               {itemResults.length > 0 && (
-                <ul className="divide-y rounded-lg border">
+                <ul className="divide-y divide-white/10 rounded-lg border border-white/15">
                   {itemResults.map((it) => (
                     <li
                       key={it.id}
-                      className="flex items-center justify-between gap-2 p-2 text-sm"
+                      className="flex items-center justify-between gap-2 p-2 text-sm text-white"
                     >
                       <span>
                         <strong>{it.sku}</strong>{" "}
-                        <span className="text-ink-500">{it.name}</span>
+                        <span className="text-ink-300">{it.name}</span>
                       </span>
                       <Button
                         size="sm"
                         variant="outline"
+                        className={DARK_OUTLINE_BTN}
                         onClick={() => {
                           addLabel({
                             kind: "item",
@@ -263,15 +284,15 @@ export function LabelPrintPage() {
                 </ul>
               )}
             </CardContent>
-          </Card>
+          </GlassCard>
 
-          <Card>
+          <GlassCard>
             <CardHeader>
-              <CardTitle>Daftar Label ({labels.length})</CardTitle>
+              <CardTitle className="text-white">Daftar Label ({labels.length})</CardTitle>
             </CardHeader>
             <CardContent>
               {labels.length === 0 ? (
-                <p className="text-sm text-ink-500">
+                <p className="text-sm text-ink-300">
                   Belum ada label. Cari aset/barang di atas lalu tambahkan.
                 </p>
               ) : (
@@ -279,18 +300,19 @@ export function LabelPrintPage() {
                   {labels.map((l) => (
                     <li
                       key={`${l.kind}-${l.id}`}
-                      className="flex items-center justify-between gap-2 rounded-lg border p-2 text-sm"
+                      className="flex items-center justify-between gap-2 rounded-lg border border-white/15 p-2 text-sm text-white"
                     >
                       <span>
-                        <span className="mr-2 rounded bg-ink-100 px-1.5 py-0.5 text-xs uppercase text-ink-500">
+                        <span className="mr-2 rounded bg-white/10 px-1.5 py-0.5 text-xs uppercase text-ink-300">
                           {l.kind === "asset" ? "Aset" : "Barang"}
                         </span>
                         <strong>{l.code}</strong>{" "}
-                        <span className="text-ink-500">{l.title}</span>
+                        <span className="text-ink-300">{l.title}</span>
                       </span>
                       <Button
                         size="icon"
                         variant="ghost"
+                        className="text-ink-300 hover:bg-white/10 hover:text-white"
                         onClick={() => removeLabel(l.kind, l.id)}
                         aria-label={`Hapus label ${l.code}`}
                       >
@@ -301,7 +323,7 @@ export function LabelPrintPage() {
                 </ul>
               )}
             </CardContent>
-          </Card>
+          </GlassCard>
         </div>
 
         {/* Panel kanan — area cetak */}
@@ -336,7 +358,7 @@ export function LabelPrintPage() {
               </div>
             ))}
             {labels.length === 0 && (
-              <p className="no-print text-sm text-ink-500">
+              <p className="no-print text-sm text-ink-300">
                 Pratinjau label akan muncul di sini.
               </p>
             )}

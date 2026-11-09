@@ -47,7 +47,9 @@ interface DataTableProps<TData> {
   onSearchChange?: (value: string) => void;
   /**
    * Varian kaca gelap untuk halaman bertema gelap (mis. Stok Kondisi).
-   * Default "light" — semua halaman lain tidak berubah.
+   * Default "dark" sejak 9 Nov 2026 — seluruh sistem kini bertema gelap,
+   * jadi semua tabel tampil gelap kecuali halaman yang eksplisit memakai
+   * variant="light" (mis. di dalam dialog/kartu terang).
    */
   variant?: "light" | "dark";
 }
@@ -66,7 +68,7 @@ export function DataTable<TData>({
   searchActions,
   searchValue,
   onSearchChange,
-  variant = "light",
+  variant = "dark",
 }: DataTableProps<TData>) {
   const dark = variant === "dark";
   const [internalFilter, setInternalFilter] = useState("");
@@ -181,7 +183,7 @@ export function DataTable<TData>({
                   : "rounded-xl border border-ink-200 bg-white"
               }
             >
-              <EmptyState title={emptyTitle} description={emptyDescription} />
+              <EmptyState title={emptyTitle} description={emptyDescription} dark={dark} />
             </div>
           ) : (
             table.getRowModel().rows.map((row) => (
@@ -220,7 +222,7 @@ export function DataTable<TData>({
             {table.getRowModel().rows.length === 0 ? (
               <TableRow dark={dark} className="hover:bg-transparent">
                 <TableCell colSpan={columns.length}>
-                  <EmptyState title={emptyTitle} description={emptyDescription} />
+                  <EmptyState title={emptyTitle} description={emptyDescription} dark={dark} />
                 </TableCell>
               </TableRow>
             ) : (
@@ -249,6 +251,11 @@ export function DataTable<TData>({
           <Button
             variant="outline"
             size="sm"
+            className={
+              dark
+                ? "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white"
+                : undefined
+            }
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
@@ -257,6 +264,11 @@ export function DataTable<TData>({
           <Button
             variant="outline"
             size="sm"
+            className={
+              dark
+                ? "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white"
+                : undefined
+            }
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >

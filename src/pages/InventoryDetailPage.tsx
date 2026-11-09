@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowDownToLine, ArrowUpFromLine, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { badgeDarkClass } from "../lib/statusColors";
+import { cn } from "../lib/utils";
 import { formatDate, formatDateTime, formatQty, formatRupiah } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -35,6 +38,23 @@ import type {
 } from "../types/database";
 import { TRANSACTION_TYPE_LABELS } from "../types/database";
 import { toast } from "sonner";
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 const ITEM_SELECT =
   "*, asset_categories(code,name), units(code,name), locations!inventory_items_location_id_fkey(code,name), suppliers(code,name)";
@@ -254,15 +274,15 @@ export function InventoryDetailPage() {
         description={item.brand ? `Merek: ${item.brand}` : "Detail barang persediaan"}
         actions={
           <>
-            <Button variant="outline" onClick={() => navigate("/persediaan")}>
+            <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={() => navigate("/persediaan")}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
             </Button>
             {isSuperAdmin && (
-              <Button variant="outline" onClick={openEdit}>
+              <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={openEdit}>
                 <Pencil className="mr-2 h-4 w-4" /> Ubah Master
               </Button>
             )}
-            <Button variant="outline" onClick={() => navigate("/transaksi/masuk")}>
+            <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={() => navigate("/transaksi/masuk")}>
               <ArrowDownToLine className="mr-2 h-4 w-4" /> Barang Masuk
             </Button>
             <Button onClick={() => navigate("/transaksi/keluar")}>
@@ -273,62 +293,63 @@ export function InventoryDetailPage() {
       />
 
       <div className="grid gap-6">
-        <Card>
+        <GlassCard>
           <CardHeader>
-            <CardTitle>Informasi Barang</CardTitle>
+            <CardTitle className="text-white">Informasi Barang</CardTitle>
           </CardHeader>
           <CardContent>
             {item.photo_url ? (
               <img
                 src={item.photo_url}
                 alt={item.name}
-                className="mb-4 h-40 w-full rounded-lg border object-cover"
+                className="mb-4 h-40 w-full rounded-lg border border-white/15 object-cover"
               />
             ) : null}
             <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
               {infoRows.map((r) => (
                 <div key={r.label} className="flex flex-col">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-500">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-300">
                     {r.label}
                   </dt>
-                  <dd className="mt-0.5 text-sm font-medium text-ink-800">{r.value}</dd>
+                  <dd className="mt-0.5 text-sm font-medium text-white">{r.value}</dd>
                 </div>
               ))}
             </dl>
             <div className="mt-6">
               {item.is_active ? (
-                <Badge variant="success">Aktif</Badge>
+                <Badge variant="success" className={badgeDarkClass.success}>Aktif</Badge>
               ) : (
-                <Badge variant="secondary">Nonaktif</Badge>
+                <Badge variant="secondary" className={badgeDarkClass.secondary}>Nonaktif</Badge>
               )}
             </div>
           </CardContent>
-        </Card>
+        </GlassCard>
 
       </div>
 
-      <Card className="mt-6">
+      <GlassCard className="mt-6">
         <CardHeader>
-          <CardTitle>Stok per Lokasi</CardTitle>
+          <CardTitle className="text-white">Stok per Lokasi</CardTitle>
         </CardHeader>
         <CardContent>
           {balances.length === 0 ? (
             <EmptyState
+              dark
               title="Belum ada stok"
               description="Barang ini belum memiliki stok di lokasi mana pun."
             />
           ) : (
-            <Table>
-              <TableHeader>
+            <Table dark>
+              <TableHeader dark>
                 <TableRow>
-                  <TableHead>Lokasi</TableHead>
-                  <TableHead>Gudang</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead dark>Lokasi</TableHead>
+                  <TableHead dark>Gudang</TableHead>
+                  <TableHead dark className="text-right">Qty</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {balances.map((b) => (
-                  <TableRow key={b.location_id}>
+                  <TableRow dark key={b.location_id}>
                     <TableCell>{b.locations?.name ?? "—"}</TableCell>
                     <TableCell>{b.locations?.warehouses?.name ?? "—"}</TableCell>
                     <TableCell className="text-right font-medium">
@@ -336,7 +357,7 @@ export function InventoryDetailPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                <TableRow className="font-semibold">
+                <TableRow dark className="font-semibold">
                   <TableCell colSpan={2}>Total</TableCell>
                   <TableCell className="text-right">{formatQty(totalStock)}</TableCell>
                 </TableRow>
@@ -344,32 +365,33 @@ export function InventoryDetailPage() {
             </Table>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
-      <Card className="mt-6">
+      <GlassCard className="mt-6">
         <CardHeader>
-          <CardTitle>Kartu Stok</CardTitle>
+          <CardTitle className="text-white">Kartu Stok</CardTitle>
         </CardHeader>
         <CardContent>
           {ledger.length === 0 ? (
             <EmptyState
+              dark
               title="Belum ada mutasi"
               description="Belum ada transaksi yang menyentuh barang ini."
             />
           ) : (
-            <Table>
-              <TableHeader>
+            <Table dark>
+              <TableHeader dark>
                 <TableRow>
-                  <TableHead>Waktu</TableHead>
-                  <TableHead>No. Dokumen</TableHead>
-                  <TableHead>Jenis</TableHead>
-                  <TableHead className="text-right">Perubahan</TableHead>
-                  <TableHead className="text-right">Stok Akhir</TableHead>
+                  <TableHead dark>Waktu</TableHead>
+                  <TableHead dark>No. Dokumen</TableHead>
+                  <TableHead dark>Jenis</TableHead>
+                  <TableHead dark className="text-right">Perubahan</TableHead>
+                  <TableHead dark className="text-right">Stok Akhir</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {ledger.map((l) => (
-                  <TableRow key={l.id}>
+                  <TableRow dark key={l.id}>
                     <TableCell className="whitespace-nowrap">
                       {formatDateTime(l.created_at)}
                     </TableCell>
@@ -383,7 +405,7 @@ export function InventoryDetailPage() {
                     </TableCell>
                     <TableCell
                       className={`text-right font-medium ${
-                        Number(l.qty_change) >= 0 ? "text-ok-600" : "text-brand-600"
+                        Number(l.qty_change) >= 0 ? "text-ok-100" : "text-brand-100"
                       }`}
                     >
                       {Number(l.qty_change) >= 0 ? "+" : ""}
@@ -398,7 +420,7 @@ export function InventoryDetailPage() {
             </Table>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogHeader>

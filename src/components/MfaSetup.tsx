@@ -101,19 +101,25 @@ export function MfaSetup() {
     }
   };
 
-  if (loading) return <p className="text-sm text-ink-500">Memuat status MFA…</p>;
+  if (loading) return <p className="text-sm text-ink-300">Memuat status MFA…</p>;
 
   if (factorId && !enrolling) {
     return (
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-emerald-600" />
+          <ShieldCheck className="h-5 w-5 text-ok-100" />
           <div>
-            <p className="text-sm font-medium">MFA aktif (TOTP)</p>
-            <p className="text-xs text-ink-500">Login membutuhkan kode dari aplikasi authenticator.</p>
+            <p className="text-sm font-medium text-white">MFA aktif (TOTP)</p>
+            <p className="text-xs text-ink-300">Login membutuhkan kode dari aplikasi authenticator.</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" disabled={busy} onClick={unenroll}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={unenroll}
+          className="border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white"
+        >
           <ShieldOff className="mr-1.5 h-4 w-4" /> Nonaktifkan
         </Button>
       </div>
@@ -123,7 +129,7 @@ export function MfaSetup() {
   if (enrolling && qrCode) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-ink-600">
+        <p className="text-sm text-ink-300">
           Scan QR ini dengan Google Authenticator / Authy, lalu masukkan kode 6 digit yang muncul.
         </p>
         <div className="flex flex-wrap items-start gap-4">
@@ -132,18 +138,23 @@ export function MfaSetup() {
           <div className="min-w-48 flex-1 space-y-2">
             {secret && (
               <div>
-                <Label>Kode rahasia (kalau tidak bisa scan)</Label>
-                <Input readOnly value={secret} className="font-mono text-xs" />
+                <Label className="text-ink-100">Kode rahasia (kalau tidak bisa scan)</Label>
+                <Input
+                  readOnly
+                  value={secret}
+                  className="border-white/15 bg-white/10 font-mono text-xs text-white placeholder:text-ink-300"
+                />
               </div>
             )}
             <div>
-              <Label>Kode 6 digit dari authenticator</Label>
+              <Label className="text-ink-100">Kode 6 digit dari authenticator</Label>
               <Input
                 inputMode="numeric"
                 maxLength={6}
                 placeholder="123456"
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
               />
             </div>
             <div className="flex gap-2">
@@ -159,6 +170,7 @@ export function MfaSetup() {
                   setSecret(null);
                   setCode("");
                 }}
+                className="border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white"
               >
                 Batal
               </Button>
@@ -172,8 +184,8 @@ export function MfaSetup() {
   return (
     <div className="flex items-center justify-between gap-3">
       <div>
-        <p className="text-sm font-medium">MFA belum aktif</p>
-        <p className="text-xs text-ink-500">
+        <p className="text-sm font-medium text-white">MFA belum aktif</p>
+        <p className="text-xs text-ink-300">
           Tambahkan lapisan kedua: login butuh kode dari aplikasi authenticator di HP.
         </p>
       </div>

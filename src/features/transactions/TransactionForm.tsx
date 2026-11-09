@@ -59,6 +59,12 @@ function newRow(): ItemRow {
   };
 }
 
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
+const DARK_INPUT =
+  "border-white/15 bg-white/10 text-white placeholder:text-ink-300";
+
 export function TransactionForm({
   typeLabel,
   type,
@@ -231,46 +237,50 @@ export function TransactionForm({
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="trx-date">Tanggal</Label>
+          <Label htmlFor="trx-date" className="text-ink-100">Tanggal</Label>
           <Input
             id="trx-date"
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             required
+            className={`${DARK_INPUT} [color-scheme:dark]`}
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="trx-ref">Referensi (opsional)</Label>
+          <Label htmlFor="trx-ref" className="text-ink-100">Referensi (opsional)</Label>
           <Input
             id="trx-ref"
             value={reference}
             onChange={(e) => setReference(e.target.value)}
             placeholder="No. PO / SJ / lainnya"
             maxLength={100}
+            className={DARK_INPUT}
           />
         </div>
         {needSource && (
           <div className="space-y-1.5">
-            <Label htmlFor="trx-source">Lokasi Asal</Label>
+            <Label htmlFor="trx-source" className="text-ink-100">Lokasi Asal</Label>
             <Select
               id="trx-source"
               options={locationOptions}
               placeholder="Pilih lokasi asal"
               value={sourceId}
               onValueChange={setSourceId}
+              className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
             />
           </div>
         )}
         {needDest && (
           <div className="space-y-1.5">
-            <Label htmlFor="trx-dest">Lokasi Tujuan</Label>
+            <Label htmlFor="trx-dest" className="text-ink-100">Lokasi Tujuan</Label>
             <Select
               id="trx-dest"
               options={locationOptions}
               placeholder="Pilih lokasi tujuan"
               value={destId}
               onValueChange={setDestId}
+              className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
             />
           </div>
         )}
@@ -278,8 +288,14 @@ export function TransactionForm({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <Label>Daftar Barang</Label>
-          <Button type="button" variant="outline" size="sm" onClick={addRow}>
+          <Label className="text-ink-100">Daftar Barang</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addRow}
+            className={DARK_OUTLINE_BTN}
+          >
             <Plus className="mr-1 h-4 w-4" /> Tambah Barang
           </Button>
         </div>
@@ -287,7 +303,7 @@ export function TransactionForm({
         {rows.map((row, idx) => (
           <div
             key={row.key}
-            className="grid gap-2 rounded-lg border border-ink-200 p-3 sm:grid-cols-[1fr_140px_44px]"
+            className="grid gap-2 rounded-lg border border-white/15 bg-white/5 p-3 sm:grid-cols-[1fr_140px_44px]"
           >
             <div className="relative">
               <Input
@@ -296,13 +312,14 @@ export function TransactionForm({
                 onChange={(e) => handleQueryChange(row.key, e.target.value)}
                 onBlur={() => setTimeout(() => updateRow(row.key, { open: false }), 150)}
                 onFocus={() => row.results.length > 0 && updateRow(row.key, { open: true })}
+                className={DARK_INPUT}
               />
               {row.open && (
-                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-ink-200 bg-white shadow-lg">
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-white/15 bg-ink-800/95 text-white shadow-lg backdrop-blur-xl">
                   {row.searching ? (
-                    <div className="px-3 py-2 text-sm text-ink-500">Mencari…</div>
+                    <div className="px-3 py-2 text-sm text-ink-300">Mencari…</div>
                   ) : row.results.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-ink-500">
+                    <div className="px-3 py-2 text-sm text-ink-300">
                       Tidak ada barang yang cocok.
                     </div>
                   ) : (
@@ -310,14 +327,14 @@ export function TransactionForm({
                       <button
                         key={r.id}
                         type="button"
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-ink-100"
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-white/10"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           pickItem(row.key, r);
                         }}
                       >
                         <span className="font-medium">{r.sku}</span>
-                        <span className="text-ink-500"> — {r.name}</span>
+                        <span className="text-ink-300"> — {r.name}</span>
                       </button>
                     ))
                   )}
@@ -332,6 +349,7 @@ export function TransactionForm({
               aria-label={`Qty baris ${idx + 1}`}
               value={row.qty}
               onChange={(e) => updateRow(row.key, { qty: e.target.value })}
+              className={DARK_INPUT}
             />
             <Button
               type="button"
@@ -340,15 +358,16 @@ export function TransactionForm({
               disabled={rows.length === 1}
               onClick={() => removeRow(row.key)}
               aria-label={`Hapus baris ${idx + 1}`}
+              className="text-ink-300 hover:bg-white/10 hover:text-white"
             >
-              <Trash2 className="h-4 w-4 text-red-600" />
+              <Trash2 className="h-4 w-4 text-brand-200" />
             </Button>
           </div>
         ))}
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="trx-notes">Catatan (opsional)</Label>
+        <Label htmlFor="trx-notes" className="text-ink-100">Catatan (opsional)</Label>
         <Textarea
           id="trx-notes"
           value={notes}
@@ -356,6 +375,7 @@ export function TransactionForm({
           placeholder={`Catatan ${typeLabel.toLowerCase()}…`}
           maxLength={500}
           rows={3}
+          className={DARK_INPUT}
         />
       </div>
 

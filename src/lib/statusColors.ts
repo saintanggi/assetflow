@@ -125,6 +125,23 @@ export const kondisiStatusDarkClass: Record<KondisiStatus, string> = {
   HABIS: "bg-brand-500/15 text-brand-100 ring-brand-500/25",
 };
 
+/**
+ * Versi kaca gelap untuk SEMUA varian Badge (dipakai di atas permukaan gelap —
+ * tabel gelap, kartu kaca gelap). Sejak 9 Nov 2026 seluruh tabel sistem gelap,
+ * jadi Badge di dalam tabel/kartu gelap WAJIB memakai className ini sebagai
+ * tambahan, kalau tidak badge tampil sebagai pil pastel terang.
+ * Contoh: <Badge variant="success" className={badgeDarkClass.success}>.
+ */
+export const badgeDarkClass: Record<StatusBadgeVariant, string> = {
+  default: "bg-brand-500/15 text-brand-100 ring-brand-500/25",
+  secondary: "bg-white/10 text-ink-100 ring-white/15",
+  destructive: "bg-brand-500/15 text-brand-100 ring-brand-500/25",
+  outline: "bg-white/10 text-ink-100 ring-white/15",
+  success: "bg-ok-500/15 text-ok-100 ring-ok-500/25",
+  warning: "bg-warn-500/15 text-warn-100 ring-warn-500/25",
+  info: "bg-info-500/15 text-info-100 ring-info-500/25",
+};
+
 /** Level peringatan stok: kritis (masalah), waspada (perhatian). */
 export const alertLevelVariant: Record<AlertLevel, StatusBadgeVariant> = {
   kritis: "destructive",

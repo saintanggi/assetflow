@@ -1,16 +1,35 @@
 import { useEffect, useRef, useState } from "react";
+import type { HTMLAttributes } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
 import { buildSearchPattern } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Select } from "../components/ui/select";
+
+/** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
+function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/15 bg-white/[0.07] shadow-[0_8px_32px_rgba(2,6,23,0.35)] backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.09]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Tombol outline di atas kaca gelap (ganti bawaan putih). */
+const DARK_OUTLINE_BTN =
+  "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 
@@ -178,40 +197,40 @@ export function PurchaseOrderFormPage() {
       <PageHeader title="Buat Purchase Order" description="Pesan barang ke supplier — harga otomatis dari harga beli master, bisa diubah." />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <GlassCard className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Barang yang Dipesan</CardTitle>
+            <CardTitle className="text-white">Barang yang Dipesan</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {lines.map((l, i) => (
-              <div key={l.key} className="rounded-lg border border-ink-200 p-3">
+              <div key={l.key} className="rounded-lg border border-white/15 p-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Baris {i + 1}</p>
+                  <p className="text-sm font-medium text-white">Baris {i + 1}</p>
                   {lines.length > 1 && (
-                    <Button variant="ghost" size="sm" onClick={() => setLines((p) => p.filter((x) => x.key !== l.key))}>
-                      <Trash2 className="h-4 w-4 text-red-600" />
+                    <Button variant="ghost" size="sm" className="text-ink-300 hover:bg-white/10 hover:text-white" onClick={() => setLines((p) => p.filter((x) => x.key !== l.key))}>
+                      <Trash2 className="h-4 w-4 text-brand-200" />
                     </Button>
                   )}
                 </div>
                 <div className="relative mt-2">
-                  <Input
+                  <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                     placeholder="Cari barang (nama / SKU)…"
                     value={l.query}
                     onChange={(e) => onQueryChange(l.key, e.target.value)}
                   />
                   {l.results.length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-ink-200 bg-white shadow-lg">
+                    <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-white/15 bg-ink-800 shadow-lg">
                       {l.results.map((r) => (
                         <button
                           key={r.id}
                           type="button"
-                          className="block w-full px-3 py-2 text-left text-sm hover:bg-ink-50"
+                          className="block w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10"
                           onClick={() => pickItem(l.key, r)}
                         >
                           <span className="font-medium">{r.name}</span>
-                          <span className="ml-2 font-mono text-xs text-ink-500">{r.sku}</span>
+                          <span className="ml-2 font-mono text-xs text-ink-300">{r.sku}</span>
                           {r.purchase_price !== null && (
-                            <span className="float-right text-xs text-ink-500">{fmtRp(Number(r.purchase_price))}</span>
+                            <span className="float-right text-xs text-ink-300">{fmtRp(Number(r.purchase_price))}</span>
                           )}
                         </button>
                       ))}
@@ -220,8 +239,8 @@ export function PurchaseOrderFormPage() {
                 </div>
                 <div className="mt-2 grid grid-cols-3 gap-2">
                   <div>
-                    <Label>Qty</Label>
-                    <Input
+                    <Label className="text-white">Qty</Label>
+                    <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                       type="number"
                       min="1"
                       step="1"
@@ -230,8 +249,8 @@ export function PurchaseOrderFormPage() {
                     />
                   </div>
                   <div>
-                    <Label>Harga / unit (Rp)</Label>
-                    <Input
+                    <Label className="text-white">Harga / unit (Rp)</Label>
+                    <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300"
                       type="number"
                       min="0"
                       step="1000"
@@ -240,55 +259,55 @@ export function PurchaseOrderFormPage() {
                     />
                   </div>
                   <div>
-                    <Label>Subtotal</Label>
-                    <Input readOnly value={fmtRp((Number(l.qty) || 0) * (Number(l.price) || 0))} />
+                    <Label className="text-white">Subtotal</Label>
+                    <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300" readOnly value={fmtRp((Number(l.qty) || 0) * (Number(l.price) || 0))} />
                   </div>
                 </div>
               </div>
             ))}
-            <Button variant="outline" onClick={() => setLines((p) => [...p, newLine()])}>
+            <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={() => setLines((p) => [...p, newLine()])}>
               <Plus className="mr-2 h-4 w-4" /> Tambah Baris
             </Button>
           </CardContent>
-        </Card>
+        </GlassCard>
 
-        <Card>
+        <GlassCard>
           <CardHeader>
-            <CardTitle>Detail PO</CardTitle>
+            <CardTitle className="text-white">Detail PO</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label>Supplier *</Label>
-              <Select
+              <Label className="text-white">Supplier *</Label>
+              <Select className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
                 value={supplierId}
                 onValueChange={setSupplierId}
                 placeholder="Pilih supplier…"
                 options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
               />
               {suppliers.length === 0 && (
-                <p className="mt-1 text-xs text-ink-500">
+                <p className="mt-1 text-xs text-ink-300">
                   Belum ada supplier aktif — tambahkan dulu di menu Master Data → Pemasok.
                 </p>
               )}
             </div>
             <div>
-              <Label>Tanggal Pesan</Label>
-              <Input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
+              <Label className="text-white">Tanggal Pesan</Label>
+              <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]" type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
             </div>
             <div>
-              <Label>Estimasi Datang</Label>
-              <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
+              <Label className="text-white">Estimasi Datang</Label>
+              <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]" type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
             </div>
             <div>
-              <Label>Catatan</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Catatan untuk supplier…" />
+              <Label className="text-white">Catatan</Label>
+              <Textarea className="border-white/15 bg-white/10 text-white placeholder:text-ink-300" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Catatan untuk supplier…" />
             </div>
-            <div className="rounded-lg bg-ink-50 p-3">
-              <p className="text-xs text-ink-500">Total PO</p>
-              <p className="tnum text-2xl font-bold text-ink-800">{fmtRp(total)}</p>
+            <div className="rounded-lg bg-white/5 p-3">
+              <p className="text-xs text-ink-300">Total PO</p>
+              <p className="tnum text-2xl font-bold text-white">{fmtRp(total)}</p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" disabled={saving} onClick={() => save("draft")}>
+              <Button variant="outline" className={cn("flex-1", DARK_OUTLINE_BTN)} disabled={saving} onClick={() => save("draft")}>
                 <X className="mr-1 h-4 w-4" /> Simpan Draft
               </Button>
               <Button className="flex-1" disabled={saving} onClick={() => save("ordered")}>
@@ -296,7 +315,7 @@ export function PurchaseOrderFormPage() {
               </Button>
             </div>
           </CardContent>
-        </Card>
+        </GlassCard>
       </div>
     </div>
   );
