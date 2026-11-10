@@ -121,7 +121,12 @@ export function LiveStockPage() {
         label: w.name,
       }));
       setWarehouseOptions(opts);
-      if (opts.length > 0) setWarehouseId(opts[0].value);
+      // Default: Gudang Utama bila ada (seluruh stok ada di sana) — kalau tidak,
+      // gudang pertama seperti sebelumnya.
+      if (opts.length > 0)
+        setWarehouseId(
+          opts.find((o) => o.label === "Gudang Utama")?.value ?? opts[0].value
+        );
     })();
     return () => {
       cancelled = true;
@@ -301,10 +306,13 @@ export function LiveStockPage() {
       toast.error("Tidak ada data untuk diekspor.");
       return;
     }
-    const baru = rows.filter((r) => r.locCode === "STOK-BARU");
-    const retur = rows.filter((r) => r.locCode === "STOK-RETUR");
+    // Pisah per jenis stok dari AKHIRAN kode lokasi (STOK-BARU, CEMPAKA_PUTIH-BARU,
+    // dst.) — bukan kode persis, supaya gudang lain yang kodenya beda tetap
+    // masuk sheet yang benar.
+    const baru = rows.filter((r) => r.locCode.endsWith("-BARU"));
+    const retur = rows.filter((r) => r.locCode.endsWith("-RETUR"));
     const unready = rows.filter(
-      (r) => r.locCode !== "STOK-BARU" && r.locCode !== "STOK-RETUR"
+      (r) => !r.locCode.endsWith("-BARU") && !r.locCode.endsWith("-RETUR")
     );
 
     const sumRows = (rs: LiveStockRow[]) => ({
