@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { HTMLAttributes } from "react";
 import * as XLSX from "xlsx";
 import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
@@ -95,6 +95,16 @@ interface Preview {
   existingTickets: string[];
 }
 
+/** Barang yang stoknya akan minus kalau file ini diimpor (potong stok aktif). */
+interface MinusWarning {
+  itemName: string;
+  kondisi: KodeKondisi;
+  stockNow: number;
+  qtyOut: number;
+  /** Sisa stok setelah dipotong — selalu negatif di daftar ini. */
+  projected: number;
+}
+
 const uuid = (): string =>
   typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
@@ -122,10 +132,103 @@ export function RequestUploadPage() {
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [failList, setFailList] = useState<{ ticket: string; detail: string }[]>([]);
+  /** Peringatan stok minus untuk pratinjau saat ini (null = belum dicek / tidak berlaku). */
+  const [minusWarnings, setMinusWarnings] = useState<MinusWarning[] | null>(null);
+  const [minusLoading, setMinusLoading] = useState(false);
   const [sheetOptions, setSheetOptions] = useState<{ name: string; count: number }[]>([]);
   const sheetCache = useRef<Map<string, SheetCandidate>>(new Map());
 
   const canShip = hasPermission("requests.review");
+
+  // Cek stok minus: bandingkan qty keluar di pratinjau dengan stok saat ini per
+  // barang + lokasi. Hanya jalan saat opsi "Kurangi stok otomatis" aktif — kalau
+  // mati, impor tidak mengubah stok jadi tidak ada yang bisa minus.
+  useEffect(() => {
+    let cancelled = false;
+    if (!preview || !deductStock) {
+      setMinusWarnings(null);
+      setMinusLoading(false);
+      return;
+    }
+    setMinusLoading(true);
+    void (async () => {
+      try {
+        // Agregasi qty keluar per barang + kondisi (hanya baris TERKIRIM yang motong stok).
+        const out = new Map<string, { itemName: string; kondisi: KodeKondisi; qty: number }>();
+        for (const l of preview.lines) {
+          if (l.isPending) continue;
+          if (l.itemKey.startsWith("NAME:")) continue; // barang baru — sudah diperingatkan di kotak lain
+          const key = `${l.itemKey}|${l.kodeKondisi}`;
+          const cur = out.get(key) ?? { itemName: l.itemName, kondisi: l.kodeKondisi, qty: 0 };
+          cur.qty += l.qty;
+          out.set(key, cur);
+        }
+        if (out.size === 0) {
+          if (!cancelled) {
+            setMinusWarnings([]);
+            setMinusLoading(false);
+          }
+          return;
+        }
+        const { data: locs } = await supabase
+          .from("locations")
+          .select("id, code")
+          .in("code", ["STOK-BARU", "STOK-RETUR", "STOK-UNREADY"]);
+        const locByKode = new Map(
+          ((locs ?? []) as { id: string; code: string }[]).map((l) => [l.code, l.id])
+        );
+        const locIds = [...locByKode.values()];
+        if (locIds.length === 0) {
+          if (!cancelled) {
+            setMinusWarnings([]);
+            setMinusLoading(false);
+          }
+          return;
+        }
+        const itemIds = [...new Set([...out.keys()].map((k) => k.split("|")[0]))];
+        const { data: bals } = await supabase
+          .from("inventory_balances")
+          .select("item_id, location_id, qty")
+          .in("item_id", itemIds)
+          .in("location_id", locIds)
+          .limit(5000);
+        const stockMap = new Map<string, number>();
+        for (const b of (bals ?? []) as { item_id: string; location_id: string; qty: number | string }[]) {
+          stockMap.set(`${b.item_id}|${b.location_id}`, Number(b.qty) || 0);
+        }
+        const warnings: MinusWarning[] = [];
+        for (const [key, v] of out) {
+          const [itemId, kode] = key.split("|");
+          const locId = locByKode.get(kode);
+          if (!locId) continue;
+          const now = stockMap.get(`${itemId}|${locId}`) ?? 0;
+          const projected = now - v.qty;
+          if (projected < 0) {
+            warnings.push({
+              itemName: v.itemName,
+              kondisi: kode as KodeKondisi,
+              stockNow: now,
+              qtyOut: v.qty,
+              projected,
+            });
+          }
+        }
+        warnings.sort((a, b) => a.projected - b.projected);
+        if (!cancelled) {
+          setMinusWarnings(warnings);
+          setMinusLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setMinusWarnings(null);
+          setMinusLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [preview, deductStock]);
 
   const downloadTemplate = async () => {
     try {
@@ -712,6 +815,42 @@ export function RequestUploadPage() {
                   </p>
                 )}
 
+                {deductStock && minusLoading && (
+                  <div className="flex gap-2 rounded-md bg-white/5 p-3 text-xs text-ink-300">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>Mengecek stok saat ini…</div>
+                  </div>
+                )}
+                {deductStock && minusWarnings && minusWarnings.length > 0 && (
+                  <div className="rounded-md border border-brand-500/25 bg-brand-500/15 p-3">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-brand-100">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Stok akan minus — {minusWarnings.length} barang
+                    </p>
+                    <p className="mt-1 text-xs text-brand-100">
+                      Stok barang ini tidak cukup untuk pengiriman di file. Impor tetap bisa jalan, tapi stok
+                      akan tercatat minus — isi stok dulu atau periksa file bila tidak sesuai.
+                    </p>
+                    <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-brand-100">
+                      {minusWarnings.map((w, i) => (
+                        <li key={`${w.itemName}-${w.kondisi}-${i}`} className="flex flex-wrap gap-x-2">
+                          <span className="font-medium text-white">{w.itemName}</span>
+                          <span>({asetLabelOf(w.kondisi)})</span>
+                          <span className="tnum">
+                            Stok {w.stockNow} · keluar {w.qtyOut} · sisa {w.projected}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {deductStock && minusWarnings && minusWarnings.length === 0 && !minusLoading && (
+                  <div className="flex gap-2 rounded-md bg-ok-500/15 p-3 text-xs text-ok-100">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    <div>Stok cukup — tidak ada barang yang akan minus.</div>
+                  </div>
+                )}
+
                 {/* Rincian qty per barang — dipakai untuk mengecek qty sudah sama dengan file */}
                 <div className="max-h-72 overflow-auto rounded-md border border-white/15">
                   <table className="w-full text-xs">
@@ -919,7 +1058,8 @@ export function RequestUploadPage() {
               <br />
               2. Upload file yang sudah terisi (sheet terbaru otomatis dipakai).
               <br />
-              3. Cek tabel pratinjau — pastikan QTY per barang sudah sama dengan file.
+              3. Cek tabel pratinjau — pastikan QTY per barang sudah sama dengan file, dan perhatikan
+              peringatan stok minus bila ada.
               <br />
               4. Klik Import.
             </div>
