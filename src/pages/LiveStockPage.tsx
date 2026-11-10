@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
+import * as XLSX from "xlsx";
+import { FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { PageHeader } from "../components/PageHeader";
@@ -22,6 +24,8 @@ interface LiveStockRow {
   sku: string;
   item: string;
   location: string;
+  /** Kode lokasi (STOK-BARU / STOK-RETUR / STOK-UNREADY) — untuk pisah sheet Excel. */
+  locCode: string;
   stokAwal: number;
   inQty: number;
   outQty: number;
@@ -138,11 +142,11 @@ export function LiveStockPage() {
       // Lokasi-lokasi gudang ini.
       const { data: locData, error: locErr } = await supabase
         .from("locations")
-        .select("id, name")
+        .select("id, name, code")
         .eq("warehouse_id", warehouseId)
         .eq("is_active", true);
       if (locErr) throw new Error(locErr.message);
-      const locs = (locData ?? []) as { id: string; name: string }[];
+      const locs = (locData ?? []) as { id: string; name: string; code: string }[];
       if (locs.length === 0) {
         setRows([]);
         setSearched(true);
@@ -150,6 +154,7 @@ export function LiveStockPage() {
       }
       const locIds = locs.map((l) => l.id);
       const locName = new Map(locs.map((l) => [l.id, l.name]));
+      const locCode = new Map(locs.map((l) => [l.id, l.code]));
 
       // Saldo saat ini per (item, lokasi).
       const { data: balData, error: balErr } = await supabase
@@ -248,6 +253,7 @@ export function LiveStockPage() {
           sku: info.sku,
           item: info.name,
           location: locName.get(locId) ?? "-",
+          locCode: locCode.get(locId) ?? "",
           stokAwal: awal,
           inQty: m.inQty,
           outQty: m.outQty,
@@ -281,6 +287,106 @@ export function LiveStockPage() {
         "Stok Akhir": r.stokAkhir,
       }))
     );
+  };
+
+  /**
+   * Unduh laporan Live Stok sebagai Excel (.xlsx), dipisah per jenis stok:
+   * sheet "Barang Baru" (STOK-BARU), "Return" (STOK-RETUR), "Unready"
+   * (STOK-UNREADY — hanya bila ada isinya), plus sheet "Ringkasan" berisi
+   * total per kategori. Setiap sheet berisi Stok Awal / IN / OUT / Stok Akhir
+   * (sisa qty) + baris TOTAL di bawah.
+   */
+  const exportExcel = () => {
+    if (rows.length === 0) {
+      toast.error("Tidak ada data untuk diekspor.");
+      return;
+    }
+    const baru = rows.filter((r) => r.locCode === "STOK-BARU");
+    const retur = rows.filter((r) => r.locCode === "STOK-RETUR");
+    const unready = rows.filter(
+      (r) => r.locCode !== "STOK-BARU" && r.locCode !== "STOK-RETUR"
+    );
+
+    const sumRows = (rs: LiveStockRow[]) => ({
+      items: rs.length,
+      awal: rs.reduce((a, r) => a + r.stokAwal, 0),
+      inQty: rs.reduce((a, r) => a + r.inQty, 0),
+      outQty: rs.reduce((a, r) => a + r.outQty, 0),
+      akhir: rs.reduce((a, r) => a + r.stokAkhir, 0),
+    });
+    const total = sumRows(rows);
+    const whName =
+      warehouseOptions.find((w) => w.value === warehouseId)?.label ?? "-";
+
+    const wb = XLSX.utils.book_new();
+
+    // --- Sheet Ringkasan ---
+    const ringkasanRows: (string | number)[][] = [
+      ["Laporan Live Stok"],
+      [`Gudang: ${whName}`],
+      [`Periode: ${startDate} s/d ${endDate}`],
+      [`Diunduh: ${new Date().toLocaleString("id-ID")}`],
+      [],
+      ["Kategori", "Jumlah Item", "Stok Awal", "IN", "OUT", "Stok Akhir"],
+      ["Barang Baru", ...Object.values(sumRows(baru))],
+      ["Return", ...Object.values(sumRows(retur))],
+    ];
+    if (unready.length > 0)
+      ringkasanRows.push(["Unready", ...Object.values(sumRows(unready))]);
+    ringkasanRows.push(["TOTAL", total.items, total.awal, total.inQty, total.outQty, total.akhir]);
+    const wsRingkasan = XLSX.utils.aoa_to_sheet(ringkasanRows);
+    wsRingkasan["!cols"] = [
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsRingkasan, "Ringkasan");
+
+    // --- Satu sheet per jenis stok ---
+    const detailCols = [
+      { wch: 14 }, // SKU
+      { wch: 42 }, // Item
+      { wch: 22 }, // Lokasi
+      { wch: 12 }, // Stok Awal
+      { wch: 10 }, // IN
+      { wch: 10 }, // OUT
+      { wch: 12 }, // Stok Akhir
+    ];
+    const addDetailSheet = (name: string, rs: LiveStockRow[]) => {
+      const s = sumRows(rs);
+      const data = rs.map((r) => ({
+        SKU: r.sku,
+        Item: r.item,
+        Lokasi: r.location,
+        "Stok Awal": r.stokAwal,
+        IN: r.inQty,
+        OUT: r.outQty,
+        "Stok Akhir": r.stokAkhir,
+      }));
+      data.push({
+        SKU: "",
+        Item: "TOTAL",
+        Lokasi: "",
+        "Stok Awal": s.awal,
+        IN: s.inQty,
+        OUT: s.outQty,
+        "Stok Akhir": s.akhir,
+      });
+      const ws = XLSX.utils.json_to_sheet(data);
+      ws["!cols"] = detailCols;
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    };
+    addDetailSheet("Barang Baru", baru);
+    addDetailSheet("Return", retur);
+    if (unready.length > 0) addDetailSheet("Unready", unready);
+
+    const safe = (s: string) => s.replace(/[^\w\-]+/g, "-");
+    const filename = `Live-Stok-${safe(whName)}-${startDate}_sd_${endDate}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`Laporan Excel diunduh: ${filename}`);
   };
 
   return (
@@ -326,12 +432,16 @@ export function LiveStockPage() {
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
-            <div className="flex items-end gap-2">
+            <div className="flex flex-wrap items-end gap-2">
               <Button onClick={loadReport} disabled={loading}>
                 {loading ? "Memuat…" : "Tampilkan"}
               </Button>
               <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={exportCsv} disabled={rows.length === 0}>
                 Export CSV
+              </Button>
+              <Button variant="outline" className={DARK_OUTLINE_BTN} onClick={exportExcel} disabled={rows.length === 0}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Download Excel
               </Button>
             </div>
           </div>
