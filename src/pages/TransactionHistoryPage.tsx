@@ -106,7 +106,13 @@ export function TransactionHistoryPage() {
     created_at: string;
     tx: { doc_number: string; transaction_date: string; type: TransactionType; status: TransactionStatus } | null;
     item: { sku: string; name: string } | null;
+    /** Kolom datar agar pencarian DataTable (getValue) bisa menemukan nama barang / nomor dokumen / tipe. */
+    itemName: string;
+    docNumber: string;
+    typeLabel: string;
   };
+  /** Baris dokumen + nama barang & teks lokasi (agar pencarian menemukan nama barang). */
+  type DocRow = InventoryTransaction & { itemNames: string; locationText: string };
   const [view, setView] = useState<"dokumen" | "baris">("dokumen");
   const [lineRows, setLineRows] = useState<LineRow[]>([]);
   const [lineLoading, setLineLoading] = useState(false);
@@ -138,17 +144,28 @@ export function TransactionHistoryPage() {
       created_at: string;
       inventory_transactions: LineRow["tx"] | LineRow["tx"][];
       inventory_items: LineRow["item"] | LineRow["item"][];
-    }[]).map((r) => ({
-      id: r.id,
-      qty: r.qty,
-      resi: r.resi,
-      gerai: r.gerai,
-      status_aset: r.status_aset,
-      notes: r.notes,
-      created_at: r.created_at,
-      tx: Array.isArray(r.inventory_transactions) ? (r.inventory_transactions[0] ?? null) : r.inventory_transactions,
-      item: Array.isArray(r.inventory_items) ? (r.inventory_items[0] ?? null) : r.inventory_items,
-    }));
+    }[]).map((r) => {
+      const tx = Array.isArray(r.inventory_transactions)
+        ? (r.inventory_transactions[0] ?? null)
+        : r.inventory_transactions;
+      const item = Array.isArray(r.inventory_items)
+        ? (r.inventory_items[0] ?? null)
+        : r.inventory_items;
+      return {
+        id: r.id,
+        qty: r.qty,
+        resi: r.resi,
+        gerai: r.gerai,
+        status_aset: r.status_aset,
+        notes: r.notes,
+        created_at: r.created_at,
+        tx,
+        item,
+        itemName: `${item?.name ?? ""} ${item?.sku ?? ""}`.trim(),
+        docNumber: tx?.doc_number ?? "",
+        typeLabel: tx ? TRANSACTION_TYPE_LABELS[tx.type] : "",
+      };
+    });
     setLineRows(rows);
     setLineLoaded(true);
   };
@@ -156,6 +173,36 @@ export function TransactionHistoryPage() {
   const switchView = (v: "dokumen" | "baris") => {
     setView(v);
     if (v === "baris" && !lineLoaded && !lineLoading) void loadLineItems();
+  };
+
+  // Nama barang per dokumen (untuk kolom Barang + pencarian di tampilan Per Dokumen).
+  const [itemNamesMap, setItemNamesMap] = useState<Record<string, string>>({});
+  const loadItemNames = async () => {
+    const { data, error } = await supabase
+      .from("inventory_transaction_items")
+      .select("transaction_id, inventory_items!inner(sku, name)")
+      .order("created_at", { ascending: false })
+      .limit(5000);
+    if (error) return;
+    const grouped: Record<string, string[]> = {};
+    for (const r of (data ?? []) as unknown as {
+      transaction_id: string;
+      inventory_items: { sku: string; name: string } | { sku: string; name: string }[];
+    }[]) {
+      const it = Array.isArray(r.inventory_items)
+        ? r.inventory_items[0]
+        : r.inventory_items;
+      if (!it) continue;
+      let arr = grouped[r.transaction_id];
+      if (!arr) {
+        arr = [];
+        grouped[r.transaction_id] = arr;
+      }
+      arr.push(`${it.name} (${it.sku})`);
+    }
+    const flat: Record<string, string> = {};
+    for (const [k, v] of Object.entries(grouped)) flat[k] = v.join(", ");
+    setItemNamesMap(flat);
   };
 
   const lineColumns: ColumnDef<LineRow, unknown>[] = [
@@ -168,6 +215,7 @@ export function TransactionHistoryPage() {
     {
       header: "Nama Barang",
       id: "nama",
+      accessorKey: "itemName",
       cell: ({ row }) => (
         <div>
           <div className="font-medium">{row.original.item?.name ?? "—"}</div>
@@ -183,6 +231,7 @@ export function TransactionHistoryPage() {
     {
       header: "Tipe",
       id: "tipe",
+      accessorKey: "typeLabel",
       cell: ({ row }) =>
         row.original.tx ? (
           <Badge variant={TYPE_BADGE[row.original.tx.type]} className={badgeDarkClass[TYPE_BADGE[row.original.tx.type]]}>
@@ -202,6 +251,7 @@ export function TransactionHistoryPage() {
     {
       header: "No Dokumen",
       id: "dok",
+      accessorKey: "docNumber",
       cell: ({ row }) => (
         <span className="font-mono text-xs text-ink-300">{row.original.tx?.doc_number ?? "—"}</span>
       ),
@@ -254,6 +304,7 @@ export function TransactionHistoryPage() {
 
   useEffect(() => {
     loadTransactions();
+    void loadItemNames();
     (async () => {
       const { data } = await supabase
         .from("locations")
@@ -274,13 +325,29 @@ export function TransactionHistoryPage() {
     })();
   }, []);
 
+  const docRows: DocRow[] = useMemo(() => {
+    return transactions.map((t) => {
+      const src = t.source_location_id
+        ? (locationMap[t.source_location_id] ?? "—")
+        : "—";
+      const dst = t.dest_location_id
+        ? (locationMap[t.dest_location_id] ?? "—")
+        : "—";
+      return {
+        ...t,
+        itemNames: itemNamesMap[t.id] ?? "",
+        locationText: `${src} → ${dst}`,
+      };
+    });
+  }, [transactions, itemNamesMap, locationMap]);
+
   const filtered = useMemo(() => {
-    return transactions.filter(
+    return docRows.filter(
       (t) =>
         (!typeFilter || t.type === typeFilter) &&
         (!statusFilter || t.status === statusFilter)
     );
-  }, [transactions, typeFilter, statusFilter]);
+  }, [docRows, typeFilter, statusFilter]);
 
   const openDetail = async (tx: InventoryTransaction) => {
     setSelected(tx);
@@ -337,6 +404,7 @@ export function TransactionHistoryPage() {
       setDeleteTarget(null);
       setSelected(null);
       await loadTransactions();
+      await loadItemNames();
       if (view === "baris") {
         setLineLoaded(false);
         await loadLineItems();
@@ -348,7 +416,7 @@ export function TransactionHistoryPage() {
     }
   };
 
-  const columns: ColumnDef<InventoryTransaction, unknown>[] = [
+  const columns: ColumnDef<DocRow, unknown>[] = [
     {
       header: "Nomor Dokumen",
       accessorKey: "doc_number",
@@ -360,6 +428,15 @@ export function TransactionHistoryPage() {
       header: "Tanggal",
       accessorKey: "transaction_date",
       cell: ({ row }) => formatDate(row.original.transaction_date),
+    },
+    {
+      header: "Barang",
+      accessorKey: "itemNames",
+      cell: ({ row }) => (
+        <span className="block max-w-[320px] truncate text-sm" title={row.original.itemNames}>
+          {row.original.itemNames || "—"}
+        </span>
+      ),
     },
     {
       header: "Tipe",
@@ -382,6 +459,7 @@ export function TransactionHistoryPage() {
     {
       header: "Lokasi",
       id: "lokasi",
+      accessorKey: "locationText",
       cell: ({ row }) => {
         const src = row.original.source_location_id
           ? (locationMap[row.original.source_location_id] ?? "—")
@@ -485,7 +563,7 @@ export function TransactionHistoryPage() {
               columns={columns}
               data={filtered}
               loading={loading}
-              searchPlaceholder="Cari nomor dokumen, lokasi…"
+              searchPlaceholder="Cari nomor dokumen, barang, lokasi…"
               emptyTitle="Tidak ada transaksi"
               emptyDescription="Belum ada transaksi yang cocok dengan filter saat ini."
             />
