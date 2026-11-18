@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-table";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { cn } from "../lib/utils";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
@@ -22,6 +23,14 @@ import {
   TableRow,
 } from "./ui/table";
 import { EmptyState } from "./EmptyState";
+
+/** Kolom boleh menandai dirinya "nempel kanan" (mis. kolom Aksi) supaya
+ *  tombolnya selalu terlihat walau tabel harus di-scroll ke samping. */
+declare module "@tanstack/react-table" {
+  interface ColumnMeta<TData, TValue> {
+    stickyRight?: boolean;
+  }
+}
 
 interface DataTableProps<TData> {
   columns: ColumnDef<TData, unknown>[];
@@ -52,6 +61,11 @@ interface DataTableProps<TData> {
    * variant="light" (mis. di dalam dialog/kartu terang).
    */
   variant?: "light" | "dark";
+  /**
+   * Tampilan rapat: padding sel lebih kecil supaya kolom yang banyak
+   * (mis. Log Transaksi) muat selebar layar tanpa scroll ke samping.
+   */
+  compact?: boolean;
 }
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -69,6 +83,7 @@ export function DataTable<TData>({
   searchValue,
   onSearchChange,
   variant = "dark",
+  compact = false,
 }: DataTableProps<TData>) {
   const dark = variant === "dark";
   const [internalFilter, setInternalFilter] = useState("");
@@ -208,13 +223,24 @@ export function DataTable<TData>({
           <TableHeader dark={dark}>
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id} dark={dark} className={dark ? undefined : "hover:bg-ink-50"}>
-                {hg.headers.map((h) => (
-                  <TableHead key={h.id} dark={dark}>
-                    {h.isPlaceholder
-                      ? null
-                      : flexRender(h.column.columnDef.header, h.getContext())}
-                  </TableHead>
-                ))}
+                {hg.headers.map((h) => {
+                  const sticky = h.column.columnDef.meta?.stickyRight;
+                  return (
+                    <TableHead
+                      key={h.id}
+                      dark={dark}
+                      className={cn(
+                        compact && "h-9 px-2.5",
+                        sticky && "sticky right-0 z-10",
+                        sticky && (dark ? "bg-ink-800" : "bg-white")
+                      )}
+                    >
+                      {h.isPlaceholder
+                        ? null
+                        : flexRender(h.column.columnDef.header, h.getContext())}
+                    </TableHead>
+                  );
+                })}
               </TableRow>
             ))}
           </TableHeader>
@@ -228,11 +254,21 @@ export function DataTable<TData>({
             ) : (
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id} dark={dark}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const sticky = cell.column.columnDef.meta?.stickyRight;
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        className={cn(
+                          compact && "px-2.5 py-2",
+                          sticky && "sticky right-0 z-10",
+                          sticky && (dark ? "bg-ink-800" : "bg-white")
+                        )}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               ))
             )}

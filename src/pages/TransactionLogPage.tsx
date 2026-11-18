@@ -315,13 +315,17 @@ export function TransactionLogPage() {
     {
       header: "Gerai",
       accessorKey: "gerai",
-      cell: ({ row }) => row.original.gerai || "—",
+      cell: ({ row }) => (
+        <span className="block max-w-36 truncate" title={row.original.gerai || undefined}>
+          {row.original.gerai || "—"}
+        </span>
+      ),
     },
     {
       header: "Keterangan",
       accessorKey: "notes",
       cell: ({ row }) => (
-        <span className="block max-w-56 truncate text-ink-300" title={row.original.notes || row.original.docNumber}>
+        <span className="block max-w-40 truncate text-ink-300" title={row.original.notes || row.original.docNumber}>
           {row.original.notes || row.original.docNumber || "—"}
         </span>
       ),
@@ -329,13 +333,16 @@ export function TransactionLogPage() {
     {
       header: "User",
       accessorKey: "userName",
-      cell: ({ row }) => row.original.userName,
+      cell: ({ row }) => (
+        <span title={row.original.userName}>{row.original.userName.split("@")[0]}</span>
+      ),
     },
     ...(isSuperAdmin
       ? [
           {
             header: "Aksi",
             id: "aksi",
+            meta: { stickyRight: true },
             cell: ({ row }: { row: { original: LogRow } }) => (
               <div className="flex gap-1">
                 <Button
@@ -531,6 +538,7 @@ export function TransactionLogPage() {
             columns={columns}
             data={filtered}
             loading={loading}
+            compact
             searchPlaceholder="Cari tanggal, tiket, resi, barang, gerai, jenis stok…"
             emptyTitle="Tidak ada log"
             emptyDescription="Belum ada pergerakan barang pada filter saat ini."
