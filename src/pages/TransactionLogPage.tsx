@@ -3,7 +3,7 @@ import type { HTMLAttributes } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Download, Pencil, Trash2 } from "lucide-react";
+import { Download } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
 import { badgeDarkClass } from "../lib/statusColors";
@@ -352,45 +352,9 @@ export function TransactionLogPage() {
         <span title={row.original.userName}>{row.original.userName.split("@")[0]}</span>
       ),
     },
-    ...(isSuperAdmin
-      ? [
-          {
-            header: "Aksi",
-            id: "aksi",
-            meta: { stickyRight: true },
-            cell: ({ row }: { row: { original: LogRow } }) => (
-              <div className="flex gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={DARK_OUTLINE_BTN}
-                  title="Koreksi jenis stok"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditRow(row.original);
-                    setEditJenis("");
-                    setEditReason("");
-                  }}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  title="Hapus log transaksi (stok dikembalikan)"
-                  className={cn(DARK_OUTLINE_BTN, "text-brand-200 hover:text-brand-100")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteRow(row.original);
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ),
-          } as ColumnDef<LogRow, unknown>,
-        ]
-      : []),
+    // Kolom Aksi sengaja tidak ada: koreksi & hapus log hanya lewat dialog
+    // detail (klik baris), dan hanya untuk super admin — user lain cuma
+    // melihat detail tanpa tombol aksi.
   ];
 
   const saveCorrection = async () => {
