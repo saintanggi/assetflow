@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { HTMLAttributes } from "react";
 import * as XLSX from "xlsx";
 import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
@@ -139,6 +139,29 @@ export function RequestUploadPage() {
   const sheetCache = useRef<Map<string, SheetCandidate>>(new Map());
 
   const canShip = hasPermission("requests.review");
+
+  // Rincian qty pratinjau: berapa yang akan terkirim (stok berkurang) dan
+  // berapa yang PENDING (masuk Sisa Belum Terkirim, stok tidak berkurang).
+  const qtyBreakdown = useMemo(() => {
+    if (!preview) return null;
+    let terkirim = 0;
+    let pending = 0;
+    const perKondisi = new Map<string, number>();
+    for (const l of preview.lines) {
+      if (l.isPending) {
+        pending += l.qty;
+      } else {
+        terkirim += l.qty;
+        perKondisi.set(l.kodeKondisi, (perKondisi.get(l.kodeKondisi) ?? 0) + l.qty);
+      }
+    }
+    return {
+      total: terkirim + pending,
+      terkirim,
+      pending,
+      perKondisi: [...perKondisi.entries()].sort((a, b) => b[1] - a[1]),
+    };
+  }, [preview]);
 
   // Cek stok minus: bandingkan qty keluar di pratinjau dengan stok saat ini per
   // barang + lokasi. Hanya jalan saat opsi "Kurangi stok otomatis" aktif — kalau
@@ -803,6 +826,42 @@ export function RequestUploadPage() {
                   </div>
                 </div>
 
+                {qtyBreakdown && (
+                  <div className="rounded-md border border-white/15 bg-white/5 p-3 text-xs leading-relaxed text-ink-300">
+                    <p>
+                      Dari total{" "}
+                      <span className="tnum font-semibold text-white">{qtyBreakdown.total} qty</span>:{" "}
+                      <span className="tnum font-semibold text-ok-100">{qtyBreakdown.terkirim} akan terkirim</span>{" "}
+                      {deductStock ? (
+                        <>
+                          (stok berkurang
+                          {qtyBreakdown.perKondisi.length > 0 && (
+                            <>
+                              :{" "}
+                              {qtyBreakdown.perKondisi
+                                .map(([kode, q]) => `${kode} ${q}`)
+                                .join(" · ")}
+                            </>
+                          )}
+                          )
+                        </>
+                      ) : (
+                        <>(dicatat terkirim — stok tidak berubah karena opsi &ldquo;Kurangi stok otomatis&rdquo; mati)</>
+                      )}{" "}
+                      •{" "}
+                      <span className="tnum font-semibold text-warn-100">{qtyBreakdown.pending} PENDING</span>{" "}
+                      (masuk Sisa Belum Terkirim, stok tidak berkurang).
+                    </p>
+                    {qtyBreakdown.pending > 0 && (
+                      <p className="mt-1">
+                        Barang PENDING tidak mengurangi stok dan tidak hilang — tercatat di menu{" "}
+                        <span className="font-medium text-white">Sisa Belum Terkirim</span>, bisa dikirim
+                        nanti setelah stok tersedia.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {preview.dateRange && (
                   <p className="text-xs text-ink-300">
                     Tanggal pengiriman di file:{" "}
@@ -865,7 +924,21 @@ export function RequestUploadPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {preview.lines.map((l, i) => (
+                      {preview.lines.map((l, i) => {
+                        const qtyNote =
+                          l.qtyFile === 0
+                            ? `QTY kosong di file → dihitung ${l.qty} dari ${l.rowCount} baris/barcode`
+                            : l.qty > l.qtyFile
+                              ? `QTY file ${l.qtyFile} untuk ${l.rowCount} baris → dipakai ${l.qty} unit${l.qtySource === "barcode" ? " (mengikuti jumlah barcode)" : ""}`
+                              : l.qty < l.rowCount
+                                ? `QTY file ${l.qtyFile} dibagi ke ${l.rowCount} baris (blok di-merge)`
+                                : "";
+                        const tujuanNote = l.isPending
+                          ? "Masuk Sisa Belum Terkirim — stok tidak berkurang"
+                          : deductStock
+                            ? `Keluar dari ${l.kodeKondisi}`
+                            : "Dicatat terkirim — stok tidak berubah";
+                        return (
                         <tr key={`${l.itemKey}-${l.kodeKondisi}-${l.isPending}-${i}`} className="border-t border-white/15 transition-colors hover:bg-white/5">
                           <td className="px-2 py-1.5 text-white">
                             {nameOf(l)}
@@ -877,17 +950,13 @@ export function RequestUploadPage() {
                           <td className="px-2 py-1.5 text-ink-300">{l.isPending ? "PENDING" : "TERKIRIM"}</td>
                           <td className="tnum px-2 py-1.5 text-right font-semibold text-white">{l.qty}</td>
                           <td className="tnum px-2 py-1.5 text-right text-ink-300">{l.rows.length}</td>
-                          <td className="px-2 py-1.5 text-warn-100">
-                            {l.qtyFile === 0
-                              ? `QTY kosong di file → dihitung ${l.qty} dari ${l.rowCount} baris/barcode`
-                              : l.qty > l.qtyFile
-                                ? `QTY file ${l.qtyFile} untuk ${l.rowCount} baris → dipakai ${l.qty} unit${l.qtySource === "barcode" ? " (mengikuti jumlah barcode)" : ""}`
-                                : l.qty < l.rowCount
-                                  ? `QTY file ${l.qtyFile} dibagi ke ${l.rowCount} baris (blok di-merge)` 
-                                  : ""}
+                          <td className={`px-2 py-1.5 ${l.isPending ? "text-warn-100" : "text-ink-300"}`}>
+                            {tujuanNote}
+                            {qtyNote && <span className="text-warn-100"> · {qtyNote}</span>}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
