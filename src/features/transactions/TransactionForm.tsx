@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
@@ -39,7 +39,22 @@ interface ItemRow {
 interface LocationOption {
   value: string;
   label: string;
+  code: string;
+  warehouse: string;
 }
+
+/** Jenis stok Barang Masuk → status aset + lokasi tujuan (Gudang Utama). */
+const JENIS_STOK_OPTIONS = [
+  { value: "baru", label: "Baru" },
+  { value: "retur", label: "Retur" },
+  { value: "unready", label: "Unready" },
+] as const;
+const JENIS_STATUS_ASET = {
+  baru: "ASSET BARU",
+  retur: "ASSET RETUR",
+  unready: "UNREADY",
+} as const;
+const JENIS_SUFFIX = { baru: "BARU", retur: "RETUR", unready: "UNREADY" } as const;
 
 function todayLocal(): string {
   const d = new Date();
@@ -77,6 +92,11 @@ export function TransactionForm({
   const [destId, setDestId] = useState("");
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
+  // Barang Masuk: jenis stok (Baru/Retur/Unready) + gerai asal barang.
+  const isMasuk = type === "in";
+  const [jenisStok, setJenisStok] = useState("");
+  const [gerai, setGerai] = useState("");
+  const [geraiOptions, setGeraiOptions] = useState<string[]>([]);
   const [rows, setRows] = useState<ItemRow[]>([newRow()]);
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +107,7 @@ export function TransactionForm({
     (async () => {
       const { data, error } = await supabase
         .from("locations")
-        .select("id, name, warehouses(name)")
+        .select("id, code, name, warehouses(name)")
         .eq("is_active", true)
         .order("name");
       if (cancelled) return;
@@ -98,6 +118,7 @@ export function TransactionForm({
       // Hasil query join dinamis (client Supabase tanpa tipe generated).
       const rows = (data ?? []) as {
         id: string;
+        code: string;
         name: string;
         warehouses: { name: string }[] | null;
       }[];
@@ -107,13 +128,42 @@ export function TransactionForm({
           label: r.warehouses?.[0]
             ? `${r.warehouses[0].name} — ${r.name}`
             : r.name,
+          code: r.code ?? "",
+          warehouse: r.warehouses?.[0]?.name ?? "",
         }))
       );
+    })();
+    // Saran nama gerai dari riwayat permintaan (supaya ejaan konsisten di log).
+    (async () => {
+      const { data } = await supabase
+        .from("requests")
+        .select("branch_name")
+        .not("branch_name", "is", null)
+        .neq("branch_name", "")
+        .order("branch_name")
+        .limit(500);
+      if (cancelled) return;
+      const names = [...new Set(((data ?? []) as { branch_name: string }[]).map((r) => r.branch_name))];
+      setGeraiOptions(names);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Lokasi tujuan Barang Masuk per jenis stok — utamakan Gudang Utama.
+  const destByJenis = useMemo(() => {
+    const map: Record<string, LocationOption | undefined> = {};
+    for (const key of Object.keys(JENIS_SUFFIX) as (keyof typeof JENIS_SUFFIX)[]) {
+      const suffix = `-${JENIS_SUFFIX[key]}`;
+      map[key] =
+        locationOptions.find(
+          (l) => l.warehouse === "Gudang Utama" && l.code.toUpperCase().endsWith(suffix)
+        ) ?? locationOptions.find((l) => l.code.toUpperCase().endsWith(suffix));
+    }
+    return map;
+  }, [locationOptions]);
+  const effectiveDestId = isMasuk ? destByJenis[jenisStok]?.value ?? "" : destId;
 
   useEffect(() => {
     const timers = searchTimers.current;
@@ -178,6 +228,8 @@ export function TransactionForm({
     setDestId("");
     setReference("");
     setNotes("");
+    setJenisStok("");
+    setGerai("");
     setRows([newRow()]);
   };
 
@@ -191,7 +243,12 @@ export function TransactionForm({
         return `Qty untuk "${r.item.name}" harus lebih dari 0.`;
     }
     if (needSource && !sourceId) return "Lokasi asal wajib dipilih.";
-    if (needDest && !destId) return "Lokasi tujuan wajib dipilih.";
+    if (isMasuk) {
+      if (!jenisStok) return "Pilih jenis stok (Baru / Retur / Unready).";
+      if (!effectiveDestId) return "Lokasi tujuan untuk jenis stok ini tidak ditemukan.";
+    } else if (needDest && !destId) {
+      return "Lokasi tujuan wajib dipilih.";
+    }
     if (needSource && needDest && sourceId === destId)
       return "Lokasi asal dan tujuan tidak boleh sama.";
     if (!date) return "Tanggal transaksi wajib diisi.";
@@ -209,13 +266,22 @@ export function TransactionForm({
     try {
       const items: TransactionItemInput[] = rows
         .filter((r) => r.item && Number(r.qty) > 0)
-        .map((r) => ({ item_id: r.item!.id, qty: Number(r.qty) }));
+        .map((r) => ({
+          item_id: r.item!.id,
+          qty: Number(r.qty),
+          // Barang Masuk: gerai + jenis stok ikut tercatat per baris,
+          // supaya kolom Gerai di Log Transaksi terisi.
+          ...(isMasuk && gerai.trim() ? { gerai: gerai.trim() } : {}),
+          ...(isMasuk && jenisStok
+            ? { status_aset: JENIS_STATUS_ASET[jenisStok as keyof typeof JENIS_STATUS_ASET] }
+            : {}),
+        }));
       const { data, error } = await supabase.rpc("post_inventory_transaction", {
         p_idempotency_key: crypto.randomUUID(),
         p_type: type,
         p_transaction_date: date,
         p_source_location_id: needSource ? sourceId : null,
-        p_dest_location_id: needDest ? destId : null,
+        p_dest_location_id: needDest ? effectiveDestId || null : null,
         p_reference: reference.trim() || null,
         p_notes: notes.trim() || null,
         p_items: items,
@@ -271,7 +337,7 @@ export function TransactionForm({
             />
           </div>
         )}
-        {needDest && (
+        {needDest && !isMasuk && (
           <div className="space-y-1.5">
             <Label htmlFor="trx-dest" className="text-ink-100">Lokasi Tujuan</Label>
             <Select
@@ -283,6 +349,43 @@ export function TransactionForm({
               className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
             />
           </div>
+        )}
+        {isMasuk && (
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="trx-jenis" className="text-ink-100">Jenis Stok</Label>
+              <Select
+                id="trx-jenis"
+                options={[...JENIS_STOK_OPTIONS]}
+                placeholder="Pilih jenis stok"
+                value={jenisStok}
+                onValueChange={setJenisStok}
+                className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
+              />
+              {jenisStok && destByJenis[jenisStok] && (
+                <p className="text-xs text-ink-300">
+                  Tujuan: {destByJenis[jenisStok]!.label}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="trx-gerai" className="text-ink-100">Gerai (opsional)</Label>
+              <Input
+                id="trx-gerai"
+                list="trx-gerai-list"
+                value={gerai}
+                onChange={(e) => setGerai(e.target.value)}
+                placeholder="cth: SiCepat Ekspres Bekasi Selatan LM"
+                maxLength={100}
+                className={DARK_INPUT}
+              />
+              <datalist id="trx-gerai-list">
+                {geraiOptions.map((g) => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
+            </div>
+          </>
         )}
       </div>
 
