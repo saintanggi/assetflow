@@ -244,7 +244,7 @@ export function TransactionHistoryPage() {
     { header: "Resi", accessorKey: "resi", cell: ({ row }) => row.original.resi ?? "—" },
     { header: "Gerai", accessorKey: "gerai", cell: ({ row }) => row.original.gerai ?? "—" },
     {
-      header: "Status Aset",
+      header: "Status Asset",
       accessorKey: "status_aset",
       cell: ({ row }) => row.original.status_aset ?? "—",
     },
@@ -281,7 +281,7 @@ export function TransactionHistoryPage() {
         Tipe: r.tx ? TRANSACTION_TYPE_LABELS[r.tx.type] : "",
         Resi: r.resi ?? "",
         Gerai: r.gerai ?? "",
-        "Status Aset": r.status_aset ?? "",
+        "Status Asset": r.status_aset ?? "",
         "No Dokumen": r.tx?.doc_number ?? "",
         Keterangan: r.notes ?? "",
       }))
@@ -634,7 +634,7 @@ export function TransactionHistoryPage() {
                       <TableHead>SKU</TableHead>
                       <TableHead>Nama</TableHead>
                       <TableHead className="text-right">Qty</TableHead>
-                      <TableHead>Status Aset</TableHead>
+                      <TableHead>Status Asset</TableHead>
                       <TableHead>Resi</TableHead>
                       <TableHead>Gerai</TableHead>
                       <TableHead className="text-right">Harga Satuan</TableHead>

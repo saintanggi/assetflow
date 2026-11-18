@@ -116,21 +116,26 @@ export function TransactionForm({
         return;
       }
       // Hasil query join dinamis (client Supabase tanpa tipe generated).
+      // Catatan: untuk relasi many-to-one, Supabase mengembalikan `warehouses`
+      // sebagai OBJEK { name }, bukan array — tangani keduanya.
       const rows = (data ?? []) as {
         id: string;
         code: string;
         name: string;
-        warehouses: { name: string }[] | null;
+        warehouses: { name: string }[] | { name: string } | null;
       }[];
       setLocationOptions(
-        rows.map((r) => ({
-          value: r.id,
-          label: r.warehouses?.[0]
-            ? `${r.warehouses[0].name} — ${r.name}`
-            : r.name,
-          code: r.code ?? "",
-          warehouse: r.warehouses?.[0]?.name ?? "",
-        }))
+        rows.map((r) => {
+          const whName = Array.isArray(r.warehouses)
+            ? r.warehouses[0]?.name ?? ""
+            : r.warehouses?.name ?? "";
+          return {
+            value: r.id,
+            label: whName ? `${whName} — ${r.name}` : r.name,
+            code: r.code ?? "",
+            warehouse: whName,
+          };
+        })
       );
     })();
     // Saran nama gerai dari riwayat permintaan (supaya ejaan konsisten di log).
@@ -151,15 +156,16 @@ export function TransactionForm({
     };
   }, []);
 
-  // Lokasi tujuan Barang Masuk per jenis stok — utamakan Gudang Utama.
+  // Lokasi tujuan Barang Masuk per jenis stok — kode STOK-* itu KHUSUS Gudang
+  // Utama. Sengaja TIDAK ada fallback ke gudang lain: kalau kodenya tidak
+  // ketemu, validasi gagal daripada stok nyasar ke gudang lain (kasus
+  // IN-2026-000037 yang masuk CEMPAKA PUTIH karena fallback alfabetis).
   const destByJenis = useMemo(() => {
     const map: Record<string, LocationOption | undefined> = {};
     for (const key of Object.keys(JENIS_SUFFIX) as (keyof typeof JENIS_SUFFIX)[]) {
-      const suffix = `-${JENIS_SUFFIX[key]}`;
-      map[key] =
-        locationOptions.find(
-          (l) => l.warehouse === "Gudang Utama" && l.code.toUpperCase().endsWith(suffix)
-        ) ?? locationOptions.find((l) => l.code.toUpperCase().endsWith(suffix));
+      map[key] = locationOptions.find(
+        (l) => l.code.toUpperCase() === `STOK-${JENIS_SUFFIX[key]}`
+      );
     }
     return map;
   }, [locationOptions]);

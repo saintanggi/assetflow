@@ -1598,7 +1598,7 @@ export function RequestDetailPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Status Aset</Label>
+              <Label>Status Asset</Label>
               <Select
                 value={addStatusAset}
                 onValueChange={(v) => setAddStatusAset(v as ExcelStatusAset)}

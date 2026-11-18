@@ -916,7 +916,7 @@ export function RequestUploadPage() {
                     <thead className="sticky top-0 border-b border-white/15 bg-ink-800 text-left text-xs font-semibold uppercase tracking-wide text-ink-300 backdrop-blur">
                       <tr>
                         <th className="px-2 py-1.5 font-medium">Nama barang</th>
-                        <th className="px-2 py-1.5 font-medium">Status aset</th>
+                        <th className="px-2 py-1.5 font-medium">Status asset</th>
                         <th className="px-2 py-1.5 font-medium">Terkirim</th>
                         <th className="px-2 py-1.5 text-right font-medium">Qty</th>
                         <th className="px-2 py-1.5 text-right font-medium">Baris</th>
