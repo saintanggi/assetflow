@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { generateSkus } from "../lib/sku";
 import { cn } from "../lib/utils";
 import { formatDate } from "../lib/format";
 import { SheetSyncPanel } from "../features/sync/SheetSyncPanel";
@@ -495,10 +496,14 @@ export function RequestUploadPage() {
         const pcsUnit = ((units ?? []) as { id: string; code: string }[]).find((u) => u.code.toUpperCase() === "PCS")
           ?? (units?.[0] as { id: string } | undefined);
         if (!pcsUnit) throw new Error("Tabel satuan kosong — hubungi super admin.");
+        // SKU otomatis skema keluarga XXX-NNN, dihitung sekali untuk semua
+        // barang baru supaya nomornya berurutan dan tidak bentrok di batch.
+        const newSkus = await generateSkus(supabase, missing);
+        const skuByName = new Map(missing.map((n, idx) => [n, newSkus[idx]]));
         for (let i = 0; i < missing.length; i += 50) {
           const batch = missing.slice(i, i + 50);
-          const withSku = batch.map((n, j) => ({
-            sku: `UPL-${Date.now().toString(36).toUpperCase()}-${i + j}`,
+          const withSku = batch.map((n) => ({
+            sku: skuByName.get(n) ?? `UPL-${Date.now().toString(36).toUpperCase()}`,
             name: n,
             unit_id: pcsUnit.id,
             is_active: true,

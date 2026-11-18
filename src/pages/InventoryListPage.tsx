@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ImageOff, Plus, ScanLine, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { generateSku } from "../lib/sku";
 import { badgeDarkClass, stockStatusVariant } from "../lib/statusColors";
 import { cn } from "../lib/utils";
 import { useAuth } from "../context/AuthContext";
@@ -191,8 +192,9 @@ export function InventoryListPage() {
   const onAddItem = async (values: InventoryPageFormValues) => {
     setSaving(true);
     try {
-      // SKU otomatis (tidak ditampilkan ke user).
-      const autoSku = `BRG-${Date.now().toString(36).toUpperCase()}`;
+      // SKU otomatis dari nama barang (skema keluarga XXX-NNN) —
+      // tidak ditampilkan ke user, dihitung dari nomor terbesar di keluarga itu.
+      const autoSku = await generateSku(supabase, values.name);
       // Satuan default ke PCS bila tidak dipilih.
       let unitId = values.unit_id ?? null;
       if (!unitId) {
