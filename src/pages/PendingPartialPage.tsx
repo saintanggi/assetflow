@@ -3,9 +3,10 @@ import type { HTMLAttributes } from "react";
 import { Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import * as XLSX from "xlsx";
-import { Download, Hourglass } from "lucide-react";
+import { Download, Hourglass, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 import { pendingJenisVariant, badgeDarkClass } from "../lib/statusColors";
 import { buildSearchPattern } from "../lib/format";
 import { cn } from "../lib/utils";
@@ -61,6 +62,7 @@ const DARK_OUTLINE_BTN =
   "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function PendingPartialPage() {
+  const { isSuperAdmin } = useAuth();
   const [rows, setRows] = useState<PendingRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -71,6 +73,10 @@ export function PendingPartialPage() {
   const [gantiSearching, setGantiSearching] = useState(false);
   const [gantiItem, setGantiItem] = useState<{ id: string; sku: string; name: string } | null>(null);
   const [gantiSaving, setGantiSaving] = useState(false);
+
+  // Hapus sisa belum terkirim (barang di-cancel kirimnya, khusus super admin).
+  const [hapusRow, setHapusRow] = useState<PendingRow | null>(null);
+  const [hapusSaving, setHapusSaving] = useState(false);
 
   const columns: ColumnDef<PendingRow, unknown>[] = [
   {
@@ -162,6 +168,17 @@ export function PendingPartialPage() {
         >
           Ganti Barang
         </Button>
+        {isSuperAdmin && (
+          <Button
+            size="sm"
+            variant="outline"
+            title="Hapus sisa belum terkirim (barang di-cancel)"
+            className={cn(DARK_OUTLINE_BTN, "text-brand-200 hover:text-brand-100")}
+            onClick={() => setHapusRow(row.original)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     ),
   },
@@ -211,55 +228,7 @@ export function PendingPartialPage() {
       setGantiResults([]);
       setGantiItem(null);
       // Refresh data.
-      const { data } = await supabase
-        .from("request_items")
-        .select(
-          "id, request_id, qty_requested, qty_approved, qty_shipped, resi, item_status, notes, inventory_items(sku, name), requests(request_number, ticket_no, branch_name)"
-        )
-        .in("item_status", ["pending_sebagian", "menunggu_stok"])
-        .order("updated_at", { ascending: false })
-        .limit(500);
-      if (data) {
-        const one = <T,>(v: T | T[] | null): T | null =>
-          Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
-        const mapped = ((data ?? []) as unknown as {
-          id: string;
-          request_id: string;
-          qty_requested: number | string;
-          qty_approved: number | string | null;
-          qty_shipped: number | string;
-          resi: string | null;
-          item_status: string;
-          notes: string | null;
-          inventory_items: { sku: string; name: string } | { sku: string; name: string }[] | null;
-          requests: { request_number: string; ticket_no: string; branch_name: string } | { request_number: string; ticket_no: string; branch_name: string }[] | null;
-        }[])
-          .map((x) => {
-            const isMenungguStok = x.item_status === "menunggu_stok";
-            const approved = Number(x.qty_approved ?? 0);
-            const shipped = Number(x.qty_shipped ?? 0);
-            const requested = Number(x.qty_requested ?? 0);
-            const dasar = isMenungguStok ? requested : (x.qty_approved != null ? approved : requested);
-            return {
-              id: x.id,
-              request_id: x.request_id,
-              request_number: one(x.requests)?.request_number ?? "—",
-              ticket_no: one(x.requests)?.ticket_no ?? "—",
-              branch_name: one(x.requests)?.branch_name ?? "—",
-              sku: one(x.inventory_items)?.sku ?? "—",
-              name: one(x.inventory_items)?.name ?? "—",
-              qty_requested: requested,
-              qty_approved: approved,
-              qty_shipped: shipped,
-              sisa: dasar - shipped,
-              resi: x.resi,
-              jenis: (isMenungguStok ? "Menunggu Stok" : "Belum Terkirim") as PendingRow["jenis"],
-              keterangan: x.notes,
-            };
-          })
-          .filter((x) => x.sisa > 0);
-        setRows(mapped);
-      }
+      await loadRows();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal ganti barang.");
     } finally {
@@ -267,68 +236,96 @@ export function PendingPartialPage() {
     }
   };
 
+  /** Muat ulang daftar sisa pending (dipakai awal, sesudah ganti, sesudah hapus). */
+  const loadRows = async (isCancelled?: () => boolean) => {
+    const { data, error } = await supabase
+      .from("request_items")
+      .select(
+        "id, request_id, qty_requested, qty_approved, qty_shipped, resi, item_status, notes, inventory_items(sku, name), requests(request_number, ticket_no, branch_name)"
+      )
+      .in("item_status", ["pending_sebagian", "menunggu_stok"])
+      .order("updated_at", { ascending: false })
+      .limit(500);
+    if (isCancelled?.()) return;
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    const one = <T,>(v: T | T[] | null): T | null =>
+      Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
+    const mapped = ((data ?? []) as unknown as {
+      id: string;
+      request_id: string;
+      qty_requested: number | string;
+      qty_approved: number | string | null;
+      qty_shipped: number | string;
+      resi: string | null;
+      item_status: string;
+      notes: string | null;
+      inventory_items: { sku: string; name: string } | { sku: string; name: string }[] | null;
+      requests: { request_number: string; ticket_no: string; branch_name: string } | { request_number: string; ticket_no: string; branch_name: string }[] | null;
+    }[])
+      .map((x) => {
+        const isMenungguStok = x.item_status === "menunggu_stok";
+        const approved = Number(x.qty_approved ?? 0);
+        const shipped = Number(x.qty_shipped ?? 0);
+        const requested = Number(x.qty_requested ?? 0);
+        // Untuk pending_sebagian yang belum pernah disetujui (qty_approved NULL),
+        // pakai qty_requested sebagai dasar sisa.
+        const dasar = isMenungguStok ? requested : (x.qty_approved != null ? approved : requested);
+        return {
+          id: x.id,
+          request_id: x.request_id,
+          request_number: one(x.requests)?.request_number ?? "—",
+          ticket_no: one(x.requests)?.ticket_no ?? "—",
+          branch_name: one(x.requests)?.branch_name ?? "—",
+          sku: one(x.inventory_items)?.sku ?? "—",
+          name: one(x.inventory_items)?.name ?? "—",
+          qty_requested: requested,
+          qty_approved: approved,
+          qty_shipped: shipped,
+          sisa: dasar - shipped,
+          resi: x.resi,
+          jenis: (isMenungguStok ? "Menunggu Stok" : "Belum Terkirim") as PendingRow["jenis"],
+          keterangan: x.notes,
+        };
+      })
+      .filter((x) => x.sisa > 0);
+    setRows(mapped);
+  };
+
+  const submitHapus = async () => {
+    if (!hapusRow) return;
+    setHapusSaving(true);
+    try {
+      const { data, error } = await supabase.rpc("cancel_pending_request_item", {
+        p_item_id: hapusRow.id,
+      });
+      if (error) throw new Error(error.message);
+      const res = data as { request_number: string; ticket_no: string; request_deleted: boolean } | null;
+      toast.success(
+        res?.request_deleted
+          ? `"${hapusRow.name}" dihapus dari ${res.request_number}. Permintaannya ikut terhapus karena tidak ada item tersisa.`
+          : `"${hapusRow.name}" (sisa ${fmt(hapusRow.sisa)}) dihapus dari ${hapusRow.request_number}.`
+      );
+      setHapusRow(null);
+      await loadRows();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menghapus item.");
+    } finally {
+      setHapusSaving(false);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const { data, error } = await supabase
-        .from("request_items")
-        .select(
-          "id, request_id, qty_requested, qty_approved, qty_shipped, resi, item_status, notes, inventory_items(sku, name), requests(request_number, ticket_no, branch_name)"
-        )
-        .in("item_status", ["pending_sebagian", "menunggu_stok"])
-        .order("updated_at", { ascending: false })
-        .limit(500);
-      if (cancelled) return;
-      if (error) {
-        toast.error(error.message);
-      } else {
-        const one = <T,>(v: T | T[] | null): T | null =>
-          Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
-        const mapped = ((data ?? []) as unknown as {
-          id: string;
-          request_id: string;
-          qty_requested: number | string;
-          qty_approved: number | string | null;
-          qty_shipped: number | string;
-          resi: string | null;
-          item_status: string;
-          notes: string | null;
-          inventory_items: { sku: string; name: string } | { sku: string; name: string }[] | null;
-          requests: { request_number: string; ticket_no: string; branch_name: string } | { request_number: string; ticket_no: string; branch_name: string }[] | null;
-        }[])
-          .map((x) => {
-            const isMenungguStok = x.item_status === "menunggu_stok";
-            const approved = Number(x.qty_approved ?? 0);
-            const shipped = Number(x.qty_shipped ?? 0);
-            const requested = Number(x.qty_requested ?? 0);
-            // Untuk pending_sebagian yang belum pernah disetujui (qty_approved NULL),
-            // pakai qty_requested sebagai dasar sisa.
-            const dasar = isMenungguStok ? requested : (x.qty_approved != null ? approved : requested);
-            return {
-              id: x.id,
-              request_id: x.request_id,
-              request_number: one(x.requests)?.request_number ?? "—",
-              ticket_no: one(x.requests)?.ticket_no ?? "—",
-              branch_name: one(x.requests)?.branch_name ?? "—",
-              sku: one(x.inventory_items)?.sku ?? "—",
-              name: one(x.inventory_items)?.name ?? "—",
-              qty_requested: requested,
-              qty_approved: approved,
-              qty_shipped: shipped,
-              sisa: dasar - shipped,
-              resi: x.resi,
-              jenis: (isMenungguStok ? "Menunggu Stok" : "Belum Terkirim") as PendingRow["jenis"],
-              keterangan: x.notes,
-            };
-          })
-          .filter((x) => x.sisa > 0);
-        setRows(mapped);
-      }
-      setLoading(false);
-    })();
+    void loadRows(() => cancelled).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const exportExcel = () => {
@@ -464,6 +461,17 @@ export function PendingPartialPage() {
               >
                 Ganti Barang
               </Button>
+              {isSuperAdmin && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Hapus sisa belum terkirim"
+                  className={cn(DARK_OUTLINE_BTN, "shrink-0 text-brand-200 hover:text-brand-100")}
+                  onClick={() => setHapusRow(row)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -526,6 +534,32 @@ export function PendingPartialPage() {
           </Button>
           <Button onClick={submitGantiBarang} disabled={gantiSaving || !gantiItem}>
             {gantiSaving ? "Menyimpan…" : "Ganti Barang"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Dialog hapus sisa belum terkirim (barang di-cancel, khusus super admin) */}
+      <Dialog open={!!hapusRow} onOpenChange={(o) => !o && !hapusSaving && setHapusRow(null)}>
+        <DialogHeader>
+          <DialogTitle>Hapus Sisa Belum Terkirim?</DialogTitle>
+          <DialogDescription>
+            {hapusRow && (
+              <>
+                <b>{hapusRow.name}</b> ({hapusRow.sku}) — sisa {fmt(hapusRow.sisa)} — dari{" "}
+                {hapusRow.request_number} (tiket {hapusRow.ticket_no}) akan dihapus dari daftar
+                karena pengirimannya dibatalkan. Barang yang sudah terkirim tetap tercatat dan
+                stok tidak berubah. Kalau ini satu-satunya item di permintaannya, permintaannya
+                ikut terhapus. Penghapusan tidak bisa dibatalkan.
+              </>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setHapusRow(null)} disabled={hapusSaving}>
+            Batal
+          </Button>
+          <Button variant="destructive" onClick={submitHapus} disabled={hapusSaving}>
+            {hapusSaving ? "Menghapus…" : "Ya, Hapus"}
           </Button>
         </DialogFooter>
       </Dialog>
