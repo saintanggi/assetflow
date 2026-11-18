@@ -15,6 +15,7 @@ import { DataTable } from "../components/DataTable";
 import { Badge } from "../components/ui/badge";
 import { CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Select } from "../components/ui/select";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
@@ -58,7 +59,19 @@ function classifyJenisStok(code: string): { label: string; variant: "success" | 
   return null;
 }
 
-/** Permukaan kaca gelap — sama seperti dashboard. */
+/** Label tipe transaksi untuk dialog detail. */
+function txnTypeLabel(t: string): string {
+  return (
+    {
+      in: "Barang Masuk",
+      out: "Barang Keluar",
+      transfer: "Transfer Stok",
+      adjust: "Penyesuaian",
+      opname: "Stock Opname",
+      return: "Retur",
+    } as Record<string, string>
+  )[t] ?? t;
+}
 function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -102,6 +115,8 @@ export function TransactionLogPage() {
   // Hapus log transaksi + kembalikan stok (khusus super admin).
   const [deleteRow, setDeleteRow] = useState<LogRow | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // Detail transaksi (klik baris) — gerai, keterangan & rincian lengkap.
+  const [detailRow, setDetailRow] = useState<LogRow | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -350,7 +365,8 @@ export function TransactionLogPage() {
                   size="sm"
                   className={DARK_OUTLINE_BTN}
                   title="Koreksi jenis stok"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setEditRow(row.original);
                     setEditJenis("");
                     setEditReason("");
@@ -363,7 +379,10 @@ export function TransactionLogPage() {
                   size="sm"
                   title="Hapus log transaksi (stok dikembalikan)"
                   className={cn(DARK_OUTLINE_BTN, "text-brand-200 hover:text-brand-100")}
-                  onClick={() => setDeleteRow(row.original)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteRow(row.original);
+                  }}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -539,12 +558,131 @@ export function TransactionLogPage() {
             data={filtered}
             loading={loading}
             compact
+            onRowClick={setDetailRow}
             searchPlaceholder="Cari tanggal, tiket, resi, barang, gerai, jenis stok…"
             emptyTitle="Tidak ada log"
             emptyDescription="Belum ada pergerakan barang pada filter saat ini."
           />
         </CardContent>
       </GlassCard>
+
+      {/* Dialog detail transaksi (klik baris) — gerai, keterangan & rincian lengkap. */}
+      <Dialog open={!!detailRow} onOpenChange={(open) => !open && setDetailRow(null)}>
+        {detailRow && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Detail Transaksi {detailRow.docNumber}</DialogTitle>
+              <DialogDescription>
+                {txnTypeLabel(detailRow.txnType)} — {formatDate(detailRow.txnDate)}
+              </DialogDescription>
+            </DialogHeader>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <dt className="text-ink-500">Tanggal Transaksi</dt>
+                <dd className="font-medium">{formatDate(detailRow.txnDate)}</dd>
+              </div>
+              <div>
+                <dt className="text-ink-500">Referensi</dt>
+                <dd className="font-medium">{detailRow.reference || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-ink-500">Ticket</dt>
+                <dd className="font-medium">{detailRow.ticket || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-ink-500">No Resi</dt>
+                <dd className="font-medium">{detailRow.resi || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-ink-500">Lokasi</dt>
+                <dd className="font-medium">{detailRow.location || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-ink-500">Jenis Stok</dt>
+                <dd className="font-medium">{detailRow.jenisStokLabel || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-ink-500">Gerai</dt>
+                <dd className="font-medium">{detailRow.gerai || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-ink-500">User</dt>
+                <dd className="font-medium">{detailRow.userName}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-ink-500">Catatan</dt>
+                <dd className="font-medium break-words">{detailRow.notes || detailRow.docNumber || "—"}</dd>
+              </div>
+            </dl>
+            <div className="mt-4">
+              <h3 className="mb-2 text-sm font-semibold">Rincian Barang</h3>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Nama</TableHead>
+                    <TableHead className="text-right">Perubahan</TableHead>
+                    <TableHead className="text-right">Stok Setelah</TableHead>
+                    <TableHead>Status Asset</TableHead>
+                    <TableHead>Resi</TableHead>
+                    <TableHead>Gerai</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows
+                    .filter((r) => r.transactionId === detailRow.transactionId)
+                    .map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-medium">{r.sku}</TableCell>
+                        <TableCell>{r.itemName}</TableCell>
+                        <TableCell className="text-right">
+                          {r.qtyChange > 0
+                            ? `+${formatQty(r.qtyChange)}`
+                            : `-${formatQty(Math.abs(r.qtyChange))}`}
+                        </TableCell>
+                        <TableCell className="text-right">{formatQty(r.qtyAfter)}</TableCell>
+                        <TableCell>{r.jenisStokLabel || "—"}</TableCell>
+                        <TableCell className="max-w-[160px] truncate" title={r.resi}>
+                          {r.resi || "—"}
+                        </TableCell>
+                        <TableCell>{r.gerai || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+            <DialogFooter>
+              {isSuperAdmin && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setEditRow(detailRow);
+                      setEditJenis("");
+                      setEditReason("");
+                      setDetailRow(null);
+                    }}
+                  >
+                    Koreksi jenis stok
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      setDeleteRow(detailRow);
+                      setDetailRow(null);
+                    }}
+                  >
+                    Hapus log
+                  </Button>
+                </>
+              )}
+              <Button variant="outline" onClick={() => setDetailRow(null)}>
+                Tutup
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </Dialog>
 
       {/* Dialog koreksi jenis stok (khusus super admin) */}
       <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>

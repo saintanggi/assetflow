@@ -66,6 +66,11 @@ interface DataTableProps<TData> {
    * (mis. Log Transaksi) muat selebar layar tanpa scroll ke samping.
    */
   compact?: boolean;
+  /**
+   * Bila diisi, baris tabel bisa diklik (mis. Log Transaksi membuka dialog
+   * detail). Tombol di dalam baris harus stopPropagation sendiri.
+   */
+  onRowClick?: (row: TData) => void;
 }
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -84,6 +89,7 @@ export function DataTable<TData>({
   onSearchChange,
   variant = "dark",
   compact = false,
+  onRowClick,
 }: DataTableProps<TData>) {
   const dark = variant === "dark";
   const [internalFilter, setInternalFilter] = useState("");
@@ -253,7 +259,12 @@ export function DataTable<TData>({
               </TableRow>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} dark={dark}>
+                <TableRow
+                  key={row.id}
+                  dark={dark}
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  className={onRowClick ? "cursor-pointer" : undefined}
+                >
                   {row.getVisibleCells().map((cell) => {
                     const sticky = cell.column.columnDef.meta?.stickyRight;
                     return (
