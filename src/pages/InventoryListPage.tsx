@@ -736,9 +736,9 @@ export function InventoryListPage() {
           <DialogTitle>Atur Stok — {adjustItem?.name}</DialogTitle>
           <DialogDescription>
             Isi atau ubah stok manual. Perhatian: menyimpan akan mengatur{" "}
-            <b>saldo live DAN Stok Awal</b> menjadi angka di bawah ini — perubahan ini{" "}
-            <b>tidak tercatat di Log Transaksi</b>. Pakai hanya untuk koreksi
-            awal/stock opname.
+            <b>saldo live DAN Stok Awal</b> menjadi angka di bawah ini — tercatat
+            sebagai transaksi penyesuaian (ADJ) di Log Transaksi. Pakai hanya
+            untuk koreksi awal/stock opname.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-1 py-2">

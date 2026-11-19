@@ -641,9 +641,9 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
             <br />
             <br />
             Perhatian: menyimpan akan mengatur <b>saldo live DAN Stok Awal</b> menjadi
-            angka di bawah ini — perubahan ini <b>tidak tercatat di Log Transaksi</b>.
-            Saldo live saat ini: <b>{formatQty(editRow?.stokAkhir ?? 0)}</b> • Stok Awal
-            saat ini: <b>{formatQty(editRow?.opening ?? 0)}</b>.
+            angka di bawah ini — tercatat sebagai transaksi penyesuaian (ADJ) di Log
+            Transaksi. Saldo live saat ini: <b>{formatQty(editRow?.stokAkhir ?? 0)}</b>{" "}
+            • Stok Awal saat ini: <b>{formatQty(editRow?.opening ?? 0)}</b>.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-1 py-2">
