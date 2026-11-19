@@ -196,10 +196,10 @@ export function LiveStockPage() {
       const locName = new Map(locs.map((l) => [l.id, l.name]));
       const locCode = new Map(locs.map((l) => [l.id, l.code]));
 
-      // Saldo saat ini per (item, lokasi).
+      // Saldo saat ini + Stok Awal tersimpan per (item, lokasi).
       const { data: balData, error: balErr } = await supabase
         .from("inventory_balances")
-        .select("item_id, location_id, qty")
+        .select("item_id, location_id, qty, opening_qty")
         .in("location_id", locIds);
       if (balErr) throw new Error(balErr.message);
 
@@ -259,12 +259,16 @@ export function LiveStockPage() {
       for (const k of move.keys()) keys.add(k);
 
       const balMap = new Map<string, number>();
+      const openingMap = new Map<string, number>();
       for (const b of (balData ?? []) as {
         item_id: string;
         location_id: string;
         qty: number | string;
-      }[])
+        opening_qty: number | string | null;
+      }[]) {
         balMap.set(`${b.item_id}|${b.location_id}`, Number(b.qty));
+        openingMap.set(`${b.item_id}|${b.location_id}`, Number(b.opening_qty ?? 0));
+      }
 
       // Nama & SKU item.
       const itemIds = [...new Set([...keys].map((k) => k.split("|")[0]))];
@@ -285,7 +289,12 @@ export function LiveStockPage() {
         const [itemId, locId] = key.split("|");
         const akhir = balMap.get(key) ?? 0;
         const m = move.get(key) ?? { inQty: 0, outQty: 0 };
-        const awal = akhir - m.inQty + m.outQty;
+        // Stok Awal = saldo di awal periode, dihitung mundur dari saldo live.
+        // TIDAK BOLEH minus: kalau hitungan mundur negatif berarti riwayatnya
+        // putus (Atur Stok lama tanpa jejak ledger — kasus CPU Rakitan: live 6,
+        // IN 76, OUT 68 -> -2). Pakai Stok Awal tersimpan (SO) sebagai gantinya.
+        let awal = akhir - m.inQty + m.outQty;
+        if (awal < 0) awal = openingMap.get(key) ?? 0;
         // Lewati baris yang sepenuhnya nol agar laporan ringkas.
         if (awal === 0 && m.inQty === 0 && m.outQty === 0 && akhir === 0) continue;
         const info = itemMap.get(itemId) ?? { sku: "-", name: "(item dihapus)" };

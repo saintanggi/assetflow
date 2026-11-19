@@ -62,8 +62,6 @@ interface StokRow {
   stokAkhir: number;
   buffer: number;
   status: "AMAN" | "KRITIS" | "HABIS";
-  /** Stok Awal (opening_qty) saat ini — hanya untuk dialog Ubah, bukan untuk tampilan tabel. */
-  opening: number;
 }
 
 /** Permukaan kaca gelap — sama seperti dashboard. */
@@ -176,14 +174,18 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         units: { code: string } | { code: string }[] | null;
       }[]).map((it, idx) => {
         // STOK AKHIR = saldo live (bukan Stok Awal + IN - OUT dari kertas).
-        // Halaman ini dulu menghitung dari kertas (opening_qty + ledger) sehingga
-        // angkanya tidak cocok dengan saldo live begitu ada edit Atur Stok yang
-        // tidak menulis jejak ledger (kasus CPU Rakitan: kertas 15, live 6).
-        // STOK AWAL dihitung mundur dari saldo live, sama seperti Live Stok.
+        // STOK AWAL = angka tersimpan (opening_qty, dari SO) — TIDAK BOLEH minus.
+        // Dulu Stok Awal dihitung mundur dari saldo live (akhir - IN + OUT), tapi
+        // itu bisa jadi minus kalau riwayatnya putus (kasus CPU Rakitan: live 6,
+        // IN 76, OUT 68 -> -2). Minusnya berasal dari Atur Stok lama 11 Nov yang
+        // menjatuhkan saldo 17 -> 7 tanpa jejak ledger (-10), bukan dari data SO.
+        // Baris yang riwayatnya putus memang tidak akan cocok hitungannya
+        // (awal + IN - OUT != akhir) — itulah selisih audit, diperbaiki lewat
+        // hitung fisik, bukan dengan memalsukan Stok Awal.
         const stokAkhir = balanceMap.get(it.id) ?? 0;
         const totalIn = inMap.get(it.id) ?? 0;
         const totalOut = outMap.get(it.id) ?? 0;
-        const stokAwal = stokAkhir - totalIn + totalOut;
+        const stokAwal = openingMap.get(it.id) ?? stokAkhir;
         const buffer = Number(it.min_stock ?? 0);
         const units = Array.isArray(it.units) ? it.units[0] : it.units;
         let status: StokRow["status"] = "AMAN";
@@ -200,7 +202,6 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
           stokAkhir,
           buffer,
           status,
-          opening: openingMap.get(it.id) ?? stokAkhir,
         };
       });
       setRows(mapped);
@@ -643,7 +644,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
             Perhatian: menyimpan akan mengatur <b>saldo live DAN Stok Awal</b> menjadi
             angka di bawah ini — tercatat sebagai transaksi penyesuaian (ADJ) di Log
             Transaksi. Saldo live saat ini: <b>{formatQty(editRow?.stokAkhir ?? 0)}</b>{" "}
-            • Stok Awal saat ini: <b>{formatQty(editRow?.opening ?? 0)}</b>.
+            • Stok Awal saat ini: <b>{formatQty(editRow?.stokAwal ?? 0)}</b>.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-1 py-2">
