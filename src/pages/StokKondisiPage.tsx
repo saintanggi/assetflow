@@ -124,9 +124,8 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         .order("name");
       if (itemErr) throw new Error(itemErr.message);
 
-      // Saldo + stok awal per lokasi kondisi.
+      // Saldo live per lokasi kondisi (ini yang dipakai kirim & preview upload).
       const balanceMap = new Map<string, number>();
-      const openingMap = new Map<string, number>();
       // IN/OUT dari ledger per lokasi kondisi.
       const inMap = new Map<string, number>();
       const outMap = new Map<string, number>();
@@ -135,11 +134,10 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         setLocationId(locationId);
         const { data: bals } = await supabase
           .from("inventory_balances")
-          .select("item_id, qty, opening_qty")
+          .select("item_id, qty")
           .eq("location_id", locationId);
-        for (const b of (bals ?? []) as { item_id: string; qty: number | string; opening_qty: number | string }[]) {
+        for (const b of (bals ?? []) as { item_id: string; qty: number | string }[]) {
           balanceMap.set(b.item_id, Number(b.qty));
-          openingMap.set(b.item_id, Number(b.opening_qty ?? 0));
         }
 
         const pageSize = 1000;
@@ -172,10 +170,15 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         min_stock: number | null;
         units: { code: string } | { code: string }[] | null;
       }[]).map((it, idx) => {
-        const stokAwal = openingMap.get(it.id) ?? 0;
+        // STOK AKHIR = saldo live (bukan Stok Awal + IN - OUT dari kertas).
+        // Halaman ini dulu menghitung dari kertas (opening_qty + ledger) sehingga
+        // angkanya tidak cocok dengan saldo live begitu ada edit Atur Stok yang
+        // tidak menulis jejak ledger (kasus CPU Rakitan: kertas 15, live 6).
+        // STOK AWAL dihitung mundur dari saldo live, sama seperti Live Stok.
+        const stokAkhir = balanceMap.get(it.id) ?? 0;
         const totalIn = inMap.get(it.id) ?? 0;
         const totalOut = outMap.get(it.id) ?? 0;
-        const stokAkhir = stokAwal + totalIn - totalOut;
+        const stokAwal = stokAkhir - totalIn + totalOut;
         const buffer = Number(it.min_stock ?? 0);
         const units = Array.isArray(it.units) ? it.units[0] : it.units;
         let status: StokRow["status"] = "AMAN";
