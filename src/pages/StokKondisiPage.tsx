@@ -62,6 +62,8 @@ interface StokRow {
   stokAkhir: number;
   buffer: number;
   status: "AMAN" | "KRITIS" | "HABIS";
+  /** Stok Awal (opening_qty) saat ini — hanya untuk dialog Ubah, bukan untuk tampilan tabel. */
+  opening: number;
 }
 
 /** Permukaan kaca gelap — sama seperti dashboard. */
@@ -126,6 +128,8 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
 
       // Saldo live per lokasi kondisi (ini yang dipakai kirim & preview upload).
       const balanceMap = new Map<string, number>();
+      // Stok Awal (opening_qty) — HANYA untuk prefill dialog Ubah, bukan untuk tabel.
+      const openingMap = new Map<string, number>();
       // IN/OUT dari ledger per lokasi kondisi.
       const inMap = new Map<string, number>();
       const outMap = new Map<string, number>();
@@ -134,10 +138,11 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         setLocationId(locationId);
         const { data: bals } = await supabase
           .from("inventory_balances")
-          .select("item_id, qty")
+          .select("item_id, qty, opening_qty")
           .eq("location_id", locationId);
-        for (const b of (bals ?? []) as { item_id: string; qty: number | string }[]) {
+        for (const b of (bals ?? []) as { item_id: string; qty: number | string; opening_qty: number | string }[]) {
           balanceMap.set(b.item_id, Number(b.qty));
+          openingMap.set(b.item_id, Number(b.opening_qty ?? 0));
         }
 
         const pageSize = 1000;
@@ -195,6 +200,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
           stokAkhir,
           buffer,
           status,
+          opening: openingMap.get(it.id) ?? stokAkhir,
         };
       });
       setRows(mapped);
@@ -231,7 +237,11 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   const openEdit = (row: StokRow) => {
     setEditRow(row);
     setEditName(row.itemName);
-    setEditQty(String(row.stokAwal));
+    // Prefill dengan SALDO LIVE (bukan Stok Awal mundur): tombol ini menyimpan lewat
+    // set_opening_stock yang mengatur saldo live DAN Stok Awal sekaligus. Prefill
+    // dengan Stok Awal lama pernah menjatuhkan saldo live tanpa jejak (kasus CPU
+    // Rakitan 11 Nov: 17 -> 7). Simpan tanpa ubah angka = tidak ada perubahan.
+    setEditQty(String(row.stokAkhir));
     setEditBuffer(String(row.buffer));
     setEditOpen(true);
   };
@@ -628,6 +638,12 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
           <DialogTitle>Ubah — {editRow?.itemName}</DialogTitle>
           <DialogDescription>
             Ubah nama barang dan stok awal ({cfg.badge}). Khusus superadmin.
+            <br />
+            <br />
+            Perhatian: menyimpan akan mengatur <b>saldo live DAN Stok Awal</b> menjadi
+            angka di bawah ini — perubahan ini <b>tidak tercatat di Log Transaksi</b>.
+            Saldo live saat ini: <b>{formatQty(editRow?.stokAkhir ?? 0)}</b> • Stok Awal
+            saat ini: <b>{formatQty(editRow?.opening ?? 0)}</b>.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-1 py-2">

@@ -255,8 +255,12 @@ export function InventoryListPage() {
 
   const openAdjust = (row: ItemRow) => {
     setAdjustItem(row);
-    setAdjustBaru(String(row.opening_baru ?? row.stock_baru ?? 0));
-    setAdjustRetur(String(row.opening_retur ?? row.stock_retur ?? 0));
+    // Prefill dengan SALDO LIVE (bukan Stok Awal): tombol ini menyimpan lewat
+    // set_opening_stock yang mengatur saldo live DAN Stok Awal sekaligus. Prefill
+    // dengan Stok Awal lama pernah menjatuhkan saldo live tanpa jejak (kasus CPU
+    // Rakitan 11 Nov: 17 -> 7). Simpan tanpa ubah angka = tidak ada perubahan.
+    setAdjustBaru(String(row.stock_baru ?? 0));
+    setAdjustRetur(String(row.stock_retur ?? 0));
     setAdjustOpen(true);
   };
 
@@ -731,7 +735,10 @@ export function InventoryListPage() {
         <DialogHeader>
           <DialogTitle>Atur Stok — {adjustItem?.name}</DialogTitle>
           <DialogDescription>
-            Isi atau ubah stok manual. Tercatat sebagai transaksi penyesuaian di Log Transaksi.
+            Isi atau ubah stok manual. Perhatian: menyimpan akan mengatur{" "}
+            <b>saldo live DAN Stok Awal</b> menjadi angka di bawah ini — perubahan ini{" "}
+            <b>tidak tercatat di Log Transaksi</b>. Pakai hanya untuk koreksi
+            awal/stock opname.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-1 py-2">
