@@ -17,15 +17,156 @@ import {
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import type { AuditLog } from "../types/database";
 
-function prettyJson(value: unknown): string {
+/** Label berbahasa Indonesia untuk kunci data — sisanya dirapikan otomatis. */
+const FIELD_LABELS: Record<string, string> = {
+  sku: "SKU",
+  name: "Nama",
+  brand: "Merek",
+  model: "Model",
+  barcode: "Barcode",
+  unit_id: "Satuan",
+  is_active: "Aktif",
+  min_stock: "Stok Minimum",
+  photo_url: "Foto",
+  category_id: "Kategori",
+  location_id: "Lokasi",
+  supplier_id: "Supplier",
+  purchase_price: "Harga Beli",
+  type: "Tipe",
+  status: "Status",
+  transaction_date: "Tanggal Transaksi",
+  source_location_id: "Lokasi Asal",
+  dest_location_id: "Lokasi Tujuan",
+  notes: "Catatan",
+  reference: "Referensi",
+  created_by: "Dibuat Oleh",
+  posted_at: "Waktu Posting",
+  item_id: "Barang",
+  request_id: "Permintaan",
+  qty: "Qty",
+  qty_change: "Perubahan Qty",
+  qty_after: "Stok Setelah",
+  qty_requested: "Qty Diminta",
+  qty_approved: "Qty Disetujui",
+  qty_shipped: "Qty Terkirim",
+  item_status: "Status Item",
+  status_aset: "Status Asset",
+  resi: "Resi",
+  gerai: "Gerai",
+  ticket_no: "No. Tiket",
+  request_number: "No. Permintaan",
+  branch_name: "Cabang / Gerai",
+  branch_code: "Kode Gerai",
+  request_date: "Tanggal Permintaan",
+  requested_by: "Diminta Oleh",
+  reviewed_by: "Direview Oleh",
+  reviewed_at: "Waktu Review",
+  doc_number: "No. Dokumen",
+  id: "ID",
+  created_at: "Dibuat",
+  updated_at: "Diupdate",
+  email: "Email",
+  full_name: "Nama Lengkap",
+};
+
+function fieldLabel(key: string): string {
+  return (
+    FIELD_LABELS[key] ??
+    key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
+type Lookups = {
+  units: Map<string, string>;
+  categories: Map<string, string>;
+  locations: Map<string, string>;
+  suppliers: Map<string, string>;
+  items: Map<string, string>;
+  requests: Map<string, string>;
+  profiles: Map<string, string>;
+};
+
+function resolveId(key: string, value: string, lookups: Lookups | null): string | null {
+  if (!lookups) return null;
+  const byField: Record<string, Map<string, string>> = {
+    unit_id: lookups.units,
+    category_id: lookups.categories,
+    location_id: lookups.locations,
+    source_location_id: lookups.locations,
+    dest_location_id: lookups.locations,
+    supplier_id: lookups.suppliers,
+    item_id: lookups.items,
+    request_id: lookups.requests,
+  };
+  return byField[key]?.get(value) ?? lookups.profiles.get(value) ?? null;
+}
+
+/** Nilai data jadi teks yang bisa dibaca orang (bukan UUID mentah / JSON). */
+function formatValue(key: string, value: unknown, lookups: Lookups | null): string {
   if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "Ya" : "Tidak";
+  if (typeof value === "number")
+    return value.toLocaleString("id-ID", { maximumFractionDigits: 3 });
+  if (typeof value === "string") {
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      try {
+        return formatDateTime(value);
+      } catch {
+        return value;
+      }
+    }
+    if (key.endsWith("_id") || key === "id") {
+      const resolved = resolveId(key, value, lookups);
+      if (resolved) return resolved;
+      return value.length > 13 ? `${value.slice(0, 8)}…` : value;
+    }
+    return value;
+  }
   try {
-    return JSON.stringify(value, null, 2);
+    return JSON.stringify(value);
   } catch {
     return String(value);
   }
+}
+
+const isEqual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** updated_at berubah di setiap UPDATE — bukan perubahan isi, jadi disembunyikan. */
+const NOISE_KEYS = new Set(["updated_at"]);
+
+interface DiffRow {
+  key: string;
+  old: unknown;
+  next: unknown;
+}
+
+function diffEntries(
+  oldData: Record<string, unknown> | null,
+  newData: Record<string, unknown> | null,
+): DiffRow[] {
+  const keys = [
+    ...new Set([...Object.keys(oldData ?? {}), ...Object.keys(newData ?? {})]),
+  ].filter((k) => !NOISE_KEYS.has(k));
+  return keys
+    .filter((k) => !isEqual(oldData?.[k], newData?.[k]))
+    .map((k) => ({ key: k, old: oldData?.[k], next: newData?.[k] }));
+}
+
+/** Isi satu record (INSERT / DELETE) sebagai daftar field — tanpa id & waktu. */
+function recordEntries(data: Record<string, unknown> | null): { key: string; value: unknown }[] {
+  return Object.entries(data ?? {})
+    .filter(([k]) => k !== "id" && k !== "created_at" && k !== "updated_at")
+    .map(([key, value]) => ({ key, value }));
 }
 
 export function AuditLogPage() {
@@ -34,6 +175,8 @@ export function AuditLogPage() {
   const [aksiFilter, setAksiFilter] = useState("");
   const [entitasFilter, setEntitasFilter] = useState("");
   const [selected, setSelected] = useState<AuditLog | null>(null);
+  // Peta id → nama supaya UUID di detail bisa dibaca (satuan, lokasi, barang…).
+  const [lookups, setLookups] = useState<Lookups | null>(null);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -53,6 +196,36 @@ export function AuditLogPage() {
   useEffect(() => {
     void fetchLogs();
   }, [fetchLogs]);
+
+  useEffect(() => {
+    (async () => {
+      const [units, cats, locs, sups, items, reqs, profs] = await Promise.all([
+        supabase.from("units").select("id, name"),
+        supabase.from("asset_categories").select("id, name"),
+        supabase.from("locations").select("id, name"),
+        supabase.from("suppliers").select("id, name"),
+        supabase.from("inventory_items").select("id, name"),
+        supabase.from("requests").select("id, request_number"),
+        supabase.from("profiles").select("id, email"),
+      ]);
+      const toMap = (rows: unknown, label: string) =>
+        new Map(
+          ((rows ?? []) as { id: string }[]).map((r) => [
+            r.id,
+            (r as Record<string, unknown>)[label] as string,
+          ]),
+        );
+      setLookups({
+        units: toMap(units.data, "name"),
+        categories: toMap(cats.data, "name"),
+        locations: toMap(locs.data, "name"),
+        suppliers: toMap(sups.data, "name"),
+        items: toMap(items.data, "name"),
+        requests: toMap(reqs.data, "request_number"),
+        profiles: toMap(profs.data, "email"),
+      });
+    })();
+  }, []);
 
   const filtered = useMemo(() => {
     const a = aksiFilter.trim().toLowerCase();
@@ -117,6 +290,13 @@ export function AuditLogPage() {
     []
   );
 
+  const action = selected?.action.toUpperCase() ?? "";
+  const changed = selected ? diffEntries(selected.old_data, selected.new_data) : [];
+  const record =
+    selected && action !== "UPDATE"
+      ? recordEntries(action === "DELETE" ? selected.old_data : selected.new_data)
+      : [];
+
   return (
     <div>
       <PageHeader
@@ -169,20 +349,58 @@ export function AuditLogPage() {
             )}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase text-ink-500">Data lama</h3>
-            <pre className="max-h-72 overflow-auto rounded-lg bg-white p-3 text-xs text-ink-800">
-              {prettyJson(selected?.old_data)}
-            </pre>
-          </div>
-          <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase text-ink-500">Data baru</h3>
-            <pre className="max-h-72 overflow-auto rounded-lg bg-white p-3 text-xs text-ink-800">
-              {prettyJson(selected?.new_data)}
-            </pre>
-          </div>
-        </div>
+        {selected && action === "UPDATE" && changed.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Field</TableHead>
+                <TableHead>Data Lama</TableHead>
+                <TableHead>Data Baru</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {changed.map((d) => (
+                <TableRow key={d.key}>
+                  <TableCell className="font-medium">{fieldLabel(d.key)}</TableCell>
+                  <TableCell className="break-words">{formatValue(d.key, d.old, lookups)}</TableCell>
+                  <TableCell className="break-words">{formatValue(d.key, d.next, lookups)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        {selected && action === "UPDATE" && changed.length === 0 && (
+          <p className="text-sm text-ink-500">
+            Tidak ada perubahan isi data — hanya waktu update yang berubah
+            {selected.old_data?.updated_at && selected.new_data?.updated_at
+              ? ` (${formatDateTime(selected.old_data.updated_at as string)} → ${formatDateTime(selected.new_data.updated_at as string)})`
+              : ""}
+            .
+          </p>
+        )}
+        {selected && action !== "UPDATE" && record.length > 0 && (
+          <>
+            <h3 className="mb-2 text-sm font-semibold">
+              {action === "DELETE" ? "Data yang dihapus" : "Data baru"}
+            </h3>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Field</TableHead>
+                  <TableHead>Nilai</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {record.map((r) => (
+                  <TableRow key={r.key}>
+                    <TableCell className="font-medium">{fieldLabel(r.key)}</TableCell>
+                    <TableCell className="break-words">{formatValue(r.key, r.value, lookups)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
+        )}
       </Dialog>
     </div>
   );
