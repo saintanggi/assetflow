@@ -25,13 +25,17 @@ import {
   parseWorkbook,
   pickNewestSheet,
   applySheetDate,
+  matchPendingForLine,
   normalizeItemName,
   pickMergeTarget,
   type ExistingRequestRef,
   type AggLine,
   type DupIndex,
+  type FulfillmentPlan,
   type KodeKondisi,
+  type LineFulfillmentPlan,
   type ParsedShippingRow,
+  type PendingItem,
   type SheetCandidate,
   type StoredItemRow,
 } from "../lib/shippingUpload";
@@ -81,6 +85,8 @@ interface Preview {
   dupsInFile: ParsedShippingRow[];
   /** Total per barang + kondisi + status terkirim (yang akan masuk ke sistem). */
   lines: AggLine[];
+  /** Barang pending (Sisa Belum Terkirim) yang akan otomatis terkirim oleh file ini. */
+  fulfillments: FulfillmentPlan[];
   idByName: Map<string, string>;
   nameById: Map<string, string>;
   /** Sheet yang sedang dipratinjau (nama sheet di file Excel). */
@@ -120,6 +126,91 @@ function batches<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
+}
+
+/** Pecah sel barcode/resi yang menyimpan beberapa nilai (dipisah baris baru). */
+const splitStoredCodes = (v: string | null | undefined): string[] =>
+  (v ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
+
+/**
+ * Ambil baris pending (Sisa Belum Terkirim) untuk tiket-tiket di file —
+ * tanpa filter tanggal, karena pending bisa berasal dari file tanggal lama.
+ * Dipakai pratinjau (rencana pelunasan) dan import (pelunasan beneran).
+ */
+async function loadPendingForTickets(tickets: string[]): Promise<PendingItem[]> {
+  if (tickets.length === 0) return [];
+  const out: PendingItem[] = [];
+  for (const tBatch of batches(tickets, 60)) {
+    const { data: reqs, error } = await supabase
+      .from("requests")
+      .select("id, ticket_no, branch_name, request_date")
+      .in("ticket_no", tBatch)
+      .limit(3000);
+    if (error) throw new Error(error.message);
+    const reqs2 = (reqs ?? []) as { id: string; ticket_no: string; branch_name: string; request_date: string }[];
+    if (reqs2.length === 0) continue;
+    const reqById = new Map(reqs2.map((r) => [r.id, r]));
+    for (const idBatch of batches([...reqById.keys()], 80)) {
+      const { data: items, error: itErr } = await supabase
+        .from("request_items")
+        .select("id, request_id, item_id, status_aset, qty_requested, qty_approved, qty_shipped, item_status, barcode, resi, created_at")
+        .in("request_id", idBatch)
+        .in("item_status", ["pending_sebagian", "menunggu_stok"])
+        .order("created_at", { ascending: true })
+        .limit(5000);
+      if (itErr) throw new Error(itErr.message);
+      for (const it of (items ?? []) as {
+        id: string; request_id: string; item_id: string; status_aset: string | null;
+        qty_requested: number | string; qty_approved: number | string | null;
+        qty_shipped: number | string; item_status: string; barcode: string | null;
+        resi: string | null; created_at: string;
+      }[]) {
+        const req = reqById.get(it.request_id);
+        if (!req) continue;
+        out.push({
+          id: it.id, request_id: it.request_id, request_date: req.request_date,
+          ticket_no: req.ticket_no, branch_name: req.branch_name, item_id: it.item_id,
+          status_aset: it.status_aset, qty_requested: it.qty_requested,
+          qty_approved: it.qty_approved, qty_shipped: it.qty_shipped,
+          item_status: it.item_status, barcode: it.barcode, resi: it.resi,
+          created_at: it.created_at,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Rencana pelunasan pending untuk satu grup (satu tiket): tiap line TERKIRIM
+ * dicocokkan ke baris pending tiket itu. Dipakai pratinjau dan import supaya
+ * rencananya sama persis dengan yang dieksekusi.
+ */
+function planGroupFulfillments(
+  groupRows: ParsedShippingRow[],
+  keyOf: (r: ParsedShippingRow) => string,
+  pendingForTicket: PendingItem[],
+): FulfillmentPlan[] {
+  if (groupRows.length === 0 || pendingForTicket.length === 0) return [];
+  const lines = aggregateGroup(groupRows, keyOf);
+  const plans: FulfillmentPlan[] = [];
+  for (const line of lines) {
+    if (line.isPending || line.itemKey.startsWith("NAME:")) continue;
+    const plan = matchPendingForLine(line, pendingForTicket);
+    const fulfillQty = plan.used.reduce((s, u) => s + u.fulfillQty, 0);
+    if (fulfillQty <= 0) continue;
+    plans.push({
+      ticket: groupRows[0].ticket,
+      branch: groupRows[0].branch,
+      itemName: line.itemName,
+      kodeKondisi: line.kodeKondisi,
+      fulfillQty,
+      excessQty: plan.excessQty,
+      pendingSisaAfter: plan.pendingRemainingAfter,
+      needsApprove: plan.used.some((u) => u.needsApprove),
+    });
+  }
+  return plans;
 }
 
 export function RequestUploadPage() {
@@ -318,7 +409,7 @@ export function RequestUploadPage() {
         for (const idBatch of batches([...reqById.keys()], 80)) {
           const { data: items, error: itErr } = await supabase
             .from("request_items")
-            .select("request_id, item_id, barcode, resi, qty_requested")
+            .select("request_id, item_id, barcode, resi, qty_requested, item_status")
             .in("request_id", idBatch)
             .limit(5000);
           if (itErr) throw new Error(itErr.message);
@@ -328,6 +419,7 @@ export function RequestUploadPage() {
             barcode: string | null;
             resi: string | null;
             qty_requested: number | string;
+            item_status: string | null;
           }[]) {
             const req = reqById.get(it.request_id);
             if (!req) continue;
@@ -338,6 +430,10 @@ export function RequestUploadPage() {
               barcode: it.barcode,
               resi: it.resi,
               qty_requested: it.qty_requested,
+              // Status ikut dibaca supaya filter duplikat tahu baris pending:
+              // baris TERKIRIM yang cocok dengan pending BUKAN duplikat,
+              // melainkan pelunasan pending itu.
+              item_status: it.item_status,
             });
           }
         }
@@ -380,6 +476,30 @@ export function RequestUploadPage() {
       const lines = aggregateGroup(kept, keyOf);
       const groups = new Set(kept.map(groupKeyOf));
 
+      // Barang pending (Sisa Belum Terkirim) yang akan otomatis terkirim karena
+      // file ini berisi tiket + barang yang sama dengan status TERKIRIM.
+      // Dihitung per grup (satu tiket) supaya cocok dengan yang dieksekusi import.
+      let fulfillments: FulfillmentPlan[] = [];
+      const pendingAll = await loadPendingForTickets([...new Set(kept.map((r) => r.ticket).filter(Boolean))]);
+      if (pendingAll.length > 0) {
+        const byGroup = new Map<string, ParsedShippingRow[]>();
+        for (const r of kept) {
+          const k = groupKeyOf(r);
+          if (!byGroup.has(k)) byGroup.set(k, []);
+          byGroup.get(k)!.push(r);
+        }
+        for (const rs of byGroup.values()) {
+          const first = rs[0];
+          const pend = pendingAll.filter(
+            (p) =>
+              p.ticket_no.trim().toUpperCase() === first.ticket.trim().toUpperCase() &&
+              p.branch_name.trim().toUpperCase() === first.branch.trim().toUpperCase(),
+          );
+          if (pend.length === 0) continue;
+          fulfillments.push(...planGroupFulfillments(rs, keyOf, pend));
+        }
+      }
+
       // Tiket yang sudah ada: grup-grup ini akan digabung (bukan permintaan baru).
       const mergeTickets = [...new Set(kept.map((r) => r.ticket).filter(Boolean))];
       let mergeGroups = 0;
@@ -408,6 +528,7 @@ export function RequestUploadPage() {
       skipped,
       dupsInFile,
       lines,
+      fulfillments,
       idByName,
       nameById,
       sheetName,
@@ -556,6 +677,8 @@ export function RequestUploadPage() {
       let mergedCount = 0;
       let itemCount = 0;
       let totalQty = 0;
+      let fulfilledRows = 0;
+      let fulfilledQty = 0;
       const failures: { ticket: string; detail: string }[] = [];
       let n = 0;
       for (const rs of groups.values()) {
@@ -566,6 +689,10 @@ export function RequestUploadPage() {
         let reqId: string | null = null;
         let merged = false;
         let insertedItemIds: string[] = [];
+        // Pelunasan pending di grup ini (dihitung sebelum eksekusi supaya
+        // pesan gagal tetap bisa menyebutnya).
+        let groupFulfilledRows = 0;
+        let groupFulfilledQty = 0;
         try {
           // Baris per barang + kondisi aset + status terkirim.
           const lines = aggregateGroup(rs, (r) => {
@@ -623,55 +750,162 @@ export function RequestUploadPage() {
           }
           if (!reqId) throw new Error("Permintaan tidak terbentuk.");
 
+          // Pelunasan pending: bila tiket ini sudah punya baris pending
+          // (Sisa Belum Terkirim) untuk barang + kondisi yang sama, line
+          // TERKIRIM di file melunasi baris itu — bukan bikin baris baru.
+          // Hanya berlaku bila gabung ke tiket lama (permintaan baru tidak
+          // punya pending). Dihitung ulang di sini (bukan dari pratinjau)
+          // supaya data yang dipakai adalah kondisi terbaru di database.
+          const pendingById = new Map<string, PendingItem>();
+          const linePlans = new Map<AggLine, LineFulfillmentPlan>();
+          if (merged && ticket) {
+            const pendingAll = await loadPendingForTickets([ticket]);
+            const pend = pendingAll.filter(
+              (p) => p.branch_name.trim().toUpperCase() === first.branch.trim().toUpperCase(),
+            );
+            for (const p of pend) pendingById.set(p.id, p);
+            for (const line of lines) {
+              if (line.isPending) continue;
+              const plan = matchPendingForLine(line, pend);
+              if (plan.used.length > 0) linePlans.set(line, plan);
+            }
+          }
+
+          // Baris yang benar-benar dimasukkan: line PENDING utuh; line
+          // TERKIRIM yang melunasi pending hanya menyisakan kelebihannya
+          // (bila qty file lebih besar dari sisa pending) sebagai baris baru.
+          type InsertJob = { line: AggLine; id: string; qty: number; isExcess: boolean };
+          const insertJobs: InsertJob[] = [];
+          for (const line of lines) {
+            const plan = linePlans.get(line);
+            if (!line.isPending && plan && plan.used.length > 0) {
+              if (plan.excessQty > 0)
+                insertJobs.push({ line, id: uuid(), qty: plan.excessQty, isExcess: true });
+            } else {
+              insertJobs.push({ line, id: uuid(), qty: line.qty, isExcess: false });
+            }
+          }
           // Id baris dibuat di sisi klien supaya pemetaan hasil insert -> baris import
           // tidak bergantung pada urutan balikan PostgREST.
-          const planned = lines.map((line) => ({ line, id: uuid() }));
-          insertedItemIds = planned.map(({ id }) => id);
-          const payload = planned.map(({ line, id }) => ({
-            id,
-            request_id: reqId,
-            item_id: line.itemKey,
-            qty_requested: line.qty,
-            qty_approved: line.qty,
-            qty_shipped: 0,
-            barcode: [...new Set(line.rows.map((x) => x.barcode).filter(Boolean))].join("\n") || null,
-            item_type: line.rows[0].typeBarang || null,
-            status_aset: line.rows[0].statusAset || null,
-            resi: [...new Set(line.rows.map((x) => x.resi).filter(Boolean))].join("\n") || null,
-            item_status: line.isPending ? "pending_sebagian" : "disetujui",
-            notes: [...new Set(line.rows.map((x) =>
+          insertedItemIds = insertJobs.map(({ id }) => id);
+          const baseNotes = (line: AggLine): string | null =>
+            [...new Set(line.rows.map((x) =>
               [x.ket && `Ket: ${x.ket}`, x.statusRequest && `Status request: ${x.statusRequest}`]
                 .filter(Boolean).join(" | ")
-            ).filter(Boolean))].join("\n") || null,
-          }));
-          const { error: itemsErr } = await supabase.from("request_items").insert(payload);
-          if (itemsErr) throw new Error(itemsErr.message);
+            ).filter(Boolean))].join("\n") || null;
+          const payload = insertJobs.map(({ line, id, qty, isExcess }) => {
+            const notes = baseNotes(line);
+            return {
+              id,
+              request_id: reqId,
+              item_id: line.itemKey,
+              qty_requested: qty,
+              qty_approved: qty,
+              qty_shipped: 0,
+              // Barcode file ikut ke baris pending yang dilunasi (digabung di
+              // bawah), jadi baris kelebihan tidak membawa barcode lagi —
+              // kalau ikut dibawa, barcode yang sama tercatat dua kali.
+              barcode: isExcess ? null : [...new Set(line.rows.map((x) => x.barcode).filter(Boolean))].join("\n") || null,
+              item_type: line.rows[0].typeBarang || null,
+              status_aset: line.rows[0].statusAset || null,
+              resi: [...new Set(line.rows.map((x) => x.resi).filter(Boolean))].join("\n") || null,
+              item_status: line.isPending ? "pending_sebagian" : "disetujui",
+              notes: isExcess
+                ? [notes, "Kelebihan qty dari pelunasan pending (bagian pending sudah dilunasi)."].filter(Boolean).join("\n")
+                : notes,
+            };
+          });
+          if (payload.length > 0) {
+            const { error: itemsErr } = await supabase.from("request_items").insert(payload);
+            if (itemsErr) throw new Error(itemsErr.message);
+          }
           if (merged) mergedCount++;
           else reqCount++;
           itemCount += payload.length;
           totalQty += lines.reduce((s, l) => s + l.qty, 0);
 
+          // Daftar kirim per (permintaan, kondisi) — pelunasan bisa menarget
+          // permintaan lama lain dengan tiket yang sama (tiket terpecah).
+          type ShipLine = { request_item_id: string; qty: number; resi: string };
+          const shipGroups = new Map<string, { requestId: string; kode: KodeKondisi; lines: ShipLine[] }>();
+          const addShip = (requestId: string, kode: KodeKondisi, shipLine: ShipLine) => {
+            const key = `${requestId}|${kode}`;
+            const g = shipGroups.get(key) ?? { requestId, kode, lines: [] };
+            g.lines.push(shipLine);
+            shipGroups.set(key, g);
+          };
+
+          // Lunasi baris pending yang cocok. Baris pending BUKAN dihapus bila
+          // grup ini gagal sesudahnya — barangnya memang sudah dikirim, dan
+          // RPC di bawah memvalidasi qty terhadap sisa (tidak bisa dobel).
+          for (const [line, plan] of linePlans) {
+            const lineResi = line.rows.map((x) => x.resi).find(Boolean) ?? "";
+            const lineBarcodes = [...new Set(line.rows.map((x) => x.barcode).filter(Boolean))];
+            for (const u of plan.used) {
+              const pend = pendingById.get(u.pendingId);
+              if (!pend) continue;
+              // Gabung barcode file ke baris pending supaya unit yang dikirim terlacak.
+              const mergedBarcode =
+                [...new Set([...splitStoredCodes(pend.barcode), ...lineBarcodes])].join("\n") || null;
+              const patch: Record<string, unknown> = {};
+              if (mergedBarcode !== (pend.barcode ?? null)) patch.barcode = mergedBarcode;
+              if (u.needsApprove) {
+                patch.item_status = "pending_sebagian";
+                if (pend.qty_approved == null) patch.qty_approved = pend.qty_requested;
+              }
+              if (!deductStock) {
+                patch.qty_shipped = (Number(pend.qty_shipped ?? 0) || 0) + u.fulfillQty;
+                patch.item_status = u.pendingSisaAfter <= 0 ? "terkirim" : "pending_sebagian";
+                if (lineResi) patch.resi = lineResi;
+              }
+              if (Object.keys(patch).length > 0) {
+                const { error: updErr } = await supabase.from("request_items").update(patch).eq("id", pend.id);
+                if (updErr) throw new Error(updErr.message);
+              }
+              // Tanggal permintaan pemilik pending ikut tanggal file (aturan
+              // yang sama seperti penggabungan tiket) supaya transaksi keluar
+              // tercatat di tanggal pengiriman file, bukan tanggal batch lama.
+              if (pend.request_id !== reqId && pend.request_date !== first.date) {
+                const { error: dateErr } = await supabase
+                  .from("requests")
+                  .update({ request_date: first.date })
+                  .eq("id", pend.request_id);
+                if (dateErr) throw new Error(dateErr.message);
+              }
+              if (deductStock) {
+                addShip(pend.request_id, line.kodeKondisi, {
+                  request_item_id: pend.id,
+                  qty: u.fulfillQty,
+                  resi: lineResi,
+                });
+              }
+              groupFulfilledRows++;
+              groupFulfilledQty += u.fulfillQty;
+            }
+          }
+
           if (deductStock) {
             // Kelompokkan item TERKIRIM (bukan PENDING) per kondisi:
             // RETUR/RETURN → STOK-RETUR, UNREADY → STOK-UNREADY, lainnya → STOK-BARU.
-            const byKondisi = new Map<KodeKondisi, { request_item_id: string; qty: number; resi: string }[]>();
-            for (const { line, id } of planned) {
+            for (const { line, id, qty } of insertJobs) {
               if (line.isPending) continue;
-              const list = byKondisi.get(line.kodeKondisi) ?? [];
-              list.push({ request_item_id: id, qty: line.qty, resi: line.rows.map((x) => x.resi).find(Boolean) ?? "" });
-              byKondisi.set(line.kodeKondisi, list);
+              addShip(reqId, line.kodeKondisi, {
+                request_item_id: id,
+                qty,
+                resi: line.rows.map((x) => x.resi).find(Boolean) ?? "",
+              });
             }
-            for (const [kode, plines] of byKondisi) {
-              const locId = locByKondisi.get(kode);
-              if (!locId) throw new Error(`Lokasi ${kode} belum ada di database.`);
+            for (const g of shipGroups.values()) {
+              const locId = locByKondisi.get(g.kode);
+              if (!locId) throw new Error(`Lokasi ${g.kode} belum ada di database.`);
               const { error: shipErr } = await supabase.rpc("ship_request_items", {
-                p_request_id: reqId,
+                p_request_id: g.requestId,
                 p_location_id: locId,
-                p_lines: plines,
-                p_notes: `Upload dokumen pengiriman ${ticket ?? ""} (${kode})`.trim(),
+                p_lines: g.lines,
+                p_notes: `Upload dokumen pengiriman ${ticket ?? ""} (${g.kode})`.trim(),
                 p_allow_negative: true,
               });
-              if (shipErr) throw new Error(`Gagal kirim ${ticket ?? reqId} [${kode}]: ${shipErr.message}`);
+              if (shipErr) throw new Error(`Gagal kirim ${ticket ?? g.requestId} [${g.kode}]: ${shipErr.message}`);
             }
             if (hasPending) {
               await supabase
@@ -683,39 +917,53 @@ export function RequestUploadPage() {
             // Tandai selesai/pending tanpa ubah stok. Status dihitung dari
             // SELURUH barang permintaan (bukan hanya batch ini) supaya
             // permintaan gabungan tidak salah jadi "selesai" padahal masih
-            // ada barang pending dari batch lama.
-            for (const { line, id } of planned) {
+            // ada barang pending dari batch lama. Permintaan pemilik pending
+            // yang dilunasi ikut dihitung ulang statusnya.
+            for (const { line, id, qty } of insertJobs) {
               await supabase
                 .from("request_items")
                 .update({
-                  qty_shipped: line.isPending ? 0 : line.qty,
+                  qty_shipped: line.isPending ? 0 : qty,
                   item_status: line.isPending ? "pending_sebagian" : "terkirim",
                 })
                 .eq("id", id);
             }
-            const { data: allItems } = await supabase
-              .from("request_items")
-              .select("item_status")
-              .eq("request_id", reqId);
-            const anyPending = (allItems ?? []).some(
-              (it) => it.item_status === "pending_sebagian" || it.item_status === "menunggu_stok",
-            );
-            await supabase
-              .from("requests")
-              .update({ status: anyPending ? "disetujui_sebagian" : "selesai" })
-              .eq("id", reqId);
+            const affected = new Set<string>([reqId]);
+            for (const plan of linePlans.values())
+              for (const u of plan.used) affected.add(u.pendingRequestId);
+            for (const rid of affected) {
+              const { data: allItems } = await supabase
+                .from("request_items")
+                .select("item_status")
+                .eq("request_id", rid);
+              const anyPending = (allItems ?? []).some(
+                (it) => it.item_status === "pending_sebagian" || it.item_status === "menunggu_stok",
+              );
+              await supabase
+                .from("requests")
+                .update({ status: anyPending ? "disetujui_sebagian" : "selesai" })
+                .eq("id", rid);
+            }
           }
+          fulfilledRows += groupFulfilledRows;
+          fulfilledQty += groupFulfilledQty;
         } catch (e) {
           // Gagal di satu permintaan: permintaan BARU yang sudah terbuat
           // dihapus (rollback parsial); kalau gabung, hanya baris baru yang
           // dihapus — permintaan lama beserta isinya tidak boleh hilang.
+          // Baris pending yang sudah dilunasi TIDAK dihapus: barangnya memang
+          // sudah dikirim (transaksi OUT-nya sudah tercatat).
           if (!merged && reqId) await supabase.from("requests").delete().eq("id", reqId);
           if (merged && insertedItemIds.length > 0)
             await supabase.from("request_items").delete().in("id", insertedItemIds);
           const rawMsg = e instanceof Error ? e.message : "gagal";
+          const fulfilledNote =
+            groupFulfilledQty > 0
+              ? ` (Catatan: ${groupFulfilledRows} barang pending sudah sempat terkirim ${groupFulfilledQty} unit sebelum gagal — tidak dibatalkan karena barangnya memang sudah dikirim.)`
+              : "";
           failures.push({
             ticket: ticket ?? `baris grup ${n}`,
-            detail: formatShipError(rawMsg, itemNameById),
+            detail: formatShipError(rawMsg, itemNameById) + fulfilledNote,
           });
         }
       }
@@ -723,9 +971,10 @@ export function RequestUploadPage() {
       setFailList(failures);
       const failMsg = failures.length > 0 ? ` Gagal: ${failures.length} permintaan (lihat rincian di bawah).` : "";
       const dupMsg = skippedDup > 0 ? ` ${skippedDup} baris duplikat dilewati.` : "";
+      const fulfilledMsg = fulfilledRows > 0 ? ` ${fulfilledRows} barang pending otomatis terkirim (${fulfilledQty} unit).` : "";
       const emptyMsg = filteredRows.length === 0 ? " Tidak ada baris baru untuk diimpor." : "";
       setResult(
-        `Berhasil: ${reqCount} permintaan baru${mergedCount > 0 ? `, ${mergedCount} permintaan digabung ke tiket yang sudah ada` : ""}, ${itemCount} baris barang (total qty ${totalQty}).${deductStock ? " Stok otomatis berkurang." : ""}${dupMsg}${emptyMsg}${failMsg}`
+        `Berhasil: ${reqCount} permintaan baru${mergedCount > 0 ? `, ${mergedCount} permintaan digabung ke tiket yang sudah ada` : ""}, ${itemCount} baris barang (total qty ${totalQty}).${fulfilledMsg}${deductStock ? " Stok otomatis berkurang." : ""}${dupMsg}${emptyMsg}${failMsg}`
       );
       if (failures.length > 0) toast.warning(`${failures.length} permintaan gagal — lihat rincian.`);
       else toast.success("Import selesai.");
@@ -864,6 +1113,34 @@ export function RequestUploadPage() {
                         nanti setelah stok tersedia.
                       </p>
                     )}
+                  </div>
+                )}
+
+                {preview.fulfillments.length > 0 && (
+                  <div className="rounded-md border border-ok-500/25 bg-ok-500/15 p-3">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-ok-100">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      {preview.fulfillments.length} barang pending akan otomatis terkirim
+                    </p>
+                    <p className="mt-1 text-xs text-ok-100">
+                      Tiket + barang di file ini sama dengan yang masih di Sisa Belum Terkirim — baris
+                      pending-nya dilunasi otomatis, bukan dibuat baris baru.
+                    </p>
+                    <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-ok-100">
+                      {preview.fulfillments.map((f, i) => (
+                        <li key={`${f.ticket}-${f.itemName}-${f.kodeKondisi}-${i}`} className="flex flex-wrap gap-x-2">
+                          <span className="font-mono">{f.ticket}</span>
+                          <span className="font-medium text-white">{f.itemName}</span>
+                          <span>({asetLabelOf(f.kodeKondisi)})</span>
+                          <span className="tnum">
+                            lunasi {f.fulfillQty}
+                            {f.excessQty > 0 && ` · +${f.excessQty} baru terkirim`}
+                            {f.pendingSisaAfter > 0 && ` · sisa pending ${f.pendingSisaAfter}`}
+                            {f.needsApprove && ` · akan disetujui dulu`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 

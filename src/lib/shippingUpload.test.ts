@@ -7,7 +7,9 @@ import {
   filterDuplicateRows,
   findDuplicateRowsInFile,
   groupKeyOf,
+  isPendingStatus,
   kondisiOf,
+  matchPendingForLine,
   parseDateText,
   parseQtyCell,
   parseSheetDate,
@@ -15,11 +17,14 @@ import {
   parseShippingSheet,
   parseSheetLabel,
   parseWorkbook,
+  pendingSisaOf,
   pickNewestSheet,
   normalizeItemName,
   pickMergeTarget,
+  type AggLine,
   type ExistingRequestRef,
   type ParsedShippingRow,
+  type PendingItem,
   applySheetDate,
 } from "./shippingUpload";
 
@@ -659,5 +664,129 @@ describe("Gabung tiket yang sama (pickMergeTarget)", () => {
   it("tanpa tiket atau tanpa calon -> null", () => {
     expect(pickMergeTarget([], "A2610261707", "X")).toBeNull();
     expect(pickMergeTarget([req("a", "A2610261707", "X", "2026-11-05T07:58:19Z")], "", "X")).toBeNull();
+  });
+});
+
+describe("filter duplikat sadar status pending (pelunasan otomatis)", () => {
+  const shipRow = (resiOrBarcode: string, terkirim = "TERKIRIM", barcode = ""): ParsedShippingRow => ({
+    ...({} as ParsedShippingRow), rowNo: 1, ticket: "T1", date: "2026-11-20", itemName: "ITEM",
+    qty: 1, qtyExplicit: true, qtyUnreadable: false, hasBarcode: Boolean(barcode),
+    barcode, resi: barcode ? "" : resiOrBarcode, branch: "G", branchCode: "", ket: "",
+    typeBarang: "", statusRequest: "", statusAset: "", terkirim,
+  });
+
+  it("baris TERKIRIM yang cocok dengan pending dipertahankan (bukan duplikat)", () => {
+    const index = buildDupIndex([
+      { ticket_no: "T1", request_date: "2026-11-20", item_id: "I1", barcode: "BC-9", resi: null, qty_requested: 1, item_status: "pending_sebagian" },
+    ]);
+    const { kept, skipped } = filterDuplicateRows([shipRow("", "TERKIRIM", "BC-9")], () => "I1", index);
+    expect(kept).toHaveLength(1);
+    expect(skipped).toHaveLength(0);
+  });
+
+  it("baris PENDING yang cocok dengan pending tetap terbuang (upload ulang)", () => {
+    const index = buildDupIndex([
+      { ticket_no: "T1", request_date: "2026-11-20", item_id: "I1", barcode: "BC-9", resi: null, qty_requested: 1, item_status: "pending_sebagian" },
+    ]);
+    const { kept, skipped } = filterDuplicateRows([shipRow("", "PENDING", "BC-9")], () => "I1", index);
+    expect(kept).toHaveLength(0);
+    expect(skipped).toHaveLength(1);
+  });
+
+  it("baris PENDING yang cocok dengan yang sudah terkirim tetap terbuang", () => {
+    const index = buildDupIndex([
+      { ticket_no: "T1", request_date: "2026-11-20", item_id: "I1", barcode: null, resi: "R-1", qty_requested: 1, item_status: "terkirim" },
+    ]);
+    const { kept, skipped } = filterDuplicateRows([shipRow("R-1", "PENDING")], () => "I1", index);
+    expect(kept).toHaveLength(0);
+    expect(skipped).toHaveLength(1);
+  });
+
+  it("baris TERKIRIM anonim tidak tertelan slot pending (kelebihan tetap masuk)", () => {
+    const index = buildDupIndex([
+      { ticket_no: "T1", request_date: "2026-11-20", item_id: "I1", barcode: null, resi: null, qty_requested: 5, item_status: "pending_sebagian" },
+    ]);
+    const rows = Array.from({ length: 7 }, (_, i) => ({ ...shipRow("", "TERKIRIM"), rowNo: i + 1 }));
+    const { kept, skipped } = filterDuplicateRows(rows, () => "I1", index);
+    expect(kept).toHaveLength(7);
+    expect(skipped).toHaveLength(0);
+  });
+
+  it("baris tanpa status dianggap sudah terkirim (perilaku lama, aman untuk sync)", () => {
+    expect(isPendingStatus(undefined)).toBe(false);
+    expect(isPendingStatus("terkirim")).toBe(false);
+    expect(isPendingStatus("pending_sebagian")).toBe(true);
+    expect(isPendingStatus("menunggu_stok")).toBe(true);
+  });
+});
+
+describe("pelunasan pending (matchPendingForLine)", () => {
+  const pending = (over: Partial<PendingItem> = {}): PendingItem => ({
+    id: "P1", request_id: "R1", request_date: "2026-11-18", ticket_no: "T1", branch_name: "G", item_id: "I1",
+    status_aset: "ASSET RETUR", qty_requested: 6, qty_approved: 6, qty_shipped: 0,
+    item_status: "pending_sebagian", barcode: null, resi: null, created_at: "2026-11-18T00:00:00Z",
+    ...over,
+  });
+  const line = (qty: number, kodeKondisi: AggLine["kodeKondisi"] = "STOK-RETUR", isPending = false): AggLine => ({
+    itemKey: "I1", itemName: "ITEM", kodeKondisi, isPending, qty, qtySource: "qty-kolom",
+    qtyFile: qty, qtyBarcode: 0, rowCount: 1, blankQtyRows: 0, rows: [],
+  });
+
+  it("melunasi penuh bila qty sama dengan sisa pending", () => {
+    const plan = matchPendingForLine(line(6), [pending()]);
+    expect(plan.used).toHaveLength(1);
+    expect(plan.used[0]).toMatchObject({ pendingId: "P1", fulfillQty: 6, pendingSisaAfter: 0 });
+    expect(plan.excessQty).toBe(0);
+    expect(plan.pendingRemainingAfter).toBe(0);
+  });
+
+  it("melunasi sebagian dan menyisakan pending", () => {
+    const plan = matchPendingForLine(line(4), [pending()]);
+    expect(plan.used[0]).toMatchObject({ fulfillQty: 4, pendingSisaAfter: 2 });
+    expect(plan.excessQty).toBe(0);
+    expect(plan.pendingRemainingAfter).toBe(2);
+  });
+
+  it("kelebihan dari sisa pending jadi baris baru", () => {
+    const plan = matchPendingForLine(line(10), [pending()]);
+    expect(plan.used[0]).toMatchObject({ fulfillQty: 6, pendingSisaAfter: 0 });
+    expect(plan.excessQty).toBe(4);
+    expect(plan.pendingRemainingAfter).toBe(0);
+  });
+
+  it("kondisi aset beda tidak dilunasi", () => {
+    const plan = matchPendingForLine(line(6, "STOK-BARU"), [pending()]);
+    expect(plan.used).toHaveLength(0);
+    expect(plan.excessQty).toBe(6);
+  });
+
+  it("baris PENDING di file tidak pernah melunasi", () => {
+    const plan = matchPendingForLine(line(6, "STOK-RETUR", true), [pending()]);
+    expect(plan.used).toHaveLength(0);
+    expect(plan.excessQty).toBe(6);
+  });
+
+  it("FIFO: pending tertua dilunasi dulu", () => {
+    const plan = matchPendingForLine(line(5), [
+      pending({ id: "P1", created_at: "2026-11-18T00:00:00Z", qty_approved: 3, qty_requested: 3 }),
+      pending({ id: "P2", created_at: "2026-11-19T00:00:00Z", qty_approved: 4, qty_requested: 4 }),
+    ]);
+    expect(plan.used.map((u) => [u.pendingId, u.fulfillQty, u.pendingSisaAfter])).toEqual([
+      ["P1", 3, 0],
+      ["P2", 2, 2],
+    ]);
+    expect(plan.pendingRemainingAfter).toBe(2);
+  });
+
+  it("menunggu_stok dan approved NULL butuh disetujui dulu", () => {
+    expect(matchPendingForLine(line(2), [pending({ item_status: "menunggu_stok" })]).used[0].needsApprove).toBe(true);
+    expect(matchPendingForLine(line(2), [pending({ qty_approved: null })]).used[0].needsApprove).toBe(true);
+    expect(matchPendingForLine(line(2), [pending()]).used[0].needsApprove).toBe(false);
+  });
+
+  it("pendingSisaOf memakai qty_requested untuk menunggu_stok / approved NULL", () => {
+    expect(pendingSisaOf(pending({ item_status: "menunggu_stok", qty_requested: 5, qty_approved: null, qty_shipped: 2 }))).toBe(3);
+    expect(pendingSisaOf(pending({ qty_approved: null, qty_requested: 5, qty_shipped: 1 }))).toBe(4);
+    expect(pendingSisaOf(pending({ qty_approved: 6, qty_shipped: 6 }))).toBe(0);
   });
 });
