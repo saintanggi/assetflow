@@ -43,7 +43,8 @@ interface LocationOption {
   warehouse: string;
 }
 
-/** Jenis stok Barang Masuk → status aset + lokasi tujuan (Gudang Utama). */
+/** Jenis stok Barang Masuk/Keluar → status aset + lokasi Gudang Utama
+    (tujuan untuk Masuk, asal untuk Keluar). */
 const JENIS_STOK_OPTIONS = [
   { value: "baru", label: "Baru" },
   { value: "retur", label: "Retur" },
@@ -92,8 +93,11 @@ export function TransactionForm({
   const [destId, setDestId] = useState("");
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
-  // Barang Masuk: jenis stok (Baru/Retur/Unready) + gerai asal barang.
+  // Barang Masuk & Barang Keluar: jenis stok (Baru/Retur/Unready) + gerai.
+  // Masuk: gerai = asal barang; Keluar: gerai = tujuan barang.
   const isMasuk = type === "in";
+  const isKeluar = type === "out";
+  const usesJenisStok = isMasuk || isKeluar;
   const [jenisStok, setJenisStok] = useState("");
   const [gerai, setGerai] = useState("");
   const [geraiOptions, setGeraiOptions] = useState<string[]>([]);
@@ -156,11 +160,12 @@ export function TransactionForm({
     };
   }, []);
 
-  // Lokasi tujuan Barang Masuk per jenis stok — kode STOK-* itu KHUSUS Gudang
-  // Utama. Sengaja TIDAK ada fallback ke gudang lain: kalau kodenya tidak
-  // ketemu, validasi gagal daripada stok nyasar ke gudang lain (kasus
-  // IN-2026-000037 yang masuk CEMPAKA PUTIH karena fallback alfabetis).
-  const destByJenis = useMemo(() => {
+  // Lokasi Gudang Utama per jenis stok — kode STOK-* itu KHUSUS Gudang Utama.
+  // Dipakai sebagai tujuan (Barang Masuk) dan sebagai asal (Barang Keluar).
+  // Sengaja TIDAK ada fallback ke gudang lain: kalau kodenya tidak ketemu,
+  // validasi gagal daripada stok nyasar ke gudang lain (kasus IN-2026-000037
+  // yang masuk CEMPAKA PUTIH karena fallback alfabetis).
+  const lokasiByJenis = useMemo(() => {
     const map: Record<string, LocationOption | undefined> = {};
     for (const key of Object.keys(JENIS_SUFFIX) as (keyof typeof JENIS_SUFFIX)[]) {
       map[key] = locationOptions.find(
@@ -169,7 +174,8 @@ export function TransactionForm({
     }
     return map;
   }, [locationOptions]);
-  const effectiveDestId = isMasuk ? destByJenis[jenisStok]?.value ?? "" : destId;
+  const effectiveDestId = isMasuk ? lokasiByJenis[jenisStok]?.value ?? "" : destId;
+  const effectiveSourceId = isKeluar ? lokasiByJenis[jenisStok]?.value ?? "" : sourceId;
 
   useEffect(() => {
     const timers = searchTimers.current;
@@ -248,7 +254,12 @@ export function TransactionForm({
       if (!Number.isFinite(Number(r.qty)) || Number(r.qty) <= 0)
         return `Qty untuk "${r.item.name}" harus lebih dari 0.`;
     }
-    if (needSource && !sourceId) return "Lokasi asal wajib dipilih.";
+    if (isKeluar) {
+      if (!jenisStok) return "Pilih jenis stok (Baru / Retur / Unready).";
+      if (!effectiveSourceId) return "Lokasi asal untuk jenis stok ini tidak ditemukan.";
+    } else if (needSource && !sourceId) {
+      return "Lokasi asal wajib dipilih.";
+    }
     if (isMasuk) {
       if (!jenisStok) return "Pilih jenis stok (Baru / Retur / Unready).";
       if (!effectiveDestId) return "Lokasi tujuan untuk jenis stok ini tidak ditemukan.";
@@ -275,10 +286,10 @@ export function TransactionForm({
         .map((r) => ({
           item_id: r.item!.id,
           qty: Number(r.qty),
-          // Barang Masuk: gerai + jenis stok ikut tercatat per baris,
-          // supaya kolom Gerai di Log Transaksi terisi.
-          ...(isMasuk && gerai.trim() ? { gerai: gerai.trim() } : {}),
-          ...(isMasuk && jenisStok
+          // Barang Masuk & Keluar: gerai + jenis stok ikut tercatat per baris,
+          // supaya kolom Gerai dan Jenis Stok di Log Transaksi terisi.
+          ...(usesJenisStok && gerai.trim() ? { gerai: gerai.trim() } : {}),
+          ...(usesJenisStok && jenisStok
             ? { status_aset: JENIS_STATUS_ASET[jenisStok as keyof typeof JENIS_STATUS_ASET] }
             : {}),
         }));
@@ -286,7 +297,7 @@ export function TransactionForm({
         p_idempotency_key: crypto.randomUUID(),
         p_type: type,
         p_transaction_date: date,
-        p_source_location_id: needSource ? sourceId : null,
+        p_source_location_id: needSource ? effectiveSourceId || null : null,
         p_dest_location_id: needDest ? effectiveDestId || null : null,
         p_reference: reference.trim() || null,
         p_notes: notes.trim() || null,
@@ -330,7 +341,7 @@ export function TransactionForm({
             className={DARK_INPUT}
           />
         </div>
-        {needSource && (
+        {needSource && !isKeluar && (
           <div className="space-y-1.5">
             <Label htmlFor="trx-source" className="text-ink-100">Lokasi Asal</Label>
             <Select
@@ -356,7 +367,7 @@ export function TransactionForm({
             />
           </div>
         )}
-        {isMasuk && (
+        {usesJenisStok && (
           <>
             <div className="space-y-1.5">
               <Label htmlFor="trx-jenis" className="text-ink-100">Jenis Stok</Label>
@@ -368,9 +379,9 @@ export function TransactionForm({
                 onValueChange={setJenisStok}
                 className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
               />
-              {jenisStok && destByJenis[jenisStok] && (
+              {jenisStok && lokasiByJenis[jenisStok] && (
                 <p className="text-xs text-ink-300">
-                  Tujuan: {destByJenis[jenisStok]!.label}
+                  {isMasuk ? "Tujuan" : "Asal"}: {lokasiByJenis[jenisStok]!.label}
                 </p>
               )}
             </div>
