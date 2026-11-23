@@ -629,10 +629,26 @@ export interface StoredItemRow {
   barcode: string | null;
   resi: string | null;
   qty_requested: number | string;
+  /**
+   * Status baris tersimpan. Opsional: pemanggil lama (mis. Edge Function
+   * sync-sheets) tidak mengisinya — baris tanpa status dianggap SUDAH
+   * terkirim (perilaku lama, aman).
+   */
+  item_status?: string | null;
+}
+
+/** Status yang berarti baris masih menunggu kirim (belum terkirim). */
+export const PENDING_STATUSES = ["pending_sebagian", "menunggu_stok"] as const;
+
+export function isPendingStatus(status: string | null | undefined): boolean {
+  return status != null && (PENDING_STATUSES as readonly string[]).includes(status);
 }
 
 export interface DupIndex {
+  /** Sidik jari baris yang sudah terkirim. */
   counts: Map<string, number>;
+  /** Sidik jari baris yang masih pending (belum terkirim). */
+  pendingCounts: Map<string, number>;
 }
 
 const dupKey = (ticket: string, date: string, itemKey: string, tag: string): string =>
@@ -648,19 +664,25 @@ const ANON = "ANON";
  */
 export function buildDupIndex(stored: StoredItemRow[]): DupIndex {
   const counts = new Map<string, number>();
-  const add = (key: string, amount: number) => counts.set(key, (counts.get(key) ?? 0) + amount);
+  const pendingCounts = new Map<string, number>();
+  const add = (map: Map<string, number>, key: string, amount: number) =>
+    map.set(key, (map.get(key) ?? 0) + amount);
   for (const s of stored) {
+    // Baris pending dipisah: baris TERKIRIM yang melunasi pending BUKAN
+    // duplikat (lihat filterDuplicateRows), sementara upload ulang file
+    // PENDING yang sama tetap terbuang.
+    const map = isPendingStatus(s.item_status) ? pendingCounts : counts;
     const barcodes = splitText(s.barcode);
     const resis = splitText(s.resi);
     if (barcodes.length === 0 && resis.length === 0) {
       const qty = parseNumberLike(s.qty_requested) ?? 1;
-      add(dupKey(s.ticket_no, s.request_date, s.item_id, ANON), qty > 0 ? qty : 1);
+      add(map, dupKey(s.ticket_no, s.request_date, s.item_id, ANON), qty > 0 ? qty : 1);
       continue;
     }
-    for (const b of barcodes) add(dupKey(s.ticket_no, s.request_date, s.item_id, `BC:${b}`), 1);
-    for (const r of resis) add(dupKey(s.ticket_no, s.request_date, s.item_id, `RS:${r}`), 1);
+    for (const b of barcodes) add(map, dupKey(s.ticket_no, s.request_date, s.item_id, `BC:${b}`), 1);
+    for (const r of resis) add(map, dupKey(s.ticket_no, s.request_date, s.item_id, `RS:${r}`), 1);
   }
-  return { counts };
+  return { counts, pendingCounts };
 }
 
 export interface DupFilterResult {
@@ -668,19 +690,40 @@ export interface DupFilterResult {
   skipped: ParsedShippingRow[];
 }
 
-/** Buang baris yang identitasnya (tiket + barang + barcode/resi) sudah ada di sistem. */
+/** Buang baris yang identitasnya (tiket + barang + barcode/resi) sudah ada di sistem.
+ *
+ * Aturan per status (pelunasan pending, Nov 2026):
+ * - Baris TERKIRIM hanya duplikat bila cocok dengan baris yang SUDAH terkirim.
+ *   Cocok dengan baris PENDING berarti barang itu akhirnya dikirim — baris
+ *   dipertahankan supaya import melunasi pending-nya (bukan dilewati).
+ * - Baris PENDING duplikat bila cocok dengan baris terkirim ATAU pending
+ *   (upload ulang file PENDING yang sama tetap terbuang).
+ */
 export function filterDuplicateRows(
   rows: ParsedShippingRow[],
   itemKeyOf: (row: ParsedShippingRow) => string,
   index: DupIndex,
 ): DupFilterResult {
-  const used = new Map<string, number>();
-  const take = (key: string, amount: number): boolean => {
-    const have = index.counts.get(key) ?? 0;
+  // Pemakaian slot dibedakan per status supaya baris TERKIRIM yang melunasi
+  // pending tidak tertelan sebagai duplikat.
+  const usedShipped = new Map<string, number>();
+  const usedPending = new Map<string, number>();
+  const takeFrom = (
+    map: Map<string, number>,
+    used: Map<string, number>,
+    key: string,
+    amount: number,
+  ): boolean => {
+    const have = map.get(key) ?? 0;
     const taken = used.get(key) ?? 0;
     if (have - taken < amount) return false;
     used.set(key, taken + amount);
     return true;
+  };
+  const isDuplicate = (key: string, amount: number, newIsPending: boolean): boolean => {
+    if (takeFrom(index.counts, usedShipped, key, amount)) return true;
+    if (!newIsPending) return false;
+    return takeFrom(index.pendingCounts, usedPending, key, amount);
   };
   const kept: ParsedShippingRow[] = [];
   const skipped: ParsedShippingRow[] = [];
@@ -690,24 +733,142 @@ export function filterDuplicateRows(
       kept.push(r);
       continue;
     }
+    const newIsPending = r.terkirim === "PENDING";
     const barcodes = splitText(r.barcode);
     const resis = splitText(r.resi);
     let duplicate = false;
     if (barcodes.length === 0 && resis.length === 0) {
-      duplicate = take(dupKey(r.ticket, r.date, itemKey, ANON), r.qty > 0 ? r.qty : 1);
+      duplicate = isDuplicate(dupKey(r.ticket, r.date, itemKey, ANON), r.qty > 0 ? r.qty : 1, newIsPending);
     } else {
       for (const b of barcodes) {
-        if (take(dupKey(r.ticket, r.date, itemKey, `BC:${b}`), 1)) { duplicate = true; break; }
+        if (isDuplicate(dupKey(r.ticket, r.date, itemKey, `BC:${b}`), 1, newIsPending)) { duplicate = true; break; }
       }
       if (!duplicate) {
         for (const s of resis) {
-          if (take(dupKey(r.ticket, r.date, itemKey, `RS:${s}`), 1)) { duplicate = true; break; }
+          if (isDuplicate(dupKey(r.ticket, r.date, itemKey, `RS:${s}`), 1, newIsPending)) { duplicate = true; break; }
         }
       }
     }
     (duplicate ? skipped : kept).push(r);
   }
   return { kept, skipped };
+}
+
+// ---------------------------------------------------------------- pelunasan pending
+
+/**
+ * Baris request_items yang masih menunggu kirim (Sisa Belum Terkirim).
+ * Dipakai untuk pelunasan otomatis: bila file upload berisi tiket + barang
+ * yang sama dengan status TERKIRIM, baris pending ini dilunasi (bukan dibuat
+ * baris baru), supaya tidak ada yang kelewat di Sisa Belum Terkirim.
+ */
+export interface PendingItem {
+  id: string;
+  request_id: string;
+  request_date: string;
+  ticket_no: string;
+  branch_name: string;
+  item_id: string;
+  status_aset: string | null;
+  qty_requested: number | string;
+  qty_approved: number | string | null;
+  qty_shipped: number | string;
+  item_status: string;
+  barcode: string | null;
+  resi: string | null;
+  created_at: string;
+}
+
+/**
+ * Sisa yang masih pending pada satu baris — rumus yang sama dengan halaman
+ * Sisa Belum Terkirim: dasar = qty_approved (atau qty_requested bila approved
+ * NULL / untuk menunggu_stok), dikurangi qty_shipped.
+ */
+export function pendingSisaOf(p: PendingItem): number {
+  const shipped = Number(p.qty_shipped ?? 0) || 0;
+  const dasar =
+    p.item_status === "menunggu_stok"
+      ? Number(p.qty_requested ?? 0) || 0
+      : p.qty_approved != null
+        ? Number(p.qty_approved) || 0
+        : Number(p.qty_requested ?? 0) || 0;
+  return Math.max(0, round3(dasar - shipped));
+}
+
+export interface PendingFulfillment {
+  /** Id baris pending yang dilunasi. */
+  pendingId: string;
+  /** Id permintaan pemilik baris pending (bisa beda dari permintaan gabungan). */
+  pendingRequestId: string;
+  /** Qty dari line yang dipakai melunasi baris ini. */
+  fulfillQty: number;
+  /** Sisa pending baris ini sesudah dilunasi (0 = lunas penuh). */
+  pendingSisaAfter: number;
+  /** Baris ini butuh disetujui dulu (menunggu_stok atau approved NULL). */
+  needsApprove: boolean;
+}
+
+export interface LineFulfillmentPlan {
+  /** Pelunasan per baris pending (urut FIFO — pending tertua dulu). */
+  used: PendingFulfillment[];
+  /** Qty line yang tersisa dan tetap jadi baris terkirim baru. */
+  excessQty: number;
+  /** Total sisa pending (barang + kondisi ini, tiket ini) sesudah line ini. */
+  pendingRemainingAfter: number;
+}
+
+/**
+ * Cocokkan satu AggLine TERKIRIM dengan baris-baris pending pada tiket yang sama.
+ *
+ * Cocok bila item sama + kondisi aset sama (STATUS ASSET file vs status_aset
+ * baris pending, dinormalisasi dengan aturan yang sama). Pending tertua
+ * dilunasi dulu (FIFO). Baris PENDING (isPending) tidak pernah dilunasi —
+ * hanya baris TERKIRIM yang melunasi.
+ */
+export function matchPendingForLine(
+  line: AggLine,
+  pending: PendingItem[],
+): LineFulfillmentPlan {
+  const same = pending.filter(
+    (p) => p.item_id === line.itemKey && kondisiOf(p.status_aset) === line.kodeKondisi,
+  );
+  const totalSisa = round3(same.reduce((s, p) => s + pendingSisaOf(p), 0));
+  if (line.isPending || line.qty <= 0 || totalSisa <= 0) {
+    return { used: [], excessQty: round3(line.qty), pendingRemainingAfter: totalSisa };
+  }
+  const candidates = same
+    .map((p) => ({ p, sisa: pendingSisaOf(p) }))
+    .filter((x) => x.sisa > 0)
+    .sort((a, b) => (a.p.created_at < b.p.created_at ? -1 : a.p.created_at > b.p.created_at ? 1 : 0));
+  let remaining = round3(line.qty);
+  const used: PendingFulfillment[] = [];
+  for (const { p, sisa } of candidates) {
+    if (remaining <= 0) break;
+    const fulfillQty = round3(Math.min(remaining, sisa));
+    if (fulfillQty <= 0) continue;
+    used.push({
+      pendingId: p.id,
+      pendingRequestId: p.request_id,
+      fulfillQty,
+      pendingSisaAfter: round3(sisa - fulfillQty),
+      needsApprove: p.item_status === "menunggu_stok" || p.qty_approved == null,
+    });
+    remaining = round3(remaining - fulfillQty);
+  }
+  const fulfilled = round3(line.qty - remaining);
+  return { used, excessQty: remaining, pendingRemainingAfter: round3(totalSisa - fulfilled) };
+}
+
+/** Satu baris rencana pelunasan untuk pratinjau (per tiket + barang + kondisi). */
+export interface FulfillmentPlan {
+  ticket: string;
+  branch: string;
+  itemName: string;
+  kodeKondisi: KodeKondisi;
+  fulfillQty: number;
+  excessQty: number;
+  pendingSisaAfter: number;
+  needsApprove: boolean;
 }
 
 /** Baris dengan tiket + barang + barcode/resi sama di dalam satu file (indikasi dobel isi). */
@@ -817,6 +978,9 @@ export function pickNewestSheet<T extends { name: string; rows: unknown[] }>(
 //   { action: "test"    }              -> cek file & sebutkan sheet terbaru
 //   { action: "preview" }              -> ringkasan yang AKAN diimpor (tanpa tulis)
 //   { action: "run"     }              -> import + potong stok + catat log
+//   { action: "rows", dates: [...] }   -> baris-baris Google Sheet (baca saja,
+//                                          tanpa tulis) untuk dibandingkan dengan
+//                                          file upload di halaman Upload Dokumen
 // Parameter opsional: source_id, spreadsheet_id, sheet_mode, sheet_name,
 //                     deduct_stock, allow_negative, auto_create_items
 // =============================================================================
@@ -1222,6 +1386,87 @@ Deno.serve(async (req: Request) => {
         allow_negative: body.allow_negative !== false,
         auto_create_items: body.auto_create_items === true,
       };
+    }
+
+    // Aksi "rows" (baca saja): kembalikan baris-baris Google Sheet untuk
+    // tanggal tertentu, dipakai halaman Upload Dokumen untuk membandingkan
+    // file upload dengan dokumen pengiriman (Google Sheet).
+    // - TIDAK menulis apa pun ke database (bukan sinkronisasi, bukan impor).
+    // - TIDAK butuh settings.manage — cukup pengguna yang sudah login,
+    //   karena datanya adalah sheet publik yang sama dengan yang disinkron.
+    // - Parameter: { action: "rows", dates?: ["2026-11-18", ...] }.
+    //   Bila dates kosong: pakai sheet terbaru. Bila tidak ada sheet yang
+    //   tanggal labelnya cocok dengan dates: pakai sheet terbaru juga.
+    if (action === "rows") {
+      if (!cfg) {
+        const { data: src } = await db
+          .from("sheet_sync_sources")
+          .select("*")
+          .eq("is_active", true)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (!src) {
+          return json(
+            { error: "Belum ada sumber sinkronisasi Google Sheet — atur dulu di panel Sinkronisasi." },
+            400,
+          );
+        }
+        cfg = {
+          id: src.id,
+          name: src.name,
+          spreadsheet_id: src.spreadsheet_id,
+          sheet_mode: src.sheet_mode,
+          sheet_name: src.sheet_name,
+          deduct_stock: src.deduct_stock,
+          allow_negative: src.allow_negative,
+          auto_create_items: src.auto_create_items,
+        };
+      }
+      if (!isService) {
+        const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+          global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+          auth: { persistSession: false },
+        });
+        const { data: userData } = await userClient.auth.getUser();
+        if (!userData?.user?.id) return json({ error: "Harus login dulu." }, 401);
+      }
+      const dates = Array.isArray(body.dates)
+        ? (body.dates as unknown[]).filter((d): d is string => typeof d === "string")
+        : [];
+      const wb = await downloadWorkbook(cfg.spreadsheet_id);
+      const parsed = parseWorkbook(wb);
+      if (parsed.sheets.length === 0) {
+        return json({ error: "Tidak ada sheet berisi tabel pengiriman di Google Sheet itu." }, 400);
+      }
+      let sheets = parsed.sheets;
+      if (dates.length > 0) {
+        const wanted = new Set(dates);
+        const cocok = parsed.sheets.filter((s) => {
+          const d = parseSheetLabel(s.name).date;
+          return d !== null && wanted.has(d);
+        });
+        if (cocok.length > 0) sheets = cocok;
+        else {
+          const terbaru = pickNewestSheet(parsed.sheets);
+          sheets = terbaru ? [terbaru] : parsed.sheets.slice(0, 1);
+        }
+      } else {
+        const terbaru = pickNewestSheet(parsed.sheets);
+        sheets = terbaru ? [terbaru] : parsed.sheets.slice(0, 1);
+      }
+      return json({
+        ok: true,
+        sheets: sheets.map((sh) => {
+          const rows = applySheetDate(sh.rows, sh.name);
+          return {
+            name: sh.name,
+            date: parseSheetLabel(sh.name).date,
+            rowCount: rows.length,
+            rows,
+          };
+        }),
+      });
     }
 
     if (!cfg) {

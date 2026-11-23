@@ -8,6 +8,11 @@ import { generateSkus } from "../lib/sku";
 import { cn } from "../lib/utils";
 import { formatDate } from "../lib/format";
 import { SheetSyncPanel } from "../features/sync/SheetSyncPanel";
+import {
+  compareUploadWithSheet,
+  sheetDiffCount,
+  type SheetDiff,
+} from "../lib/compareSheet";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -227,6 +232,14 @@ export function RequestUploadPage() {
   /** Peringatan stok minus untuk pratinjau saat ini (null = belum dicek / tidak berlaku). */
   const [minusWarnings, setMinusWarnings] = useState<MinusWarning[] | null>(null);
   const [minusLoading, setMinusLoading] = useState(false);
+  /**
+   * Perbandingan file dengan Google Sheet (dokumen pengiriman) — pengingat
+   * saja, BUKAN penghalang: upload tetap bisa lanjut walau ada beda.
+   * null = belum dicek / tidak ada pratinjau.
+   */
+  const [sheetDiff, setSheetDiff] = useState<SheetDiff | null>(null);
+  const [sheetDiffLoading, setSheetDiffLoading] = useState(false);
+  const [sheetDiffError, setSheetDiffError] = useState<string | null>(null);
   const [sheetOptions, setSheetOptions] = useState<{ name: string; count: number }[]>([]);
   const sheetCache = useRef<Map<string, SheetCandidate>>(new Map());
 
@@ -344,6 +357,63 @@ export function RequestUploadPage() {
       cancelled = true;
     };
   }, [preview, deductStock]);
+
+  // Cek dengan Google Sheet (dokumen pengiriman): bandingkan baris file dengan
+  // baris Sheet untuk tanggal yang sama. PENGINGAT SAJA — hasilnya tidak
+  // memblokir upload; bila Sheet tidak bisa dibaca, upload tetap jalan.
+  useEffect(() => {
+    let cancelled = false;
+    if (!preview) {
+      setSheetDiff(null);
+      setSheetDiffError(null);
+      setSheetDiffLoading(false);
+      return;
+    }
+    const dates = [...new Set(preview.rows.map((r) => r.date))].sort();
+    if (dates.length === 0) {
+      setSheetDiff(null);
+      setSheetDiffError(null);
+      setSheetDiffLoading(false);
+      return;
+    }
+    setSheetDiffLoading(true);
+    setSheetDiffError(null);
+    setSheetDiff(null);
+    void (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("sync-sheets", {
+          body: { action: "rows", dates },
+        });
+        if (cancelled) return;
+        if (error) throw new Error(error.message);
+        // Fungsi lama (belum di-deploy ulang) tidak mengenal "rows" dan akan
+        // menjawab hasil sinkronisasi — jangan tampilkan itu sebagai perbandingan.
+        const sheets = (data as { sheets?: { rows?: ParsedShippingRow[] }[] } | null)?.sheets;
+        if (!Array.isArray(sheets)) {
+          throw new Error("Fungsi sinkronisasi di server belum diperbarui — perbandingan tidak tersedia.");
+        }
+        const sheetRows: ParsedShippingRow[] = [];
+        for (const sh of sheets) {
+          for (const r of sh.rows ?? []) {
+            // Hanya baris yang tanggalnya sama dengan tanggal di file.
+            if (dates.includes(r.date)) sheetRows.push(r);
+          }
+        }
+        if (sheetRows.length === 0) {
+          throw new Error("Google Sheet tidak punya baris untuk tanggal di file ini.");
+        }
+        if (!cancelled) setSheetDiff(compareUploadWithSheet(preview.rows, sheetRows));
+      } catch (e) {
+        if (cancelled) return;
+        setSheetDiffError(e instanceof Error ? e.message : "Gagal membandingkan dengan Google Sheet.");
+      } finally {
+        if (!cancelled) setSheetDiffLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [preview]);
 
   const downloadTemplate = async () => {
     try {
@@ -1141,6 +1211,154 @@ export function RequestUploadPage() {
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {sheetDiffLoading && (
+                  <div className="flex gap-2 rounded-md bg-white/5 p-3 text-xs text-ink-300">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <div>Mengecek Google Sheet (dokumen pengiriman)…</div>
+                  </div>
+                )}
+                {sheetDiffError && (
+                  <div className="rounded-md border border-warn-500/25 bg-warn-500/15 p-3">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-warn-100">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Tidak bisa membandingkan dengan Google Sheet
+                    </p>
+                    <p className="mt-1 text-xs text-warn-100">
+                      {sheetDiffError} Upload tetap bisa dilanjutkan — pengecekan ini hanya pengingat.
+                    </p>
+                  </div>
+                )}
+                {sheetDiff && sheetDiffCount(sheetDiff) === 0 && (
+                  <div className="rounded-md border border-ok-500/25 bg-ok-500/15 p-3">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-ok-100">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      Cocok — file sama dengan Google Sheet
+                    </p>
+                    <p className="mt-1 text-xs text-ok-100">
+                      {sheetDiff.matchedLines} baris ({sheetDiff.totalQtyFile} qty) di file cocok dengan
+                      dokumen pengiriman untuk tanggal ini.
+                    </p>
+                  </div>
+                )}
+                {sheetDiff && sheetDiffCount(sheetDiff) > 0 && (
+                  <div className="rounded-md border border-warn-500/25 bg-warn-500/15 p-3">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-warn-100">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Ada beda dengan Google Sheet (dokumen pengiriman) — {sheetDiffCount(sheetDiff)} selisih
+                    </p>
+                    <p className="mt-1 text-xs text-warn-100">
+                      Ini hanya pengingat untuk di-cek — kamu tetap bisa upload walau ada beda.
+                    </p>
+                    <div className="mt-2 space-y-2 text-xs text-warn-100">
+                      {sheetDiff.fileOnly.length > 0 && (
+                        <div>
+                          <p className="font-semibold text-white">
+                            Ada di file, tidak ada di Sheet ({sheetDiff.fileOnly.length})
+                          </p>
+                          <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+                            {sheetDiff.fileOnly.slice(0, 5).map((l, i) => (
+                              <li key={`fo-${l.ticket}-${l.itemName}-${i}`} className="flex flex-wrap gap-x-2">
+                                <span className="font-mono">{l.ticket}</span>
+                                <span className="font-medium text-white">{l.itemName}</span>
+                                <span>({asetLabelOf(l.kondisi)})</span>
+                                <span className="tnum">{l.qty} qty</span>
+                              </li>
+                            ))}
+                          </ul>
+                          {sheetDiff.fileOnly.length > 5 && (
+                            <p className="mt-1">…dan {sheetDiff.fileOnly.length - 5} lagi.</p>
+                          )}
+                        </div>
+                      )}
+                      {sheetDiff.sheetOnly.length > 0 && (
+                        <div>
+                          <p className="font-semibold text-white">
+                            Ada di Sheet, tidak ada di file ({sheetDiff.sheetOnly.length})
+                          </p>
+                          <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+                            {sheetDiff.sheetOnly.slice(0, 5).map((l, i) => (
+                              <li key={`so-${l.ticket}-${l.itemName}-${i}`} className="flex flex-wrap gap-x-2">
+                                <span className="font-mono">{l.ticket}</span>
+                                <span className="font-medium text-white">{l.itemName}</span>
+                                <span>({asetLabelOf(l.kondisi)})</span>
+                                <span className="tnum">{l.qty} qty</span>
+                              </li>
+                            ))}
+                          </ul>
+                          {sheetDiff.sheetOnly.length > 5 && (
+                            <p className="mt-1">…dan {sheetDiff.sheetOnly.length - 5} lagi.</p>
+                          )}
+                        </div>
+                      )}
+                      {sheetDiff.qtyMismatch.length > 0 && (
+                        <div>
+                          <p className="font-semibold text-white">
+                            Qty beda ({sheetDiff.qtyMismatch.length})
+                          </p>
+                          <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+                            {sheetDiff.qtyMismatch.slice(0, 5).map((l, i) => (
+                              <li key={`qm-${l.ticket}-${l.itemName}-${i}`} className="flex flex-wrap gap-x-2">
+                                <span className="font-mono">{l.ticket}</span>
+                                <span className="font-medium text-white">{l.itemName}</span>
+                                <span>({asetLabelOf(l.kondisi)})</span>
+                                <span className="tnum">file {l.qtyFile} · Sheet {l.qtySheet}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          {sheetDiff.qtyMismatch.length > 5 && (
+                            <p className="mt-1">…dan {sheetDiff.qtyMismatch.length - 5} lagi.</p>
+                          )}
+                        </div>
+                      )}
+                      {sheetDiff.barcodeMismatch.length > 0 && (
+                        <div>
+                          <p className="font-semibold text-white">
+                            Barcode beda ({sheetDiff.barcodeMismatch.length})
+                          </p>
+                          <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+                            {sheetDiff.barcodeMismatch.slice(0, 5).map((l, i) => (
+                              <li key={`bm-${l.ticket}-${l.itemName}-${i}`} className="flex flex-wrap gap-x-2">
+                                <span className="font-mono">{l.ticket}</span>
+                                <span className="font-medium text-white">{l.itemName}</span>
+                                <span>({asetLabelOf(l.kondisi)})</span>
+                                {l.onlyFile.length > 0 && (
+                                  <span className="tnum">hanya di file: {l.onlyFile.slice(0, 3).join(", ")}{l.onlyFile.length > 3 ? ` +${l.onlyFile.length - 3}` : ""}</span>
+                                )}
+                                {l.onlySheet.length > 0 && (
+                                  <span className="tnum">hanya di Sheet: {l.onlySheet.slice(0, 3).join(", ")}{l.onlySheet.length > 3 ? ` +${l.onlySheet.length - 3}` : ""}</span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                          {sheetDiff.barcodeMismatch.length > 5 && (
+                            <p className="mt-1">…dan {sheetDiff.barcodeMismatch.length - 5} lagi.</p>
+                          )}
+                        </div>
+                      )}
+                      {sheetDiff.statusMismatch.length > 0 && (
+                        <div>
+                          <p className="font-semibold text-white">
+                            Status PENDING vs TERKIRIM beda ({sheetDiff.statusMismatch.length})
+                          </p>
+                          <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+                            {sheetDiff.statusMismatch.slice(0, 5).map((l, i) => (
+                              <li key={`sm-${l.ticket}-${l.itemName}-${i}`} className="flex flex-wrap gap-x-2">
+                                <span className="font-mono">{l.ticket}</span>
+                                <span className="font-medium text-white">{l.itemName}</span>
+                                <span>({asetLabelOf(l.kondisi)})</span>
+                                <span className="tnum">PENDING — file {l.pendingFile} · Sheet {l.pendingSheet}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          {sheetDiff.statusMismatch.length > 5 && (
+                            <p className="mt-1">…dan {sheetDiff.statusMismatch.length - 5} lagi.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 

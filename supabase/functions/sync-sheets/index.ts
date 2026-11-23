@@ -14,6 +14,9 @@
 //   { action: "test"    }              -> cek file & sebutkan sheet terbaru
 //   { action: "preview" }              -> ringkasan yang AKAN diimpor (tanpa tulis)
 //   { action: "run"     }              -> import + potong stok + catat log
+//   { action: "rows", dates: [...] }   -> baris-baris Google Sheet (baca saja,
+//                                          tanpa tulis) untuk dibandingkan dengan
+//                                          file upload di halaman Upload Dokumen
 // Parameter opsional: source_id, spreadsheet_id, sheet_mode, sheet_name,
 //                     deduct_stock, allow_negative, auto_create_items
 // =============================================================================
@@ -437,6 +440,87 @@ Deno.serve(async (req: Request) => {
         allow_negative: body.allow_negative !== false,
         auto_create_items: body.auto_create_items === true,
       };
+    }
+
+    // Aksi "rows" (baca saja): kembalikan baris-baris Google Sheet untuk
+    // tanggal tertentu, dipakai halaman Upload Dokumen untuk membandingkan
+    // file upload dengan dokumen pengiriman (Google Sheet).
+    // - TIDAK menulis apa pun ke database (bukan sinkronisasi, bukan impor).
+    // - TIDAK butuh settings.manage — cukup pengguna yang sudah login,
+    //   karena datanya adalah sheet publik yang sama dengan yang disinkron.
+    // - Parameter: { action: "rows", dates?: ["2026-11-18", ...] }.
+    //   Bila dates kosong: pakai sheet terbaru. Bila tidak ada sheet yang
+    //   tanggal labelnya cocok dengan dates: pakai sheet terbaru juga.
+    if (action === "rows") {
+      if (!cfg) {
+        const { data: src } = await db
+          .from("sheet_sync_sources")
+          .select("*")
+          .eq("is_active", true)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (!src) {
+          return json(
+            { error: "Belum ada sumber sinkronisasi Google Sheet — atur dulu di panel Sinkronisasi." },
+            400,
+          );
+        }
+        cfg = {
+          id: src.id,
+          name: src.name,
+          spreadsheet_id: src.spreadsheet_id,
+          sheet_mode: src.sheet_mode,
+          sheet_name: src.sheet_name,
+          deduct_stock: src.deduct_stock,
+          allow_negative: src.allow_negative,
+          auto_create_items: src.auto_create_items,
+        };
+      }
+      if (!isService) {
+        const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+          global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+          auth: { persistSession: false },
+        });
+        const { data: userData } = await userClient.auth.getUser();
+        if (!userData?.user?.id) return json({ error: "Harus login dulu." }, 401);
+      }
+      const dates = Array.isArray(body.dates)
+        ? (body.dates as unknown[]).filter((d): d is string => typeof d === "string")
+        : [];
+      const wb = await downloadWorkbook(cfg.spreadsheet_id);
+      const parsed = parseWorkbook(wb);
+      if (parsed.sheets.length === 0) {
+        return json({ error: "Tidak ada sheet berisi tabel pengiriman di Google Sheet itu." }, 400);
+      }
+      let sheets = parsed.sheets;
+      if (dates.length > 0) {
+        const wanted = new Set(dates);
+        const cocok = parsed.sheets.filter((s) => {
+          const d = parseSheetLabel(s.name).date;
+          return d !== null && wanted.has(d);
+        });
+        if (cocok.length > 0) sheets = cocok;
+        else {
+          const terbaru = pickNewestSheet(parsed.sheets);
+          sheets = terbaru ? [terbaru] : parsed.sheets.slice(0, 1);
+        }
+      } else {
+        const terbaru = pickNewestSheet(parsed.sheets);
+        sheets = terbaru ? [terbaru] : parsed.sheets.slice(0, 1);
+      }
+      return json({
+        ok: true,
+        sheets: sheets.map((sh) => {
+          const rows = applySheetDate(sh.rows, sh.name);
+          return {
+            name: sh.name,
+            date: parseSheetLabel(sh.name).date,
+            rowCount: rows.length,
+            rows,
+          };
+        }),
+      });
     }
 
     if (!cfg) {
