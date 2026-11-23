@@ -274,6 +274,34 @@ export function TransactionForm({
     if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
+  // Tempel (paste) gambar dari clipboard — mis. hasil screenshot/snip dari WA
+  // yang sudah di-copy. Hanya bereaksi kalau clipboard berisi GAMBAR; paste
+  // teks (ke kolom Gerai, Catatan, dsb.) tidak diganggu sama sekali.
+  useEffect(() => {
+    if (!usesJenisStok) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (!item.type.startsWith("image/")) continue;
+        const file = item.getAsFile();
+        if (!file) return;
+        e.preventDefault();
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error("Ukuran foto maksimal 5MB.");
+          return;
+        }
+        if (photoPreview) URL.revokeObjectURL(photoPreview);
+        setPhotoFile(file);
+        setPhotoPreview(URL.createObjectURL(file));
+        toast.success("Foto dari clipboard ditempel.");
+        return;
+      }
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [usesJenisStok, photoPreview]);
+
   const validate = (): string | null => {
     if (rows.length === 0 || !rows.some((r) => r.item && Number(r.qty) > 0)) {
       return "Minimal satu barang dengan qty lebih dari 0.";
@@ -327,7 +355,18 @@ export function TransactionForm({
         if (photoFile.size > 5 * 1024 * 1024) throw new Error("Ukuran foto maksimal 5MB.");
         setPhotoUploading(true);
         try {
-          const ext = photoFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+          // Ekstensi dari tipe MIME (gambar hasil paste dari clipboard sering
+          // bernama generik "image.png" — nama file tidak bisa diandalkan).
+          const extByMime: Record<string, string> = {
+            "image/jpeg": "jpg",
+            "image/png": "png",
+            "image/webp": "webp",
+            "image/gif": "gif",
+          };
+          const ext =
+            extByMime[photoFile.type] ??
+            photoFile.name.split(".").pop()?.toLowerCase() ??
+            "jpg";
           const path = `${idempotencyKey}.${ext}`;
           const { error: upErr } = await supabase.storage
             .from("surat-jalan")
@@ -503,6 +542,9 @@ export function TransactionForm({
                     {isMasuk
                       ? "Wajib: foto surat jalan, atau foto nomor PO. Tanpa foto, transaksi tidak bisa diposting."
                       : "Wajib: foto surat jalan. Tanpa foto, transaksi tidak bisa diposting."}
+                  </p>
+                  <p className="text-xs text-ink-300">
+                    Atau tempel dari clipboard: salin gambar (dari WA / screenshot), lalu tekan Ctrl+V di halaman ini.
                   </p>
                 </>
               )}
