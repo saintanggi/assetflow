@@ -9,6 +9,7 @@ import { badgeDarkClass } from "../lib/statusColors";
 import { formatDate, formatDateTime, formatQty } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
+import { ProofImage } from "../components/ProofImage";
 import { DataTable } from "../components/DataTable";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -481,6 +482,13 @@ export function TransactionHistoryPage() {
         row.original.created_by ? row.original.created_by.slice(0, 8) : "—",
     },
     {
+      header: "Bukti",
+      id: "bukti",
+      cell: ({ row }) => (
+        <ProofImage url={row.original.surat_jalan_url || null} label={row.original.doc_number} />
+      ),
+    },
+    {
       header: "Aksi",
       id: "aksi",
       cell: ({ row }) => (
@@ -623,6 +631,10 @@ export function TransactionHistoryPage() {
                 </div>
               )}
             </dl>
+            <div className="mt-4">
+              <h3 className="mb-2 text-sm font-semibold">Foto Surat Jalan</h3>
+              <ProofImage url={selected.surat_jalan_url || null} label={selected.doc_number} variant="large" />
+            </div>
             <div className="mt-4">
               <h3 className="mb-2 text-sm font-semibold">Rincian Barang</h3>
               {detailLoading ? (

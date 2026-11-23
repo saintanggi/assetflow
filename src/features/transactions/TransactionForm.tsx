@@ -101,6 +101,11 @@ export function TransactionForm({
   const [jenisStok, setJenisStok] = useState("");
   const [gerai, setGerai] = useState("");
   const [geraiOptions, setGeraiOptions] = useState<string[]>([]);
+  // Foto surat jalan (wajib untuk Barang Masuk & Keluar).
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ItemRow[]>([newRow()]);
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -242,7 +247,31 @@ export function TransactionForm({
     setNotes("");
     setJenisStok("");
     setGerai("");
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    if (photoInputRef.current) photoInputRef.current.value = "";
     setRows([newRow()]);
+  };
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran foto maksimal 5MB.");
+      e.target.value = "";
+      return;
+    }
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const removePhoto = () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
   const validate = (): string | null => {
@@ -266,6 +295,13 @@ export function TransactionForm({
     } else if (needDest && !destId) {
       return "Lokasi tujuan wajib dipilih.";
     }
+    // Foto surat jalan wajib untuk Barang Masuk & Keluar — tanpa foto,
+    // transaksi tidak bisa diposting (aturan 23 Nov 2026).
+    if (usesJenisStok && !photoFile) {
+      return isMasuk
+        ? "Foto Surat Jalan atau No PO wajib dilampirkan untuk Barang Masuk."
+        : "Foto Surat Jalan wajib dilampirkan untuk Barang Keluar.";
+    }
     if (needSource && needDest && sourceId === destId)
       return "Lokasi asal dan tujuan tidak boleh sama.";
     if (!date) return "Tanggal transaksi wajib diisi.";
@@ -281,6 +317,28 @@ export function TransactionForm({
     }
     setSubmitting(true);
     try {
+      // Foto surat jalan diupload DULU (wajib untuk Masuk/Keluar); kalau
+      // upload gagal, transaksi tidak jadi diposting. Path memakai kunci
+      // idempotensi supaya satu percobaan = satu file (file yatim kalau
+      // RPC gagal tidak masalah — tidak tercatat di transaksi mana pun).
+      const idempotencyKey = crypto.randomUUID();
+      let photoUrl: string | null = null;
+      if (usesJenisStok && photoFile) {
+        if (photoFile.size > 5 * 1024 * 1024) throw new Error("Ukuran foto maksimal 5MB.");
+        setPhotoUploading(true);
+        try {
+          const ext = photoFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+          const path = `${idempotencyKey}.${ext}`;
+          const { error: upErr } = await supabase.storage
+            .from("surat-jalan")
+            .upload(path, photoFile, { contentType: photoFile.type });
+          if (upErr) throw new Error(`Gagal upload foto surat jalan: ${upErr.message}`);
+          const { data } = supabase.storage.from("surat-jalan").getPublicUrl(path);
+          photoUrl = data.publicUrl;
+        } finally {
+          setPhotoUploading(false);
+        }
+      }
       const items: TransactionItemInput[] = rows
         .filter((r) => r.item && Number(r.qty) > 0)
         .map((r) => ({
@@ -294,7 +352,7 @@ export function TransactionForm({
             : {}),
         }));
       const { data, error } = await supabase.rpc("post_inventory_transaction", {
-        p_idempotency_key: crypto.randomUUID(),
+        p_idempotency_key: idempotencyKey,
         p_type: type,
         p_transaction_date: date,
         p_source_location_id: needSource ? effectiveSourceId || null : null,
@@ -302,6 +360,7 @@ export function TransactionForm({
         p_reference: reference.trim() || null,
         p_notes: notes.trim() || null,
         p_items: items,
+        p_surat_jalan_url: photoUrl,
       });
       if (error) {
         toast.error(error.message);
@@ -401,6 +460,55 @@ export function TransactionForm({
                   <option key={g} value={g} />
                 ))}
               </datalist>
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="trx-sj-photo" className="text-ink-100">
+                {isMasuk ? "Foto Surat Jalan / No PO (wajib)" : "Foto Surat Jalan (wajib)"}
+              </Label>
+              {photoPreview ? (
+                <div className="flex items-start gap-3">
+                  <img
+                    src={photoPreview}
+                    alt="Foto surat jalan"
+                    className="h-24 rounded-lg border border-white/15 object-cover"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={removePhoto}
+                    disabled={submitting}
+                    className={DARK_OUTLINE_BTN}
+                  >
+                    Hapus foto
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <label
+                    htmlFor="trx-sj-photo"
+                    className={`${DARK_OUTLINE_BTN} inline-flex cursor-pointer items-center rounded-lg border px-3 py-2 text-sm`}
+                  >
+                    Pilih foto…
+                  </label>
+                  <input
+                    id="trx-sj-photo"
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handlePhotoSelect}
+                  />
+                  <p className="text-xs text-ink-300">
+                    {isMasuk
+                      ? "Wajib: foto surat jalan, atau foto nomor PO. Tanpa foto, transaksi tidak bisa diposting."
+                      : "Wajib: foto surat jalan. Tanpa foto, transaksi tidak bisa diposting."}
+                  </p>
+                </>
+              )}
+              {photoUploading && (
+                <p className="text-xs text-ink-300">Mengupload foto surat jalan…</p>
+              )}
             </div>
           </>
         )}

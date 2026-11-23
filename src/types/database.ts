@@ -185,6 +185,8 @@ export interface InventoryTransaction {
   dest_location_id: string | null;
   reference: string | null;
   notes: string | null;
+  /** URL publik foto bukti surat jalan (bucket Storage "surat-jalan"). */
+  surat_jalan_url: string | null;
   idempotency_key: string;
   created_by: string | null;
   posted_at: string | null;

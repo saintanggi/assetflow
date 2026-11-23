@@ -11,6 +11,7 @@ import { useAuth } from "../context/AuthContext";
 import { formatDate, formatQty } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
 import { PageHeader } from "../components/PageHeader";
+import { ProofImage } from "../components/ProofImage";
 import { DataTable } from "../components/DataTable";
 import { Badge } from "../components/ui/badge";
 import { CardContent } from "../components/ui/card";
@@ -44,6 +45,7 @@ interface LogRow {
   itemName: string;
   resi: string;
   gerai: string;
+  suratJalanUrl: string;
   location: string;
   locationCode: string;
   jenisStokLabel: string;
@@ -125,7 +127,7 @@ export function TransactionLogPage() {
         .from("inventory_ledger")
         .select(
           "id, item_id, qty_change, qty_after, created_at, transaction_id, " +
-            "inventory_transactions!inner(doc_number, transaction_date, type, reference, notes, created_by), " +
+            "inventory_transactions!inner(doc_number, transaction_date, type, reference, notes, created_by, surat_jalan_url), " +
             "inventory_items!inner(sku, name), " +
             "locations!inner(code, name, warehouses(name))"
         )
@@ -140,7 +142,7 @@ export function TransactionLogPage() {
         qty_after: number | string;
         created_at: string;
         transaction_id: string;
-        inventory_transactions: { doc_number: string; transaction_date: string; type: string; reference: string | null; notes: string | null; created_by: string | null } | { doc_number: string; transaction_date: string; type: string; reference: string | null; notes: string | null; created_by: string | null }[];
+        inventory_transactions: { doc_number: string; transaction_date: string; type: string; reference: string | null; notes: string | null; created_by: string | null; surat_jalan_url: string | null } | { doc_number: string; transaction_date: string; type: string; reference: string | null; notes: string | null; created_by: string | null; surat_jalan_url: string | null }[];
         inventory_items: { sku: string; name: string } | { sku: string; name: string }[];
         locations: { code: string; name: string; warehouses: { name: string }[] | null } | { code: string; name: string; warehouses: { name: string }[] | null }[];
       }[];
@@ -224,6 +226,7 @@ export function TransactionLogPage() {
           itemName: it?.name ?? "",
           resi: det.resi,
           gerai: det.gerai,
+          suratJalanUrl: tx?.surat_jalan_url ?? "",
           location: loc ? `${loc.warehouses?.[0]?.name ?? ""} — ${loc.name}`.replace(/^ — /, "") : "",
           locationCode,
           jenisStokLabel: jenisInfo?.label ?? "",
@@ -337,6 +340,13 @@ export function TransactionLogPage() {
       ),
     },
     {
+      header: "Bukti",
+      id: "bukti",
+      cell: ({ row }) => (
+        <ProofImage url={row.original.suratJalanUrl || null} label={row.original.docNumber} />
+      ),
+    },
+    {
       header: "Keterangan",
       accessorKey: "notes",
       cell: ({ row }) => (
@@ -424,6 +434,7 @@ export function TransactionLogPage() {
         OUT: r.qtyChange < 0 ? Math.abs(r.qtyChange) : "",
         "Jenis Stok": r.jenisStokLabel,
         Gerai: r.gerai,
+        "Foto Surat Jalan": r.suratJalanUrl,
         Lokasi: r.location,
         Keterangan: r.notes,
         User: r.userName,
@@ -578,6 +589,10 @@ export function TransactionLogPage() {
                 <dd className="font-medium break-words">{detailRow.notes || detailRow.docNumber || "—"}</dd>
               </div>
             </dl>
+            <div className="mt-4">
+              <h3 className="mb-2 text-sm font-semibold">Foto Surat Jalan</h3>
+              <ProofImage url={detailRow.suratJalanUrl || null} label={detailRow.docNumber} variant="large" />
+            </div>
             <div className="mt-4">
               <h3 className="mb-2 text-sm font-semibold">Rincian Barang</h3>
               <Table>
