@@ -45,6 +45,13 @@ import {
   type StoredItemRow,
 } from "../lib/shippingUpload";
 
+// ID Google Sheet "Dokumen Pengiriman" (sumber 'Dokumen Pengiriman' di tabel
+// sheet_sync_sources). Dikirim eksplisit ke aksi "rows" supaya pengecekan
+// banding tetap jalan walau sumber sinkronisasi itu sedang nonaktif — aksi
+// "rows" hanya MEMBACA sheet, tidak mengimpor dan tidak memotong stok.
+// Kalau Google Sheet diganti, update ID ini.
+const SHEET_DOKUMEN_PENGIRIMAN = "1-Z3bvCFo49zao5-M8lnVp4lxPdTbuzPhN9NcqL5TWCE";
+
 // Ubah pesan error teknis (berisi UUID) menjadi bahasa yang mudah dipahami.
 /** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
 function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -382,7 +389,7 @@ export function RequestUploadPage() {
     void (async () => {
       try {
         const { data, error } = await supabase.functions.invoke("sync-sheets", {
-          body: { action: "rows", dates },
+          body: { action: "rows", dates, spreadsheet_id: SHEET_DOKUMEN_PENGIRIMAN },
         });
         if (cancelled) return;
         if (error) throw new Error(error.message);
