@@ -255,12 +255,12 @@ export function InventoryListPage() {
 
   const openAdjust = (row: ItemRow) => {
     setAdjustItem(row);
-    // Prefill dengan SALDO LIVE (bukan Stok Awal): tombol ini menyimpan lewat
-    // set_opening_stock yang mengatur saldo live DAN Stok Awal sekaligus. Prefill
-    // dengan Stok Awal lama pernah menjatuhkan saldo live tanpa jejak (kasus CPU
-    // Rakitan 11 Nov: 17 -> 7). Simpan tanpa ubah angka = tidak ada perubahan.
-    setAdjustBaru(String(row.stock_baru ?? 0));
-    setAdjustRetur(String(row.stock_retur ?? 0));
+    // Prefill dengan STOK AWAL (bukan saldo live): angka yang dimasukkan di
+    // dialog ini adalah Stok Awal baru; Stok Akhir dihitung otomatis oleh
+    // set_opening_stock (Stok Akhir lama + selisih Stok Awal), mengikuti
+    // IN/OUT dari Log. Simpan tanpa ubah angka = tidak ada perubahan.
+    setAdjustBaru(String(row.opening_baru ?? 0));
+    setAdjustRetur(String(row.opening_retur ?? 0));
     setAdjustOpen(true);
   };
 
@@ -303,6 +303,17 @@ export function InventoryListPage() {
       setAdjustSaving(false);
     }
   };
+
+  // Pratinjau Stok Akhir hasil hitungan (Stok Akhir lama + selisih Stok Awal)
+  // untuk dialog Atur Stok — tampil di bawah tiap input.
+  const previewAdjustBaru =
+    adjustBaru.trim() !== "" && !isNaN(Number(adjustBaru))
+      ? (adjustItem?.stock_baru ?? 0) + (Number(adjustBaru) - (adjustItem?.opening_baru ?? 0))
+      : null;
+  const previewAdjustRetur =
+    adjustRetur.trim() !== "" && !isNaN(Number(adjustRetur))
+      ? (adjustItem?.stock_retur ?? 0) + (Number(adjustRetur) - (adjustItem?.opening_retur ?? 0))
+      : null;
 
   // --- Hapus master barang (khusus super admin, via RPC delete_inventory_item) ---
   const [deleteItem, setDeleteItem] = useState<ItemRow | null>(null);
@@ -735,16 +746,16 @@ export function InventoryListPage() {
         <DialogHeader>
           <DialogTitle>Atur Stok — {adjustItem?.name}</DialogTitle>
           <DialogDescription>
-            Isi atau ubah stok manual. Perhatian: menyimpan akan mengatur{" "}
-            <b>saldo live DAN Stok Awal</b> menjadi angka di bawah ini — tercatat
-            sebagai transaksi penyesuaian (ADJ) di Log Transaksi. Pakai hanya
-            untuk koreksi awal/stock opname.
+            Isi atau ubah Stok Awal. Stok Akhir dihitung otomatis: Stok Akhir
+            lama + selisih Stok Awal (mengikuti IN/OUT dari Log — ledger tidak
+            berubah, tidak ada transaksi penyesuaian baru). Perubahan tercatat
+            di Audit Log. Pakai hanya untuk koreksi awal/stock opname.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-1 py-2">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="adjust-baru">Stok Baru</Label>
+              <Label htmlFor="adjust-baru">Stok Awal Baru</Label>
               <Input
                 id="adjust-baru"
                 type="number"
@@ -752,10 +763,18 @@ export function InventoryListPage() {
                 value={adjustBaru}
                 onChange={(e) => setAdjustBaru(e.target.value)}
               />
-              <p className="text-xs text-ink-500">Saat ini: {formatQty(adjustItem?.stock_baru ?? 0)}</p>
+              <p className="text-xs text-ink-500">
+                Stok Akhir saat ini: {formatQty(adjustItem?.stock_baru ?? 0)} (Stok Awal{" "}
+                {formatQty(adjustItem?.opening_baru ?? 0)})
+              </p>
+              {previewAdjustBaru !== null && (
+                <p className="text-xs text-ink-500">
+                  Stok Akhir akan jadi: <b>{formatQty(previewAdjustBaru)}</b>
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="adjust-retur">Stok Retur</Label>
+              <Label htmlFor="adjust-retur">Stok Awal Retur</Label>
               <Input
                 id="adjust-retur"
                 type="number"
@@ -763,7 +782,15 @@ export function InventoryListPage() {
                 value={adjustRetur}
                 onChange={(e) => setAdjustRetur(e.target.value)}
               />
-              <p className="text-xs text-ink-500">Saat ini: {formatQty(adjustItem?.stock_retur ?? 0)}</p>
+              <p className="text-xs text-ink-500">
+                Stok Akhir saat ini: {formatQty(adjustItem?.stock_retur ?? 0)} (Stok Awal{" "}
+                {formatQty(adjustItem?.opening_retur ?? 0)})
+              </p>
+              {previewAdjustRetur !== null && (
+                <p className="text-xs text-ink-500">
+                  Stok Akhir akan jadi: <b>{formatQty(previewAdjustRetur)}</b>
+                </p>
+              )}
             </div>
           </div>
         </div>

@@ -238,14 +238,20 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   const openEdit = (row: StokRow) => {
     setEditRow(row);
     setEditName(row.itemName);
-    // Prefill dengan SALDO LIVE (bukan Stok Awal mundur): tombol ini menyimpan lewat
-    // set_opening_stock yang mengatur saldo live DAN Stok Awal sekaligus. Prefill
-    // dengan Stok Awal lama pernah menjatuhkan saldo live tanpa jejak (kasus CPU
-    // Rakitan 11 Nov: 17 -> 7). Simpan tanpa ubah angka = tidak ada perubahan.
-    setEditQty(String(row.stokAkhir));
+    // Prefill dengan STOK AWAL: angka yang dimasukkan di dialog ini adalah
+    // Stok Awal baru; Stok Akhir dihitung otomatis oleh set_opening_stock
+    // (Stok Akhir lama + selisih Stok Awal), mengikuti IN/OUT dari Log.
+    // Simpan tanpa ubah angka = tidak ada perubahan.
+    setEditQty(String(row.stokAwal));
     setEditBuffer(String(row.buffer));
     setEditOpen(true);
   };
+
+  // Pratinjau Stok Akhir hasil hitungan untuk dialog Ubah.
+  const previewEditAkhir =
+    editQty.trim() !== "" && !isNaN(Number(editQty)) && editRow
+      ? editRow.stokAkhir + (Number(editQty) - editRow.stokAwal)
+      : null;
 
   const saveEdit = async () => {
     if (!editRow || !locationId) return;
@@ -641,10 +647,13 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
             Ubah nama barang dan stok awal ({cfg.badge}). Khusus superadmin.
             <br />
             <br />
-            Perhatian: menyimpan akan mengatur <b>saldo live DAN Stok Awal</b> menjadi
-            angka di bawah ini — tercatat sebagai transaksi penyesuaian (ADJ) di Log
-            Transaksi. Saldo live saat ini: <b>{formatQty(editRow?.stokAkhir ?? 0)}</b>{" "}
-            • Stok Awal saat ini: <b>{formatQty(editRow?.stokAwal ?? 0)}</b>.
+            Stok Akhir dihitung otomatis: Stok Akhir lama + selisih Stok Awal
+            (mengikuti IN/OUT dari Log — ledger tidak berubah). Perubahan
+            tercatat di Audit Log. Stok Akhir saat ini:{" "}
+            <b>{formatQty(editRow?.stokAkhir ?? 0)}</b> • Stok Awal saat ini:{" "}
+            <b>{formatQty(editRow?.stokAwal ?? 0)}</b> • IN{" "}
+            <b>+{formatQty(editRow?.totalIn ?? 0)}</b> • OUT{" "}
+            <b>−{formatQty(editRow?.totalOut ?? 0)}</b>.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-1 py-2">
@@ -660,6 +669,11 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
               value={editQty}
               onChange={(e) => setEditQty(e.target.value)}
             />
+            {previewEditAkhir !== null && (
+              <p className="text-xs text-ink-500">
+                Stok Akhir akan jadi: <b>{formatQty(previewEditAkhir)}</b>
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Buffer Minimum</Label>
