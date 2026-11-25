@@ -20,6 +20,10 @@ interface AlertRow {
   sku: string;
   name: string;
   brand: string | null;
+  /** Stok siap pakai (lokasi *-BARU) — dasar peringatan, karena hanya ini
+   *  yang bisa dikirim untuk permintaan ASSET BARU. */
+  readyStock: number;
+  /** Seluruh kondisi (Baru + Retur + Unready) untuk konteks. */
   totalStock: number;
   minStock: number;
   level: AlertLevel;
@@ -62,7 +66,14 @@ const alertColumns: ColumnDef<AlertRow, unknown>[] = [
   },
   { header: "Lokasi", accessorKey: "locations" },
   {
-    header: "Total Stok",
+    header: "Stok Siap (Baru)",
+    accessorKey: "readyStock",
+    cell: ({ row }) => (
+      <span className="tnum text-right font-semibold">{fmt(row.original.readyStock)}</span>
+    ),
+  },
+  {
+    header: "Total Semua",
     accessorKey: "totalStock",
     cell: ({ row }) => <span className="tnum text-right">{fmt(row.original.totalStock)}</span>,
   },
@@ -102,7 +113,7 @@ export function StockAlertsPage() {
             .order("name")
             .limit(2000),
           supabase.from("inventory_balances").select("item_id, location_id, qty"),
-          supabase.from("locations").select("id, name, warehouses(name)"),
+          supabase.from("locations").select("id, code, name, warehouses(name)"),
         ]);
         if (cancelled) return;
         if (itemsRes.error) throw new Error(itemsRes.error.message);
@@ -122,23 +133,35 @@ export function StockAlertsPage() {
           qty: number | string;
         }[];
         const locName = new Map<string, string>();
+        const locCode = new Map<string, string>();
         for (const l of (locRes.data ?? []) as {
           id: string;
+          code: string;
           name: string;
           warehouses: { name: string }[] | null;
-        }[])
+        }[]) {
           locName.set(l.id, l.warehouses?.[0] ? `${l.warehouses[0].name} — ${l.name}` : l.name);
+          locCode.set(l.id, (l.code ?? "").toUpperCase());
+        }
+        // Peringatan dihitung dari stok SIAP PAKAI (lokasi berakhiran -BARU),
+        // bukan total semua kondisi: stok Retur/Unready ada di gudang tetapi
+        // tidak bisa dipakai untuk permintaan ASSET BARU sehingga pengiriman
+        // tetap gagal walau total terlihat aman.
+        const hasBaruLocation = [...locCode.values()].some((c) => c.endsWith("-BARU"));
+        const isReadyLoc = (id: string) =>
+          hasBaruLocation ? (locCode.get(id) ?? "").endsWith("-BARU") : true;
 
-        const byItem = new Map<string, { qty: number; locs: Set<string> }>();
+        const byItem = new Map<string, { qty: number; ready: number; locs: Set<string> }>();
         for (const b of balances) {
           let e = byItem.get(b.item_id);
           if (!e) {
-            e = { qty: 0, locs: new Set() };
+            e = { qty: 0, ready: 0, locs: new Set() };
             byItem.set(b.item_id, e);
           }
           const q = Number(b.qty);
           if (q > 0) {
             e.qty += q;
+            if (isReadyLoc(b.location_id)) e.ready += q;
             const ln = locName.get(b.location_id);
             if (ln) e.locs.add(ln);
           }
@@ -148,16 +171,18 @@ export function StockAlertsPage() {
         for (const it of items) {
           const e = byItem.get(it.id);
           const total = e?.qty ?? 0;
+          const ready = e?.ready ?? 0;
           const min = Number(it.min_stock);
           let level: AlertLevel | null = null;
-          if (total <= min) level = "kritis";
-          else if (total <= min * 2) level = "waspada";
+          if (ready <= min) level = "kritis";
+          else if (ready <= min * 2) level = "waspada";
           if (!level) continue;
           alerts.push({
             id: it.id,
             sku: it.sku,
             name: it.name,
             brand: it.brand,
+            readyStock: ready,
             totalStock: total,
             minStock: min,
             level,
@@ -167,7 +192,7 @@ export function StockAlertsPage() {
         // Kritis dulu, lalu waspada; dalam grup urut stok terkecil.
         alerts.sort((a, b) =>
           a.level === b.level
-            ? a.totalStock - b.totalStock
+            ? a.readyStock - b.readyStock
             : a.level === "kritis"
               ? -1
               : 1
@@ -207,7 +232,8 @@ export function StockAlertsPage() {
         Barang: r.name,
         Merek: r.brand ?? "",
         Lokasi: r.locations,
-        "Total Stok": r.totalStock,
+        "Stok Siap (Baru)": r.readyStock,
+        "Total Semua": r.totalStock,
         "Stok Min": r.minStock,
         Status: r.level === "kritis" ? "Kritis" : "Waspada",
       }))
@@ -218,7 +244,7 @@ export function StockAlertsPage() {
     <div>
       <PageHeader
         title="Peringatan Stok"
-        description="Barang dengan stok kritis (≤ stok minimum) dan waspada (≤ 2× stok minimum)."
+        description="Berbasis stok SIAP PAKAI (lokasi Baru): kritis (≤ stok minimum) dan waspada (≤ 2× stok minimum). Stok Retur/Unready ditampilkan sebagai total, bukan pengganti stok siap."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -289,8 +315,11 @@ export function StockAlertsPage() {
               <div className="text-xs text-ink-300">{row.locations}</div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                 <span>
-                  Stok:{" "}
-                  <span className="tnum font-semibold">{fmt(row.totalStock)}</span>
+                  Siap:{" "}
+                  <span className="tnum font-semibold">{fmt(row.readyStock)}</span>
+                </span>
+                <span>
+                  Total: <span className="tnum">{fmt(row.totalStock)}</span>
                 </span>
                 <span>
                   Min: <span className="tnum">{fmt(row.minStock)}</span>

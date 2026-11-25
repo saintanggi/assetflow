@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
+import { todayLocalDate } from "../../lib/format";
 import { buildSearchPattern } from "../../lib/format";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -423,6 +424,7 @@ export function TransactionForm({
             id="trx-date"
             type="date"
             value={date}
+            max={todayLocalDate()}
             onChange={(e) => setDate(e.target.value)}
             required
             className={`${DARK_INPUT} [color-scheme:dark]`}

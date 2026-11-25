@@ -159,6 +159,12 @@ Cek apakah sinkron sudah berjalan: **`CEK-SINKRON.md`**
 5. **Harga, serial number, dan stok tidak pernah tampil di halaman publik.**
 6. Setiap perubahan data penting tercatat di **Audit Log**; setiap pergerakan stok
    tercatat di **Log Transaksi**.
+7. **Satu rumus laporan stok** (`stock_period_report`, migrasi `20261125000001`):
+   `Stok Awal + IN − OUT = Stok Akhir` untuk periode apa pun, memakai
+   **tanggal transaksi** (bukan waktu input). Stok Akhir periode lampau =
+   saldo akhir periode itu. Panel audit di **Live Stok** menandai selisih
+   historis dan (Super Admin) bisa menyelaraskan stok awal dasar tanpa
+   mengubah stok fisik.
 
 ---
 
@@ -236,6 +242,7 @@ docs/            # DATABASE.md, DEPLOYMENT.md, BOOTSTRAP.md, SHEET_SYNC.md, SQL 
 | `docs/SHEET_SYNC.md` | Sinkron Google Sheet (teknis) |
 | `PANDUAN-SETUP-SINKRON.md` | Sinkron Google Sheet (panduan non-teknis) |
 | `docs/sql/` | Query siap-copas: diagnosa, koreksi, setup |
+| `AUDIT-STOK.md` | Hasil audit stok 25 Nov 2026: akar masalah, perbaikan, cara terapkan, rekomendasi |
 
 ## Cetak QR asset/barang berurutan
 

@@ -3,11 +3,12 @@ import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { ArrowRightLeft, Download, Pencil } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Download, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { kondisiStatusDarkClass, kondisiStatusVariant } from "../lib/statusColors";
-import { formatQty } from "../lib/format";
+import { formatQty, todayLocalDate } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
+import { loadStockReport } from "../lib/stockPeriod";
 import { cn } from "../lib/utils";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
@@ -56,10 +57,16 @@ interface StokRow {
   no: number;
   itemName: string;
   satuan: string;
+  /** Saldo awal periode (Stok Awal + IN - OUT = Stok Akhir). */
   stokAwal: number;
   totalIn: number;
   totalOut: number;
+  /** Saldo akhir periode (bila tanpa filter tanggal = saldo live). */
   stokAkhir: number;
+  /** Stok awal DASAR tersimpan (opening_qty) — dipakai dialog Ubah. */
+  openingBaseline: number;
+  /** false = riwayat tidak sinkron (saldo ≠ stok awal dasar + ledger). */
+  reconciled: boolean;
   buffer: number;
   status: "AMAN" | "KRITIS" | "HABIS";
 }
@@ -115,6 +122,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         .eq("code", cfg.locationCode)
         .maybeSingle();
       const locationId = (locData as { id: string } | null)?.id ?? null;
+      setLocationId(locationId);
 
       // Semua item aktif + satuan.
       const { data: items, error: itemErr } = await supabase
@@ -124,48 +132,31 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         .order("name");
       if (itemErr) throw new Error(itemErr.message);
 
-      // Saldo live per lokasi kondisi (ini yang dipakai kirim & preview upload).
-      const balanceMap = new Map<string, number>();
-      // Stok Awal (opening_qty) — HANYA untuk prefill dialog Ubah, bukan untuk tabel.
-      const openingMap = new Map<string, number>();
-      // IN/OUT dari ledger per lokasi kondisi.
-      const inMap = new Map<string, number>();
-      const outMap = new Map<string, number>();
+      // Stok Awal / IN / OUT / Stok Akhir dihitung dengan SATU rumus yang
+      // sama seperti Live Stok: saldo live + ledger menurut TANGGAL TRANSAKSI.
+      // Tanpa filter tanggal = seluruh riwayat, jadi Stok Awal = Stok Awal
+      // dasar dan Stok Akhir = saldo live.
+      const rangeStart = dateFrom || "2000-01-01";
+      const rangeEnd = dateTo || todayLocalDate();
 
+      const openingMap = new Map<string, number>();
       if (locationId) {
-        setLocationId(locationId);
         const { data: bals } = await supabase
           .from("inventory_balances")
-          .select("item_id, qty, opening_qty")
+          .select("item_id, opening_qty")
           .eq("location_id", locationId);
-        for (const b of (bals ?? []) as { item_id: string; qty: number | string; opening_qty: number | string }[]) {
-          balanceMap.set(b.item_id, Number(b.qty));
+        for (const b of (bals ?? []) as {
+          item_id: string;
+          opening_qty: number | string | null;
+        }[]) {
           openingMap.set(b.item_id, Number(b.opening_qty ?? 0));
         }
-
-        const pageSize = 1000;
-        let offset = 0;
-        while (true) {
-          let ledQuery = supabase
-            .from("inventory_ledger")
-            .select("item_id, qty_change")
-            .eq("location_id", locationId)
-            .order("id", { ascending: true })
-            .range(offset, offset + pageSize - 1);
-          if (dateFrom) ledQuery = ledQuery.gte("created_at", `${dateFrom}T00:00:00`);
-          if (dateTo) ledQuery = ledQuery.lte("created_at", `${dateTo}T23:59:59`);
-          const { data: leds, error: ledErr } = await ledQuery;
-          if (ledErr) throw new Error(ledErr.message);
-          const batch = (leds ?? []) as { item_id: string; qty_change: number | string }[];
-          for (const l of batch) {
-            const q = Number(l.qty_change);
-            if (q > 0) inMap.set(l.item_id, (inMap.get(l.item_id) ?? 0) + q);
-            else if (q < 0) outMap.set(l.item_id, (outMap.get(l.item_id) ?? 0) + Math.abs(q));
-          }
-          if (batch.length < pageSize) break;
-          offset += pageSize;
-        }
       }
+
+      const report = locationId
+        ? await loadStockReport(supabase, [locationId], rangeStart, rangeEnd)
+        : { rows: [], integrity: [] };
+      const repByItem = new Map(report.rows.map((r) => [r.item_id, r]));
 
       const mapped: StokRow[] = ((items ?? []) as {
         id: string;
@@ -173,19 +164,11 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         min_stock: number | null;
         units: { code: string } | { code: string }[] | null;
       }[]).map((it, idx) => {
-        // STOK AKHIR = saldo live (bukan Stok Awal + IN - OUT dari kertas).
-        // STOK AWAL = angka tersimpan (opening_qty, dari SO) — TIDAK BOLEH minus.
-        // Dulu Stok Awal dihitung mundur dari saldo live (akhir - IN + OUT), tapi
-        // itu bisa jadi minus kalau riwayatnya putus (kasus CPU Rakitan: live 6,
-        // IN 76, OUT 68 -> -2). Minusnya berasal dari Atur Stok lama 11 Nov yang
-        // menjatuhkan saldo 17 -> 7 tanpa jejak ledger (-10), bukan dari data SO.
-        // Baris yang riwayatnya putus memang tidak akan cocok hitungannya
-        // (awal + IN - OUT != akhir) — itulah selisih audit, diperbaiki lewat
-        // hitung fisik, bukan dengan memalsukan Stok Awal.
-        const stokAkhir = balanceMap.get(it.id) ?? 0;
-        const totalIn = inMap.get(it.id) ?? 0;
-        const totalOut = outMap.get(it.id) ?? 0;
-        const stokAwal = openingMap.get(it.id) ?? stokAkhir;
+        const rep = repByItem.get(it.id);
+        const stokAkhir = rep?.closing ?? 0;
+        const stokAwal = rep?.opening ?? 0;
+        const totalIn = rep?.totalIn ?? 0;
+        const totalOut = rep?.totalOut ?? 0;
         const buffer = Number(it.min_stock ?? 0);
         const units = Array.isArray(it.units) ? it.units[0] : it.units;
         let status: StokRow["status"] = "AMAN";
@@ -200,6 +183,8 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
           totalIn,
           totalOut,
           stokAkhir,
+          openingBaseline: openingMap.get(it.id) ?? 0,
+          reconciled: rep?.reconciled ?? true,
           buffer,
           status,
         };
@@ -238,11 +223,11 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   const openEdit = (row: StokRow) => {
     setEditRow(row);
     setEditName(row.itemName);
-    // Prefill dengan STOK AWAL: angka yang dimasukkan di dialog ini adalah
-    // Stok Awal baru; Stok Akhir dihitung otomatis oleh set_opening_stock
-    // (Stok Akhir lama + selisih Stok Awal), mengikuti IN/OUT dari Log.
-    // Simpan tanpa ubah angka = tidak ada perubahan.
-    setEditQty(String(row.stokAwal));
+    // Prefill dengan Stok Awal DASAR (opening_qty), bukan saldo awal periode
+    // yang tampil di tabel. Angka di dialog ini adalah Stok Awal baru; Stok
+    // Akhir bergerak sebesar selisihnya (set_opening_stock) tanpa mengubah
+    // riwayat IN/OUT. Simpan tanpa ubah angka = tidak ada perubahan.
+    setEditQty(String(row.openingBaseline));
     setEditBuffer(String(row.buffer));
     setEditOpen(true);
   };
@@ -250,7 +235,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
   // Pratinjau Stok Akhir hasil hitungan untuk dialog Ubah.
   const previewEditAkhir =
     editQty.trim() !== "" && !isNaN(Number(editQty)) && editRow
-      ? editRow.stokAkhir + (Number(editQty) - editRow.stokAwal)
+      ? editRow.stokAkhir + (Number(editQty) - editRow.openingBaseline)
       : null;
 
   const saveEdit = async () => {
@@ -325,7 +310,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         {
           p_idempotency_key: `unready-retur-${moveRow.id}-${Date.now()}`,
           p_type: "transfer",
-          p_transaction_date: new Date().toISOString().slice(0, 10),
+          p_transaction_date: todayLocalDate(),
           p_source_location_id: locationId,
           p_dest_location_id: returLocId,
           p_reference: "SERVIS-SELESAI",
@@ -358,7 +343,19 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
     {
       header: "ITEM",
       accessorKey: "itemName",
-      cell: ({ row }) => <span className="font-medium">{row.original.itemName}</span>,
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1 font-medium">
+          {row.original.itemName}
+          {!row.original.reconciled && (
+            <span title="Saldo tidak sama dengan Stok Awal dasar + seluruh mutasi. Laporan tetap seimbang; selaraskan stok awal dasar di menu Live Stok.">
+              <AlertTriangle
+                className="h-3.5 w-3.5 text-warn-500"
+                aria-label="Riwayat stok tidak sinkron"
+              />
+            </span>
+          )}
+        </span>
+      ),
     },
     { header: "SATUAN", accessorKey: "satuan" },
     {
@@ -485,7 +482,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sheetRows), `STOK_${cfg.badge}`);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocalDate();
     XLSX.writeFile(wb, `Stok_${cfg.badge}_${today}.xlsx`);
     toast.success(`File Excel Stok ${cfg.badge} berhasil diunduh.`);
   };
@@ -498,7 +495,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       <div className="relative space-y-5">
       <PageHeader
         title={cfg.title}
-        description={cfg.description}
+        description={`${cfg.description} Stok Awal + IN − OUT = Stok Akhir (menurut tanggal transaksi).`}
         actions={
           <div className="flex gap-2">
             <Button
@@ -644,15 +641,16 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         <DialogHeader>
           <DialogTitle>Ubah — {editRow?.itemName}</DialogTitle>
           <DialogDescription>
-            Ubah nama barang dan stok awal ({cfg.badge}). Khusus superadmin.
+            Ubah nama barang dan <b>Stok Awal DASAR</b> ({cfg.badge}). Khusus superadmin.
             <br />
+            Angka yang diisi di bawah adalah acuan dasar seluruh riwayat — bukan
+            saldo awal periode yang tampil di tabel. Stok Akhir bergerak otomatis
+            sebesar selisihnya; baris IN/OUT dan transaksi <b>tidak berubah</b>,
+            dan perubahan tercatat di Audit Log.
             <br />
-            Stok Akhir dihitung otomatis: Stok Akhir lama + selisih Stok Awal
-            (mengikuti IN/OUT dari Log — ledger tidak berubah). Perubahan
-            tercatat di Audit Log. Stok Akhir saat ini:{" "}
-            <b>{formatQty(editRow?.stokAkhir ?? 0)}</b> • Stok Awal saat ini:{" "}
-            <b>{formatQty(editRow?.stokAwal ?? 0)}</b> • IN{" "}
-            <b>+{formatQty(editRow?.totalIn ?? 0)}</b> • OUT{" "}
+            Stok Akhir saat ini: <b>{formatQty(editRow?.stokAkhir ?? 0)}</b> • Stok
+            Awal dasar saat ini: <b>{formatQty(editRow?.openingBaseline ?? 0)}</b> •
+            IN periode: <b>+{formatQty(editRow?.totalIn ?? 0)}</b> • OUT periode:{" "}
             <b>−{formatQty(editRow?.totalOut ?? 0)}</b>.
           </DialogDescription>
         </DialogHeader>
@@ -662,7 +660,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
             <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Stok Awal ({cfg.badge})</Label>
+            <Label>Stok Awal Dasar ({cfg.badge})</Label>
             <Input
               type="number"
               min="0"

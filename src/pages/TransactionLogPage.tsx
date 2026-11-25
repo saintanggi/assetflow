@@ -49,6 +49,12 @@ interface LogRow {
   location: string;
   locationCode: string;
   jenisStokLabel: string;
+  /** Status Asset efektif: dari transaksi (setelah koreksi) atau request. */
+  statusAset: string;
+  /** Status Asset yang tercatat di baris permintaan (fallback). */
+  requestStatusAset: string;
+  /** true bila baris ini bagian dari koreksi jenis stok admin. */
+  corrected: boolean;
   userName: string;
 }
 
@@ -161,28 +167,51 @@ export function TransactionLogPage() {
         }).filter(Boolean) as string[]
       )];
 
-      // Ambil resi & gerai per baris transaksi.
-      const itemDetail = new Map<string, { resi: string; gerai: string }>();
+      // Resi, gerai, dan status asset per baris transaksi.
+      const itemDetail = new Map<
+        string,
+        { resi: string; gerai: string; statusAset: string }
+      >();
       for (let i = 0; i < txIds.length; i += 100) {
         const { data: tis } = await supabase
           .from("inventory_transaction_items")
-          .select("transaction_id, item_id, resi, gerai")
+          .select("transaction_id, item_id, resi, gerai, status_aset")
           .in("transaction_id", txIds.slice(i, i + 100));
-        for (const t of (tis ?? []) as { transaction_id: string; item_id: string; resi: string | null; gerai: string | null }[]) {
+        for (const t of (tis ?? []) as {
+          transaction_id: string;
+          item_id: string;
+          resi: string | null;
+          gerai: string | null;
+          status_aset: string | null;
+        }[]) {
           const k = `${t.transaction_id}|${t.item_id}`;
-          itemDetail.set(k, { resi: t.resi ?? "", gerai: t.gerai ?? "" });
+          itemDetail.set(k, {
+            resi: t.resi ?? "",
+            gerai: t.gerai ?? "",
+            statusAset: t.status_aset ?? "",
+          });
         }
       }
 
-      // Tiket dari nomor permintaan.
+      // Tiket + status asset permintaan (fallback bila transaksi tidak punya).
       const ticketMap = new Map<string, string>();
+      const requestItemStatus = new Map<string, string>();
       for (let i = 0; i < reqNums.length; i += 100) {
         const { data: reqs } = await supabase
           .from("requests")
-          .select("request_number, ticket_no")
+          .select("request_number, ticket_no, request_items(item_id, status_aset)")
           .in("request_number", reqNums.slice(i, i + 100));
-        for (const q of (reqs ?? []) as { request_number: string; ticket_no: string }[])
+        for (const q of (reqs ?? []) as {
+          request_number: string;
+          ticket_no: string;
+          request_items: { item_id: string; status_aset: string | null }[] | null;
+        }[]) {
           ticketMap.set(q.request_number, q.ticket_no);
+          for (const ri of q.request_items ?? []) {
+            if (ri.status_aset)
+              requestItemStatus.set(`${q.request_number}|${ri.item_id}`, ri.status_aset);
+          }
+        }
       }
 
       // Nama user (profiles + fallback user_accounts).
@@ -204,9 +233,16 @@ export function TransactionLogPage() {
         const it = (Array.isArray(r.inventory_items) ? r.inventory_items[0] : r.inventory_items) ?? null;
         const loc = (Array.isArray(r.locations) ? r.locations[0] : r.locations) ?? null;
         const itemId = r.item_id ?? "";
-        const det = itemDetail.get(`${r.transaction_id}|${itemId}`) ?? { resi: "", gerai: "" };
+        const det =
+          itemDetail.get(`${r.transaction_id}|${itemId}`) ?? {
+            resi: "",
+            gerai: "",
+            statusAset: "",
+          };
         const m = tx?.reference?.match(/REQ-KIRIM\/(REQ-[\w-]+)/);
         const ticket = m ? ticketMap.get(m[1]) ?? m[1] : "";
+        const requestStatus = m ? requestItemStatus.get(`${m[1]}|${itemId}`) ?? "" : "";
+        const statusAset = det.statusAset || requestStatus || "";
         const locationCode = loc?.code ?? "";
         const jenisInfo = classifyJenisStok(locationCode);
         return {
@@ -230,6 +266,11 @@ export function TransactionLogPage() {
           location: loc ? `${loc.warehouses?.[0]?.name ?? ""} — ${loc.name}`.replace(/^ — /, "") : "",
           locationCode,
           jenisStokLabel: jenisInfo?.label ?? "",
+          statusAset,
+          requestStatusAset: requestStatus ?? "",
+          corrected:
+            (tx?.reference ?? "").startsWith("KOREKSI-ADMIN/") ||
+            /koreksi jenis stok/i.test(tx?.notes ?? ""),
           userName: tx?.created_by ? userMap.get(tx.created_by) ?? tx.created_by.slice(0, 8) : "—",
         };
       });
@@ -573,8 +614,10 @@ export function TransactionLogPage() {
                 <dd className="font-medium">{detailRow.location || "—"}</dd>
               </div>
               <div>
-                <dt className="text-ink-500">Jenis Stok</dt>
-                <dd className="font-medium">{detailRow.jenisStokLabel || "—"}</dd>
+                <dt className="text-ink-500">Status Asset</dt>
+                <dd className="font-medium">
+                  {detailRow.statusAset || detailRow.jenisStokLabel || "—"}
+                </dd>
               </div>
               <div>
                 <dt className="text-ink-500">Gerai</dt>
@@ -589,6 +632,18 @@ export function TransactionLogPage() {
                 <dd className="font-medium break-words">{detailRow.notes || detailRow.docNumber || "—"}</dd>
               </div>
             </dl>
+            {(() => {
+              const corrected =
+                detailRow.corrected ||
+                rows.some((r) => r.transactionId === detailRow.transactionId && r.corrected);
+              return corrected ? (
+                <p className="mt-3 rounded-lg border border-warn-500/40 bg-warn-500/10 px-3 py-2 text-xs text-warn-100">
+                  Koreksi stok tercatat: status asset di bawah adalah status setelah koreksi
+                  terakhir. Stok fisik dipindahkan antar lokasi oleh transaksi koreksi, jadi
+                  total gudang tidak berubah.
+                </p>
+              ) : null;
+            })()}
             <div className="mt-4">
               <h3 className="mb-2 text-sm font-semibold">Foto Surat Jalan</h3>
               <ProofImage url={detailRow.suratJalanUrl || null} label={detailRow.docNumber} variant="large" />
@@ -620,7 +675,12 @@ export function TransactionLogPage() {
                             : `-${formatQty(Math.abs(r.qtyChange))}`}
                         </TableCell>
                         <TableCell className="text-right">{formatQty(r.qtyAfter)}</TableCell>
-                        <TableCell>{r.jenisStokLabel || "—"}</TableCell>
+                        <TableCell>
+                          {r.statusAset || r.jenisStokLabel || "—"}
+                          {r.corrected && (
+                            <span className="ml-1 text-[10px] text-warn-100">(koreksi)</span>
+                          )}
+                        </TableCell>
                         <TableCell className="max-w-[160px] truncate" title={r.resi}>
                           {r.resi || "—"}
                         </TableCell>

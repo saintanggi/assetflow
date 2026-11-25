@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import type { HTMLAttributes } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import * as XLSX from "xlsx";
-import { ChevronDown, FileSpreadsheet } from "lucide-react";
+import { AlertTriangle, ChevronDown, FileSpreadsheet, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
+import { loadStockReport, type StockIntegrityRow } from "../lib/stockPeriod";
 import {
   PIVOT_MAX_DAYS,
   buildPivotSeries,
@@ -39,6 +41,8 @@ interface LiveStockRow {
   inQty: number;
   outQty: number;
   stokAkhir: number;
+  /** false = riwayat (stok awal dasar + ledger) tidak sama dengan saldo live. */
+  reconciled: boolean;
 }
 
 function firstOfMonth(): string {
@@ -56,7 +60,7 @@ function todayLocal(): string {
 const fmt = (n: number) =>
   n.toLocaleString("id-ID", { maximumFractionDigits: 3 });
 
-const safeFileName = (s: string) => s.replace(/[^\w\-]+/g, "-");
+const safeFileName = (s: string) => s.replace(/[^\w-]+/g, "-");
 
 /** Permukaan kaca gelap — sama seperti dashboard. */
 function GlassCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -100,12 +104,21 @@ const liveStockColumns: ColumnDef<LiveStockRow, unknown>[] = [
     header: "Stok Akhir",
     accessorKey: "stokAkhir",
     cell: ({ row }) => (
-      <span className={`${right} font-medium`}>{fmt(row.original.stokAkhir)}</span>
+      <span className={`${right} inline-flex items-center gap-1 font-medium`}>
+        {!row.original.reconciled && (
+          <AlertTriangle
+            className="h-3.5 w-3.5 text-warn-500"
+            aria-label="Riwayat stok tidak sinkron"
+          />
+        )}
+        {fmt(row.original.stokAkhir)}
+      </span>
     ),
   },
 ];
 
 export function LiveStockPage() {
+  const { isSuperAdmin } = useAuth();
   const [warehouseId, setWarehouseId] = useState("");
   const [startDate, setStartDate] = useState(firstOfMonth);
   const [endDate, setEndDate] = useState(todayLocal);
@@ -115,6 +128,9 @@ export function LiveStockPage() {
   const [searched, setSearched] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [pivotLoading, setPivotLoading] = useState(false);
+  const [integrity, setIntegrity] = useState<StockIntegrityRow[]>([]);
+  const [aligning, setAligning] = useState(false);
+  const [activeLocIds, setActiveLocIds] = useState<string[]>([]);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
 
   // Tutup menu Download saat klik di luar atau tekan Escape.
@@ -193,85 +209,19 @@ export function LiveStockPage() {
         return;
       }
       const locIds = locs.map((l) => l.id);
+      setActiveLocIds(locIds);
       const locName = new Map(locs.map((l) => [l.id, l.name]));
       const locCode = new Map(locs.map((l) => [l.id, l.code]));
 
-      // Saldo saat ini + Stok Awal tersimpan per (item, lokasi).
-      const { data: balData, error: balErr } = await supabase
-        .from("inventory_balances")
-        .select("item_id, location_id, qty, opening_qty")
-        .in("location_id", locIds);
-      if (balErr) throw new Error(balErr.message);
-
-      // Mutasi dalam periode dari ledger (paginasi per 1.000 baris agar tidak terpotong batas PostgREST).
-      const ledData: {
-        item_id: string;
-        location_id: string;
-        qty_change: number | string;
-      }[] = [];
-      const pageSize = 1000;
-      let offset = 0;
-      while (true) {
-        const { data: ledBatch, error: ledErr } = await supabase
-          .from("inventory_ledger")
-          .select("item_id, location_id, qty_change")
-          .in("location_id", locIds)
-          .gte("created_at", `${startDate}T00:00:00`)
-          .lte("created_at", `${endDate}T23:59:59`)
-          .order("id", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-        if (ledErr) throw new Error(ledErr.message);
-        const batch = (ledBatch ?? []) as {
-          item_id: string;
-          location_id: string;
-          qty_change: number | string;
-        }[];
-        ledData.push(...batch);
-        if (batch.length < pageSize) break;
-        offset += pageSize;
-      }
-
-      type Agg = { inQty: number; outQty: number };
-      const move = new Map<string, Agg>(); // key: item_id|location_id
-      for (const r of (ledData ?? []) as {
-        item_id: string;
-        location_id: string;
-        qty_change: number | string;
-      }[]) {
-        const key = `${r.item_id}|${r.location_id}`;
-        const q = Number(r.qty_change);
-        let a = move.get(key);
-        if (!a) {
-          a = { inQty: 0, outQty: 0 };
-          move.set(key, a);
-        }
-        if (q > 0) a.inQty += q;
-        else a.outQty += -q;
-      }
-
-      // Kumpulkan semua pasangan (item, lokasi) dari saldo & mutasi.
-      const keys = new Set<string>();
-      for (const b of (balData ?? []) as {
-        item_id: string;
-        location_id: string;
-      }[])
-        keys.add(`${b.item_id}|${b.location_id}`);
-      for (const k of move.keys()) keys.add(k);
-
-      const balMap = new Map<string, number>();
-      const openingMap = new Map<string, number>();
-      for (const b of (balData ?? []) as {
-        item_id: string;
-        location_id: string;
-        qty: number | string;
-        opening_qty: number | string | null;
-      }[]) {
-        balMap.set(`${b.item_id}|${b.location_id}`, Number(b.qty));
-        openingMap.set(`${b.item_id}|${b.location_id}`, Number(b.opening_qty ?? 0));
-      }
+      // SATU rumus untuk Stok Awal / IN / OUT / Stok Akhir:
+      // dihitung dari saldo live + ledger menurut TANGGAL TRANSAKSI, sehingga
+      // Stok Awal + IN - OUT = Stok Akhir selalu benar, juga untuk periode
+      // lampau (Stok Akhir = saldo akhir periode itu, bukan saldo hari ini).
+      const report = await loadStockReport(supabase, locIds, startDate, endDate);
+      const repRows = report.rows;
 
       // Nama & SKU item.
-      const itemIds = [...new Set([...keys].map((k) => k.split("|")[0]))];
+      const itemIds = [...new Set(repRows.map((r) => r.item_id))];
       const itemMap = new Map<string, { sku: string; name: string }>();
       for (let i = 0; i < itemIds.length; i += 100) {
         const chunk = itemIds.slice(i, i + 100);
@@ -285,37 +235,75 @@ export function LiveStockPage() {
       }
 
       const result: LiveStockRow[] = [];
-      for (const key of keys) {
-        const [itemId, locId] = key.split("|");
-        const akhir = balMap.get(key) ?? 0;
-        const m = move.get(key) ?? { inQty: 0, outQty: 0 };
-        // Stok Awal = saldo di awal periode, dihitung mundur dari saldo live.
-        // TIDAK BOLEH minus: kalau hitungan mundur negatif berarti riwayatnya
-        // putus (Atur Stok lama tanpa jejak ledger — kasus CPU Rakitan: live 6,
-        // IN 76, OUT 68 -> -2). Pakai Stok Awal tersimpan (SO) sebagai gantinya.
-        let awal = akhir - m.inQty + m.outQty;
-        if (awal < 0) awal = openingMap.get(key) ?? 0;
+      for (const r of repRows) {
         // Lewati baris yang sepenuhnya nol agar laporan ringkas.
-        if (awal === 0 && m.inQty === 0 && m.outQty === 0 && akhir === 0) continue;
-        const info = itemMap.get(itemId) ?? { sku: "-", name: "(item dihapus)" };
+        if (
+          r.opening === 0 &&
+          r.totalIn === 0 &&
+          r.totalOut === 0 &&
+          r.closing === 0
+        )
+          continue;
+        const info = itemMap.get(r.item_id) ?? { sku: "-", name: "(item dihapus)" };
         result.push({
           sku: info.sku,
           item: info.name,
-          location: locName.get(locId) ?? "-",
-          locCode: locCode.get(locId) ?? "",
-          stokAwal: awal,
-          inQty: m.inQty,
-          outQty: m.outQty,
-          stokAkhir: akhir,
+          location: locName.get(r.location_id) ?? "-",
+          locCode: locCode.get(r.location_id) ?? "",
+          stokAwal: r.opening,
+          inQty: r.totalIn,
+          outQty: r.totalOut,
+          stokAkhir: r.closing,
+          reconciled: r.reconciled,
         });
       }
       result.sort((a, b) => a.item.localeCompare(b.item, "id"));
       setRows(result);
       setSearched(true);
+
+      // Audit selisih historis sudah ikut dihitung pada loader yang sama.
+      setIntegrity(report.integrity);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal memuat laporan.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * Selaraskan Stok Awal dasar dengan riwayat (khusus Super Admin).
+   * Stok fisik dan seluruh transaksi TIDAK diubah; hanya angka dasar
+   * "Stok Awal" yang diluruskan sehingga laporan periode apa pun cocok.
+   */
+  const alignBaselines = async () => {
+    if (!isSuperAdmin || activeLocIds.length === 0) return;
+    if (
+      !window.confirm(
+        `Selaraskan Stok Awal dasar untuk ${integrity.length} baris (${fmt(
+          integrity.reduce((a, r) => a + Math.abs(r.drift), 0)
+        )} unit selisih historis)?\n\nStok fisik tidak berubah dan semua transaksi tetap utuh — hanya angka dasar Stok Awal yang disesuaikan dengan riwayat. Tindakan ini tercatat di Audit Log.`
+      )
+    )
+      return;
+    setAligning(true);
+    try {
+      const { data, error } = await supabase.rpc("align_stock_opening_baselines", {
+        p_location_ids: activeLocIds,
+      });
+      if (error) throw new Error(error.message);
+      const res = (data ?? {}) as { rows_aligned?: number };
+      toast.success(
+        `${res.rows_aligned ?? integrity.length} baris diselaraskan. Stok fisik tidak berubah.`
+      );
+      await loadReport();
+    } catch (e) {
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : "Gagal menyelaraskan. Pastikan migrasi stock_consistency sudah dijalankan."
+      );
+    } finally {
+      setAligning(false);
     }
   };
 
@@ -645,7 +633,7 @@ export function LiveStockPage() {
     <div>
       <PageHeader
         title="Live Stok"
-        description="Posisi stok per gudang ala Excel LIVE STOK: Stok Awal / IN / OUT / Stok Akhir."
+        description="Posisi stok per gudang ala Excel LIVE STOK: Stok Awal / IN / OUT / Stok Akhir menurut tanggal transaksi. Stok Awal + IN − OUT = Stok Akhir."
       />
       <GlassCard>
         <CardHeader>
@@ -741,6 +729,38 @@ export function LiveStockPage() {
           </div>
         </CardContent>
       </GlassCard>
+
+      {integrity.length > 0 && (
+        <div className="mt-6 rounded-2xl border border-warn-500/40 bg-warn-500/10 p-4 text-sm text-white">
+          <div className="flex flex-wrap items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warn-500" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">
+                {integrity.length} baris punya selisih historis (
+                {fmt(integrity.reduce((a, r) => a + Math.abs(r.drift), 0))} unit)
+              </p>
+              <p className="mt-1 text-ink-300">
+                Artinya saldo saat ini tidak sama dengan Stok Awal dasar + seluruh mutasi
+                tercatat — biasanya sisa data lama/ubah stok sebelum semua transaksi lewat
+                buku besar. Laporan di bawah tetap seimbang (Stok Awal + IN − OUT = Stok
+                Akhir). Selaraskan agar Stok Awal dasar ikut cocok; stok fisik tidak berubah.
+              </p>
+              {isSuperAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`${DARK_OUTLINE_BTN} mt-3`}
+                  onClick={() => void alignBaselines()}
+                  disabled={aligning}
+                >
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                  {aligning ? "Menyelaraskan…" : "Selaraskan Stok Awal dasar"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6">
         <DataTable<LiveStockRow>

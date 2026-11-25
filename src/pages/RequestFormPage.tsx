@@ -5,7 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
-import { buildSearchPattern } from "../lib/format";
+import { buildSearchPattern, todayLocalDate } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -47,6 +47,21 @@ interface ItemSearchResult {
   name: string;
 }
 
+interface StockByKind {
+  baru: number;
+  retur: number;
+  unready: number;
+}
+
+const EMPTY_STOCK: StockByKind = { baru: 0, retur: 0, unready: 0 };
+
+/** Kode lokasi pemotong -> kunci jenis stok. */
+function kindOfKode(kode: string): keyof StockByKind {
+  if (kode.endsWith("-RETUR")) return "retur";
+  if (kode.endsWith("-UNREADY")) return "unready";
+  return "baru";
+}
+
 interface FormRow {
   key: string;
   query: string;
@@ -83,14 +98,37 @@ const newRow = (): FormRow => ({
 export function RequestFormPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayLocalDate());
   const [ticketNo, setTicketNo] = useState("");
   const [branchName, setBranchName] = useState("");
   const [branchCode, setBranchCode] = useState("");
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<FormRow[]>([newRow()]);
   const [submitting, setSubmitting] = useState(false);
+  // Sisa stok per barang per jenis (Baru/Retur/Unready) — dipakai sebagai
+  // panduan saat memilih barang, supaya tidak mengajukan qty melebihi stok
+  // lokasi pemotong (penyebab utama pengiriman gagal).
+  const [stock, setStock] = useState<Record<string, StockByKind>>({});
+  const [locByCode, setLocByCode] = useState<Record<string, string>>({});
   const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Peta kode lokasi kondisi -> id lokasi (STOK-BARU / STOK-RETUR / STOK-UNREADY).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("locations")
+        .select("id, code")
+        .in("code", ["STOK-BARU", "STOK-RETUR", "STOK-UNREADY"]);
+      if (cancelled) return;
+      const m: Record<string, string> = {};
+      for (const l of (data ?? []) as { id: string; code: string }[]) m[l.code] = l.id;
+      setLocByCode(m);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const timers = searchTimers.current;
@@ -137,6 +175,29 @@ export function RequestFormPage() {
       searching: false,
       open: false,
     });
+    // Ambil sisa stok barang ini di tiap lokasi kondisi.
+    void (async () => {
+      const { data } = await supabase
+        .from("inventory_balances")
+        .select("location_id, qty")
+        .eq("item_id", item.id);
+      const byLoc = new Map<string, number>();
+      for (const b of (data ?? []) as { location_id: string; qty: number | string }[]) {
+        byLoc.set(b.location_id, Number(b.qty) || 0);
+      }
+      const next: StockByKind = {
+        baru: byLoc.get(locByCode["STOK-BARU"] ?? "") ?? 0,
+        retur: byLoc.get(locByCode["STOK-RETUR"] ?? "") ?? 0,
+        unready: byLoc.get(locByCode["STOK-UNREADY"] ?? "") ?? 0,
+      };
+      setStock((prev) => ({ ...prev, [item.id]: next }));
+    })();
+  };
+
+  /** Sisa stok barang pada lokasi pemotong sesuai Status Asset baris. */
+  const availableFor = (r: FormRow, s?: StockByKind): number => {
+    const kode = EXCEL_STATUS_ASET_LOKASI[r.statusAset];
+    return (s ?? EMPTY_STOCK)[kindOfKode(kode)];
   };
 
   const validate = (): string | null => {
@@ -216,7 +277,7 @@ export function RequestFormPage() {
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
             <Label className="text-white">Tanggal Input</Label>
-            <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input className="border-white/15 bg-white/10 text-white placeholder:text-ink-300 [color-scheme:dark]" type="date" max={todayLocalDate()} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-white">No Tiket</Label>
@@ -255,11 +316,8 @@ export function RequestFormPage() {
       </GlassCard>
 
       <GlassCard className="mt-4">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle className="font-display text-base text-white">Daftar Barang</CardTitle>
-          <Button variant="outline" size="sm" className={DARK_OUTLINE_BTN} onClick={() => setRows((p) => [...p, newRow()])}>
-            <Plus className="mr-1 h-4 w-4" /> Tambah Baris
-          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           {rows.map((r, i) => (
@@ -276,6 +334,37 @@ export function RequestFormPage() {
                   placeholder="Ketik nama / SKU barang…"
                   autoComplete="off"
                 />
+                {r.item && (() => {
+                  const s = stock[r.item.id] ?? EMPTY_STOCK;
+                  const kode = EXCEL_STATUS_ASET_LOKASI[r.statusAset];
+                  const avail = availableFor(r, s);
+                  const qty = Number(r.qty);
+                  const over = qty > 0 && qty > avail;
+                  return (
+                    <div className="mt-1 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1.5 text-xs">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink-300">
+                        <span>Sisa stok:</span>
+                        <span className="font-medium text-ok-100">{`Baru ${s.baru}`}</span>
+                        <span aria-hidden>·</span>
+                        <span className="font-medium text-warn-100">{`Retur ${s.retur}`}</span>
+                        <span aria-hidden>·</span>
+                        <span className="font-medium text-brand-200">{`Unready ${s.unready}`}</span>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-ink-300">
+                        <span>Sisa di lokasi ini:</span>
+                        <span className={avail > 0 ? "font-semibold text-white" : "font-semibold text-brand-200"}>
+                          {avail}
+                        </span>
+                        <span className="font-mono text-white">{`(${kode})`}</span>
+                      </div>
+                      {over && (
+                        <p className="mt-1 font-medium text-brand-200">
+                          {`Qty ${qty} melebihi stok ${kode} (${avail}). Kurangi qty atau minta stok dulu ke gudang.`}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
                 {r.open && r.results.length > 0 && (
                   <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border border-white/15 bg-ink-800 shadow-xl">
                     {r.results.map((it) => (
@@ -380,6 +469,16 @@ export function RequestFormPage() {
               </div>
             </div>
           ))}
+          <div className="flex justify-start">
+            <Button
+              variant="outline"
+              size="sm"
+              className={DARK_OUTLINE_BTN}
+              onClick={() => setRows((p) => [...p, newRow()])}
+            >
+              <Plus className="mr-1 h-4 w-4" /> Tambah Baris
+            </Button>
+          </div>
         </CardContent>
       </GlassCard>
 

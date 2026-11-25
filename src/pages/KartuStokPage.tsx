@@ -3,7 +3,7 @@ import type { HTMLAttributes } from "react";
 import { Plus, Trash2, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
-import { buildSearchPattern } from "../lib/format";
+import { buildSearchPattern, todayLocalDate } from "../lib/format";
 import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
@@ -343,6 +343,7 @@ export function KartuStokPage() {
                 <Input
                   id="ks-date"
                   type="date"
+                  max={todayLocalDate()}
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required
