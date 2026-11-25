@@ -281,3 +281,10 @@ Catatan penting:
 - Bila `stock_integrity()` mengembalikan baris, berarti ada perubahan saldo di
   luar mesin transaksi (data lama / SQL manual). Laporan tetap seimbang;
   gunakan `align_stock_opening_baselines()` untuk merapikan angka dasar.
+- **SQL Editor tidak punya JWT** (`auth.uid()` = NULL), jadi `has_permission()`
+  selalu false. Migrasi `20261125000003` menambahkan `_stock_console_read()`
+  yang mengizinkan fungsi **baca** dipanggil dari sesi konsol DB
+  (`session_user` = `postgres`/`supabase_admin`). Role API (`authenticator` →
+  `anon`/`authenticated`) **tidak** mendapat pengecualian ini.
+- Skrip cek siap pakai: `docs/sql/verify_stock_migration.sql` (10 pemeriksaan,
+  hanya membaca).

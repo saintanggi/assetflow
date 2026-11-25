@@ -7,8 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * Skrip `docs/sql/verify_stock_migration.sql` harus benar-benar bisa
  * dijalankan di Supabase SQL Editor dan memberi hasil akurat.
  *
- * Tes ini membangun skema minimal, menerapkan kedua migrasi, lalu menjalankan
- * skrip verifikasi dan memastikan semua baris berstatus LULUS.
+ * Tes ini membangun skema minimal, menerapkan ketiga migrasi, lalu menjalankan
+ * skrip verifikasi dan memastikan semua baris sesuai harapan.
  */
 
 const read = (rel: string) =>
@@ -82,6 +82,7 @@ describe("verify_stock_migration.sql (PostgreSQL/PGlite)", () => {
 
     await db.exec(read("supabase/migrations/20261125000001_stock_consistency.sql"));
     await db.exec(read("supabase/migrations/20261125000002_quick_ship_partial.sql"));
+    await db.exec(read("supabase/migrations/20261125000003_stock_console_access.sql"));
 
     // Jalankan skrip verifikasi apa adanya (seperti ditempel di SQL Editor).
     const results = await db.exec(read("docs/sql/verify_stock_migration.sql"));
@@ -98,6 +99,13 @@ describe("verify_stock_migration.sql (PostgreSQL/PGlite)", () => {
   it("mengembalikan satu tabel hasil dengan 10 pemeriksaan", () => {
     expect(checks).toHaveLength(10);
     expect(checks.map((c) => c.no)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it("fungsi baca bisa dipanggil dari sesi konsol DB tanpa error izin", () => {
+    // Ini kasus yang dulu gagal di SQL Editor: "Tidak punya izin melihat stok".
+    const c = checks.find((x) => x.no === 7)!;
+    expect(c.hasil).toBe("LULUS");
+    expect(c.detail).toContain("0 baris tidak seimbang");
   });
 
   it("semua pemeriksaan struktural LULUS", () => {

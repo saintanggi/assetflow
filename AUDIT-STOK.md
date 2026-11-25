@@ -20,7 +20,7 @@ Log Transaksi, Peringatan Stok, dan Database (RPC, RLS, trigger, migrasi).
 |---|---|
 | Bug/regresi diperbaiki pada sesi ini | **15** |
 | Akar masalah utama "Stok Akhir ≠ Stok Awal + IN − OUT" | **4** |
-| Tes otomatis | **341/341 lulus** (sebelumnya 4 gagal) |
+| Tes otomatis | **342/342 lulus** (sebelumnya 4 gagal) |
 | Build TypeScript | **lulus** |
 | Butuh keputusan bisnis (belum diubah) | **6** |
 
@@ -158,7 +158,7 @@ titik-titik tanggal bisnis.
 
 | # | Masalah | Status |
 |---|---|---|
-| Q1 | 4 tes otomatis merah (fitur sisa stok & status aset hilang) | ✅ 341/341 lulus |
+| Q1 | 4 tes otomatis merah (fitur sisa stok & status aset hilang) | ✅ 342/342 lulus |
 | Q2 | Tidak ada tes untuk matematika stok | ✅ tes unit + tes PostgreSQL (PGlite) |
 
 ---
@@ -190,11 +190,15 @@ Ini bukan bug yang bisa saya putuskan sendiri karena mengubah kebijakan operasio
   - `align_stock_opening_baselines(lokasi[])` — Super Admin menyelaraskan
     **stok awal dasar** (stok fisik & transaksi tidak diubah) + jejak `audit_logs`.
   - Index baru `idx_ledger_loc_item`, `idx_txn_date_id`.
+- **`supabase/migrations/20261125000003_stock_console_access.sql`** (baru)
+  - `_stock_console_read()` + izin baca untuk sesi SQL Editor; role API tetap
+    wajib `inventory.view`.
 - **`supabase/migrations/20261125000002_quick_ship_partial.sql`** (baru)
   - `quick_ship_request()`: `qty_approved = GREATEST(qty_requested, qty_kirim)`,
     sehingga sisa pengiriman tidak hilang dan tetap masuk "Sisa Belum Terkirim".
-- Salinan siap-copas: **`docs/sql/stock_consistency.sql`** dan
-  **`docs/sql/quick_ship_partial.sql`** (identik dengan migrasinya).
+- Salinan siap-copas: **`docs/sql/stock_consistency.sql`**,
+  **`docs/sql/quick_ship_partial.sql`**, **`docs/sql/stock_console_access.sql`**
+  (identik dengan migrasinya), plus **`docs/sql/verify_stock_migration.sql`**.
 
 ### Aplikasi
 - **`src/lib/stockPeriod.ts`** (baru) — mesin hitung yang sama untuk klien +
@@ -224,7 +228,7 @@ Ini bukan bug yang bisa saya putuskan sendiri karena mengubah kebijakan operasio
   periode lampau, selisih historis, penyelarasan, guard izin).
 - **`src/features/requests/quickShip.db.test.ts`** — 2 tes PostgreSQL/PGlite
   (kirim sebagian tidak menghilangkan sisa; pelunasan menandai terkirim).
-- **`src/lib/verifyStockSql.db.test.ts`** — 4 tes yang menjalankan skrip
+- **`src/lib/verifyStockSql.db.test.ts`** — 5 tes yang menjalankan skrip
   `docs/sql/verify_stock_migration.sql` apa adanya, sehingga skrip cek di
   Supabase dijamin tidak error dan hasilnya akurat.
 
@@ -244,12 +248,22 @@ yang perlu diselaraskan, bukan error). Di aplikasi, panel Live Stok juga
 menampilkan tulisan "✓ Mesin laporan SQL aktif" bila migrasi terpasang, atau
 "⚠ … mode kompatibilitas" bila belum.
 
+Catatan penting: **SQL Editor tidak punya JWT**, sehingga `auth.uid()` = NULL
+dan `has_permission()` selalu false. Karena itu fungsi baca stok menolak
+dipanggil dari SQL Editor ("Tidak punya izin melihat stok") walaupun sudah
+terpasang — bukan tanda migrasi gagal. Migrasi `20261125000003` memberi izin
+baca khusus sesi konsol DB (role API tetap wajib `inventory.view`), supaya
+`SELECT * FROM stock_integrity();` bisa dijalankan manual.
+
 Supabase Dashboard → **SQL Editor** → jalankan **kedua** file berikut:
 
 1. `supabase/migrations/20261125000001_stock_consistency.sql`
    (atau `docs/sql/stock_consistency.sql`)
 2. `supabase/migrations/20261125000002_quick_ship_partial.sql`
    (atau `docs/sql/quick_ship_partial.sql`)
+3. `supabase/migrations/20261125000003_stock_console_access.sql`
+   (atau `docs/sql/stock_console_access.sql`) — agar fungsi baca bisa
+   diuji dari SQL Editor
 
 Aman dijalankan berulang (`CREATE OR REPLACE` / `IF NOT EXISTS`).
 
