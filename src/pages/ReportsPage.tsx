@@ -218,18 +218,26 @@ export function ReportsPage() {
             setLoading(false);
             return;
           }
+          // Filter memakai TANGGAL TRANSAKSI (tanggal dokumen), bukan waktu
+          // input (created_at), supaya pengiriman 10 Nov yang diunggah 11 Nov
+          // tetap masuk periode 10 Nov — sama dengan Live Stok & Stok Kondisi.
           let q = supabase
             .from("inventory_ledger")
             .select(
-              "id, created_at, qty_change, qty_after, inventory_transactions(doc_number, type, transaction_date)"
+              "id, created_at, qty_change, qty_after, inventory_transactions!inner(doc_number, type, transaction_date)"
             )
-            .eq("item_id", kartuItemId)
-            .order("created_at", { ascending: true });
-          if (dateFrom) q = q.gte("created_at", `${dateFrom}T00:00:00`);
-          if (dateTo) q = q.lte("created_at", `${dateTo}T23:59:59`);
+            .eq("item_id", kartuItemId);
+          if (dateFrom) q = q.gte("inventory_transactions.transaction_date", dateFrom);
+          if (dateTo) q = q.lte("inventory_transactions.transaction_date", dateTo);
           const { data, error } = await q;
           if (error) throw error;
-          if (!cancelled) setLedger((data ?? []) as unknown as LedgerRow[]);
+          const rows = ((data ?? []) as unknown as LedgerRow[]).slice().sort((a, b) => {
+            const da = a.inventory_transactions?.transaction_date ?? a.created_at;
+            const db = b.inventory_transactions?.transaction_date ?? b.created_at;
+            if (da !== db) return da < db ? -1 : 1;
+            return a.created_at < b.created_at ? -1 : 1;
+          });
+          if (!cancelled) setLedger(rows);
         } else if (tab === "transaksi") {
           let q = supabase
             .from("inventory_transactions")
@@ -283,7 +291,7 @@ export function ReportsPage() {
       exportToCsv(
         "kartu-stok",
         ledger.map((l) => ({
-          Tanggal: formatDateTime(l.created_at),
+          Tanggal: l.inventory_transactions?.transaction_date ?? l.created_at.slice(0, 10),
           "No. Dokumen": l.inventory_transactions?.doc_number ?? "",
           Tipe: l.inventory_transactions
             ? TRANSACTION_TYPE_LABELS[l.inventory_transactions.type]
@@ -592,7 +600,10 @@ export function ReportsPage() {
             {
               id: "tgl",
               header: "Tanggal",
-              cell: ({ row }) => formatDateTime(row.original.created_at),
+              cell: ({ row }) =>
+                row.original.inventory_transactions?.transaction_date
+                  ? formatDate(row.original.inventory_transactions.transaction_date)
+                  : formatDateTime(row.original.created_at),
             },
             {
               id: "doc",

@@ -247,3 +247,44 @@ Bucket **`asset-photos`** (public read):
   migrasi lama yang sudah terlanjur jalan di production).
 - File sensitif (`.env`, service-role key) tidak pernah masuk Git
   (lihat `.env.example`).
+
+## 11. Laporan stok & integritas (migrasi `20261125000001`)
+
+Satu rumus untuk semua laporan stok, berbasis **tanggal transaksi**
+(`inventory_transactions.transaction_date`), bukan waktu input:
+
+```
+closing(D)        = saldo live − Σ mutasi bertanggal > D
+opening(periode)  = closing − Σ mutasi dalam periode
+IN / OUT          = Σ mutasi positif / negatif dalam periode
+```
+
+Dengan definisi ini `opening + IN − OUT = closing` **selalu** benar, dan
+"Stok Akhir" periode lampau adalah saldo pada akhir periode itu.
+
+| Fungsi | Izin | Kegunaan |
+|---|---|---|
+| `stock_period_report(lokasi uuid[], mulai date, akhir date)` | `inventory.view` | Laporan Stok Awal / IN / OUT / Stok Akhir per (item, lokasi) + `opening_baseline`, `ledger_net`, `reconciled`. |
+| `stock_integrity(lokasi uuid[] DEFAULT NULL)` | `inventory.view` | Baris yang `saldo ≠ stok awal dasar + seluruh ledger` beserta `drift`. Dipakai panel audit di halaman Live Stok. |
+| `align_stock_opening_baselines(lokasi uuid[] DEFAULT NULL)` | Super Admin | Menyetel `opening_qty := qty − ledger_net` untuk baris yang selisih. **Stok fisik dan transaksi tidak diubah**; setiap baris ditulis ke `audit_logs`. Mengembalikan `{rows_aligned, total_drift}`. |
+
+Catatan penting:
+
+- `opening_qty` adalah **stok awal dasar** (angka acuan seluruh riwayat),
+  bukan saldo awal periode. Dialog "Ubah/Atur Stok" mengedit **dasar** ini.
+- `set_opening_stock()` mengubah `opening_qty` **dan** `qty` sebesar selisih
+  yang sama, sehingga invarian `qty = opening_qty + Σ ledger` tetap terjaga
+  (tanpa menulis baris ledger baru).
+- `void_inventory_transaction()` dan `_admin_purge_inventory_transactions()`
+  membalik saldo sebesar mutasi yang dihapus, sehingga invarian juga terjaga;
+  konsekuensinya riwayat transaksi tersebut hilang (lihat `AUDIT-STOK.md` R3).
+- Bila `stock_integrity()` mengembalikan baris, berarti ada perubahan saldo di
+  luar mesin transaksi (data lama / SQL manual). Laporan tetap seimbang;
+  gunakan `align_stock_opening_baselines()` untuk merapikan angka dasar.
+- **SQL Editor tidak punya JWT** (`auth.uid()` = NULL), jadi `has_permission()`
+  selalu false. Migrasi `20261125000003` menambahkan `_stock_console_read()`
+  yang mengizinkan fungsi **baca** dipanggil dari sesi konsol DB
+  (`session_user` = `postgres`/`supabase_admin`). Role API (`authenticator` →
+  `anon`/`authenticated`) **tidak** mendapat pengecualian ini.
+- Skrip cek siap pakai: `docs/sql/verify_stock_migration.sql` (10 pemeriksaan,
+  hanya membaca).

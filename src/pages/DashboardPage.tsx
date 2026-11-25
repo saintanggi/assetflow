@@ -35,6 +35,7 @@ import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import type { AssetStatus, TransactionType } from "../types/database";
 import { ASSET_STATUS_LABELS, TRANSACTION_TYPE_LABELS } from "../types/database";
 import { cn } from "../lib/utils";
+import { todayLocalDate } from "../lib/format";
 
 interface TxDay {
   date: string;
@@ -310,14 +311,14 @@ export function DashboardPage() {
   const [data, setData] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
   // Tanggal hari ini (format sama dengan yang dipakai penghitung Inbound/Outbound).
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayLocalDate();
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       try {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = todayLocalDate();
         const [
           statusesRes,
           itemsRes,
@@ -396,11 +397,27 @@ export function DashboardPage() {
           balanceByLoc.set(b.location_id, (balanceByLoc.get(b.location_id) ?? 0) + q);
         }
 
+        // Stok siap pakai = lokasi berakhiran -BARU (Retur/Unready tidak bisa
+        // dikirim untuk permintaan ASSET BARU). Sama dengan halaman
+        // Peringatan Stok agar angka dashboard & peringatan tidak beda.
+        const locCode = new Map<string, string>();
+        for (const l of (locRes.data ?? []) as { id: string; code: string }[])
+          locCode.set(l.id, (l.code ?? "").toUpperCase());
+        const hasBaruLoc = [...locCode.values()].some((c) => c.endsWith("-BARU"));
+        const readyByItem = new Map<string, number>();
+        for (const b of balances) {
+          const code = locCode.get(b.location_id) ?? "";
+          if (hasBaruLoc && !code.endsWith("-BARU")) continue;
+          readyByItem.set(
+            b.item_id,
+            (readyByItem.get(b.item_id) ?? 0) + Number(b.qty)
+          );
+        }
         let lowStockCount = 0;
         let totalValue = 0;
         for (const item of items) {
           if (item.min_stock === null) continue;
-          if ((balanceByItem.get(item.id) ?? 0) < item.min_stock) lowStockCount++;
+          if ((readyByItem.get(item.id) ?? 0) < item.min_stock) lowStockCount++;
         }
         // Nilai stok = Σ (stok akhir × harga beli).
         for (const item of items) {
@@ -413,7 +430,7 @@ export function DashboardPage() {
         for (let i = 13; i >= 0; i--) {
           const d = new Date();
           d.setDate(d.getDate() - i);
-          const key = d.toISOString().slice(0, 10);
+          const key = todayLocalDate(d);
           dayIndex.set(key, tx14.length);
           tx14.push({ date: key, count: 0 });
         }

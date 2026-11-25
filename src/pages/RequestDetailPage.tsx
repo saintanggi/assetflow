@@ -67,6 +67,29 @@ interface StockMap {
   [itemId: string]: number;
 }
 
+interface StockByKind {
+  baru: number;
+  retur: number;
+  unready: number;
+}
+
+/** Kode lokasi pemotong sesuai Status Asset baris. */
+function cutKodeFor(statusAset: string | null | undefined): string {
+  const up = (statusAset ?? "").toUpperCase();
+  if (up.includes("UNREADY")) return "STOK-UNREADY";
+  if (up.includes("RETUR") || up.includes("RETURN")) return "STOK-RETUR";
+  return "STOK-BARU";
+}
+
+/** Kunci jenis dari AKHIRAN kode lokasi (mendukung gudang berkode awalan). */
+function kindKeyFor(kode: string): keyof StockByKind | null {
+  const c = (kode ?? "").toUpperCase();
+  if (c.endsWith("-RETUR")) return "retur";
+  if (c.endsWith("-UNREADY")) return "unready";
+  if (c.endsWith("-BARU")) return "baru";
+  return null;
+}
+
 // Ubah pesan error teknis (berisi UUID) menjadi bahasa yang mudah dipahami.
 function formatShipError(raw: string, items: RequestItem[]): string {
   const m = raw.match(/Stok tidak mencukupi \(item ([0-9a-f-]{36})/i);
@@ -89,6 +112,9 @@ export function RequestDetailPage() {
   const [req, setReq] = useState<Request | null>(null);
   const [items, setItems] = useState<RequestItem[]>([]);
   const [stock, setStock] = useState<StockMap>({});
+  // Stok per jenis (lokasi pemotong) — review & kirim harus melihat saldo
+  // lokasi yang benar, bukan total semua lokasi.
+  const [stockByKind, setStockByKind] = useState<Record<string, StockByKind>>({});
   const [locations, setLocations] = useState<{ id: string; code: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -269,6 +295,13 @@ export function RequestDetailPage() {
   const canReview = hasPermission("requests.review");
   const canProcess = hasPermission("requests.process");
 
+  /** Sisa stok barang pada lokasi pemotong (sesuai Status Asset baris). */
+  const availableFor = (x: RequestItem): number => {
+    const kode = cutKodeFor(x.status_aset);
+    const key = kindKeyFor(kode);
+    return key ? stockByKind[x.item_id]?.[key] ?? 0 : 0;
+  };
+
   const load = async () => {
     if (!id) return;
     setLoading(true);
@@ -295,18 +328,34 @@ export function RequestDetailPage() {
         .order("name");
       setMasterItems(((mi ?? []) as { id: string; name: string }[]));
 
-      // Stok tersedia per barang (untuk panel review).
-      const itemIds = its.map((x) => x.item_id);
+      // Stok tersedia per barang + per jenis lokasi (untuk panel review/kirim).
+      const itemIds = [...new Set(its.map((x) => x.item_id))];
       if (itemIds.length > 0) {
         const { data: bal } = await supabase
           .from("inventory_balances")
-          .select("item_id, qty")
+          .select("item_id, qty, locations(code)")
           .in("item_id", itemIds);
         const m: StockMap = {};
-        for (const b of (bal ?? []) as { item_id: string; qty: number | string }[]) {
-          m[b.item_id] = (m[b.item_id] ?? 0) + Number(b.qty);
+        const byKind: Record<string, StockByKind> = {};
+        for (const b of (bal ?? []) as {
+          item_id: string;
+          qty: number | string;
+          locations: { code: string } | { code: string }[] | null;
+        }[]) {
+          const qty = Number(b.qty) || 0;
+          m[b.item_id] = (m[b.item_id] ?? 0) + qty;
+          const loc = Array.isArray(b.locations) ? b.locations[0] : b.locations;
+          const kode = loc?.code ?? "";
+          const k = kindKeyFor(kode);
+          // Lokasi non-kondisi (bukan *-BARU/RETUR/UNREADY) tidak dihitung
+          // sebagai stok siap pakai; tetap masuk total semua lokasi.
+          if (!k) continue;
+          const cur = byKind[b.item_id] ?? { baru: 0, retur: 0, unready: 0 };
+          cur[k] += qty;
+          byKind[b.item_id] = cur;
         }
         setStock(m);
+        setStockByKind(byKind);
       }
 
       const { data: locs } = await supabase
@@ -417,6 +466,15 @@ export function RequestDetailPage() {
       }
       if (!l.barcode) {
         toast.error(`Barcode wajib diisi untuk "${x.inventory_items?.name}".`);
+        return;
+      }
+      const tersedia = availableFor(x);
+      if (l.qty > tersedia) {
+        toast.error(
+          `Stok ${cutKodeFor(x.status_aset)} untuk "${x.inventory_items?.name}" hanya ${fmt(
+            tersedia
+          )}. Kurangi qty atau lepas centang agar masuk Sisa Belum Terkirim.`
+        );
         return;
       }
     }
@@ -648,10 +706,6 @@ export function RequestDetailPage() {
   // ---------- KIRIM (admin gudang) ----------
   const submitShip = async () => {
     if (!req || !id) return;
-    if (!shipLocation) {
-      toast.error("Pilih lokasi gudang pengirim.");
-      return;
-    }
     const lines = pendingItems
       .map((x) => ({
         request_item_id: x.id,
@@ -670,12 +724,23 @@ export function RequestDetailPage() {
         toast.error(`Qty kirim "${x.inventory_items?.name}" melebihi sisa ${fmt(sisa)}.`);
         return;
       }
+      const tersedia = availableFor(x);
+      if (l.qty > tersedia) {
+        toast.error(
+          `Stok ${cutKodeFor(x.status_aset)} untuk "${x.inventory_items?.name}" hanya ${fmt(
+            tersedia
+          )}. Kurangi qty kirim atau pindahkan stok ke lokasi tersebut dulu.`
+        );
+        return;
+      }
     }
     setBusy(true);
     try {
       const { data, error } = await supabase.rpc("ship_request_items", {
         p_request_id: id,
-        p_location_id: shipLocation,
+        // RPC menentukan lokasi potong dari Status Asset tiap baris; parameter
+        // ini hanya dipertahankan untuk kompatibilitas signature.
+        p_location_id: shipLocation || locations[0]?.id || null,
         p_lines: lines,
         p_notes: `Pengiriman ${req.request_number} ke ${req.branch_name}`,
       });
@@ -998,6 +1063,20 @@ export function RequestDetailPage() {
                         {fmt(Number(x.qty_shipped ?? 0))}
                         {x.status_aset && <span className="ml-1 font-medium">• {x.status_aset}</span>}
                       </div>
+                      <div className="mt-0.5 text-xs">
+                        <span className="text-ink-300">Potong dari </span>
+                        <span className="font-mono text-white">{cutKodeFor(x.status_aset)}</span>
+                        <span className="text-ink-300"> • tersedia </span>
+                        <span
+                          className={
+                            availableFor(x) >= Number(quickQty[x.id] || 0)
+                              ? "text-ok-100"
+                              : "text-brand-200"
+                          }
+                        >
+                          {fmt(availableFor(x))}
+                        </span>
+                      </div>
                       {!selected && (
                         <div className="mt-1 text-xs font-medium text-warn-100">
                           ⏳ Tidak dikirim — masuk Sisa Belum Terkirim
@@ -1069,7 +1148,8 @@ export function RequestDetailPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {items.map((x) => {
-              const tersedia = stock[x.item_id] ?? 0;
+              const kode = cutKodeFor(x.status_aset);
+              const tersedia = availableFor(x);
               const minta = Number(x.qty_requested);
               return (
                 <div
@@ -1083,8 +1163,13 @@ export function RequestDetailPage() {
                       <span className="text-ink-300">Minta: {fmt(minta)}</span>
                       {" • "}
                       <span className={tersedia >= minta ? "text-brand-200" : "text-warn-100"}>
-                        Stok tersedia: {fmt(tersedia)}
+                        Stok tersedia: {fmt(tersedia)} ({kode})
                       </span>
+                      {stock[x.item_id] !== undefined && stock[x.item_id] !== tersedia && (
+                        <span className="text-ink-300">
+                          {" "}• total semua lokasi: {fmt(stock[x.item_id])}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="sm:col-span-3">
@@ -1299,25 +1384,16 @@ export function RequestDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label className="text-white">Lokasi gudang pengirim</Label>
-                <select
-                  value={shipLocation}
-                  onChange={(e) => setShipLocation(e.target.value)}
-                  className="w-full rounded-md border border-white/15 bg-white/10 px-3 py-2 text-sm text-white [color-scheme:dark]"
-                >
-                  <option value="" className="bg-ink-800 text-white">— Pilih lokasi —</option>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id} className="bg-ink-800 text-white">
-                      {l.code} — {l.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            <p className="rounded-lg border border-info-500/30 bg-info-500/10 px-3 py-2 text-xs text-ink-100">
+              Stok dipotong otomatis dari lokasi sesuai <b>Status Asset</b> tiap baris
+              (ASSET BARU → STOK-BARU, RETUR → STOK-RETUR, UNREADY → STOK-UNREADY).
+              Tidak perlu memilih lokasi manual.
+            </p>
             {pendingItems.map((x) => {
               const sisa = (x.qty_approved ?? 0) - (x.qty_shipped ?? 0);
+              const kode = cutKodeFor(x.status_aset);
+              const tersedia = availableFor(x);
+              const qtyKirim = Number(shipQty[x.id] || 0);
               return (
                 <div
                   key={x.id}
@@ -1328,6 +1404,19 @@ export function RequestDetailPage() {
                     <div className="text-xs text-ink-300">
                       Sisa: {fmt(sisa)} • Terkirim: {fmt(Number(x.qty_shipped ?? 0))}
                       {x.barcode && <span className="font-mono"> • {x.barcode}</span>}
+                    </div>
+                    <div className="mt-1 text-xs">
+                      <span className="text-ink-300">Potong dari </span>
+                      <span className="font-mono text-white">{kode}</span>
+                      <span className="text-ink-300"> • tersedia </span>
+                      <span className={tersedia >= qtyKirim ? "text-ok-100" : "text-brand-200"}>
+                        {fmt(tersedia)}
+                      </span>
+                      {qtyKirim > tersedia && (
+                        <span className="ml-2 font-medium text-brand-200">
+                          qty melebihi stok lokasi ini
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="sm:col-span-2">

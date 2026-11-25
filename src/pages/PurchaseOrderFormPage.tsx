@@ -5,7 +5,7 @@ import { Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
-import { buildSearchPattern } from "../lib/format";
+import { buildSearchPattern, todayLocalDate } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -64,7 +64,7 @@ export function PurchaseOrderFormPage() {
   const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [supplierId, setSupplierId] = useState("");
-  const [orderDate, setOrderDate] = useState(new Date().toISOString().slice(0, 10));
+  const [orderDate, setOrderDate] = useState(todayLocalDate());
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<PoLine[]>([newLine()]);
