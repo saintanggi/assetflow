@@ -20,7 +20,7 @@ Log Transaksi, Peringatan Stok, dan Database (RPC, RLS, trigger, migrasi).
 |---|---|
 | Bug/regresi diperbaiki pada sesi ini | **15** |
 | Akar masalah utama "Stok Akhir ≠ Stok Awal + IN − OUT" | **4** |
-| Tes otomatis | **342/342 lulus** (sebelumnya 4 gagal) |
+| Tes otomatis | **345/345 lulus** (sebelumnya 4 gagal) |
 | Build TypeScript | **lulus** |
 | Butuh keputusan bisnis (belum diubah) | **6** |
 
@@ -158,7 +158,9 @@ titik-titik tanggal bisnis.
 
 | # | Masalah | Status |
 |---|---|---|
-| Q1 | 4 tes otomatis merah (fitur sisa stok & status aset hilang) | ✅ 342/342 lulus |
+| Q2 | Tidak ada alat untuk melihat asal selisih | `docs/sql/stock_drift_report.sql` (ringkasan, per lokasi, detail + jejak waktu) | ✅ |
+
+| Q1 | 4 tes otomatis merah (fitur sisa stok & status aset hilang) | ✅ 345/345 lulus |
 | Q2 | Tidak ada tes untuk matematika stok | ✅ tes unit + tes PostgreSQL (PGlite) |
 
 ---
@@ -198,7 +200,8 @@ Ini bukan bug yang bisa saya putuskan sendiri karena mengubah kebijakan operasio
     sehingga sisa pengiriman tidak hilang dan tetap masuk "Sisa Belum Terkirim".
 - Salinan siap-copas: **`docs/sql/stock_consistency.sql`**,
   **`docs/sql/quick_ship_partial.sql`**, **`docs/sql/stock_console_access.sql`**
-  (identik dengan migrasinya), plus **`docs/sql/verify_stock_migration.sql`**.
+  (identik dengan migrasinya), plus **`docs/sql/verify_stock_migration.sql`**
+  dan **`docs/sql/stock_drift_report.sql`** (penjelasan selisih per baris).
 
 ### Aplikasi
 - **`src/lib/stockPeriod.ts`** (baru) — mesin hitung yang sama untuk klien +
@@ -228,6 +231,8 @@ Ini bukan bug yang bisa saya putuskan sendiri karena mengubah kebijakan operasio
   periode lampau, selisih historis, penyelarasan, guard izin).
 - **`src/features/requests/quickShip.db.test.ts`** — 2 tes PostgreSQL/PGlite
   (kirim sebagian tidak menghilangkan sisa; pelunasan menandai terkirim).
+- **`src/lib/stockDriftReport.db.test.ts`** — 3 tes untuk skrip penjelasan
+  selisih (`docs/sql/stock_drift_report.sql`).
 - **`src/lib/verifyStockSql.db.test.ts`** — 5 tes yang menjalankan skrip
   `docs/sql/verify_stock_migration.sql` apa adanya, sehingga skrip cek di
   Supabase dijamin tidak error dan hasilnya akurat.
