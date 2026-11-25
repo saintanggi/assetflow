@@ -129,6 +129,8 @@ export function LiveStockPage() {
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [pivotLoading, setPivotLoading] = useState(false);
   const [integrity, setIntegrity] = useState<StockIntegrityRow[]>([]);
+  /** "rpc" = fungsi SQL sudah terpasang; "fallback" = migrasi belum dijalankan. */
+  const [reportVia, setReportVia] = useState<"rpc" | "fallback" | null>(null);
   const [aligning, setAligning] = useState(false);
   const [activeLocIds, setActiveLocIds] = useState<string[]>([]);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
@@ -263,6 +265,7 @@ export function LiveStockPage() {
 
       // Audit selisih historis sudah ikut dihitung pada loader yang sama.
       setIntegrity(report.integrity);
+      setReportVia(report.via);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal memuat laporan.");
     } finally {
@@ -760,6 +763,18 @@ export function LiveStockPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {searched && reportVia !== null && (
+        <p
+          className={`mt-4 text-xs ${
+            reportVia === "rpc" ? "text-ok-100" : "text-warn-100"
+          }`}
+        >
+          {reportVia === "rpc"
+            ? "✓ Mesin laporan SQL aktif (stock_period_report) — laporan cepat & panel audit tersedia."
+            : "⚠ Migrasi SQL stock_consistency belum terpasang. Angka tetap benar (mode kompatibilitas), tetapi lebih lambat dan penyelarasan belum bisa dijalankan. Jalankan docs/sql/stock_consistency.sql di Supabase."}
+        </p>
       )}
 
       <div className="mt-6">

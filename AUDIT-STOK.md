@@ -20,7 +20,7 @@ Log Transaksi, Peringatan Stok, dan Database (RPC, RLS, trigger, migrasi).
 |---|---|
 | Bug/regresi diperbaiki pada sesi ini | **15** |
 | Akar masalah utama "Stok Akhir ≠ Stok Awal + IN − OUT" | **4** |
-| Tes otomatis | **337/337 lulus** (sebelumnya 4 gagal) |
+| Tes otomatis | **341/341 lulus** (sebelumnya 4 gagal) |
 | Build TypeScript | **lulus** |
 | Butuh keputusan bisnis (belum diubah) | **6** |
 
@@ -158,7 +158,7 @@ titik-titik tanggal bisnis.
 
 | # | Masalah | Status |
 |---|---|---|
-| Q1 | 4 tes otomatis merah (fitur sisa stok & status aset hilang) | ✅ 337/337 lulus |
+| Q1 | 4 tes otomatis merah (fitur sisa stok & status aset hilang) | ✅ 341/341 lulus |
 | Q2 | Tidak ada tes untuk matematika stok | ✅ tes unit + tes PostgreSQL (PGlite) |
 
 ---
@@ -224,6 +224,9 @@ Ini bukan bug yang bisa saya putuskan sendiri karena mengubah kebijakan operasio
   periode lampau, selisih historis, penyelarasan, guard izin).
 - **`src/features/requests/quickShip.db.test.ts`** — 2 tes PostgreSQL/PGlite
   (kirim sebagian tidak menghilangkan sisa; pelunasan menandai terkirim).
+- **`src/lib/verifyStockSql.db.test.ts`** — 4 tes yang menjalankan skrip
+  `docs/sql/verify_stock_migration.sql` apa adanya, sehingga skrip cek di
+  Supabase dijamin tidak error dan hasilnya akurat.
 
 ---
 
@@ -234,6 +237,13 @@ Supabase Dashboard → **Database → Backups** → pastikan ada backup terbaru
 (atau `pg_dump`, lihat `docs/DATABASE.md` §10).
 
 ### Langkah 2 — Jalankan migrasi (1 menit)
+**Cara memastikan SQL-nya sudah aktif:** buka Supabase → SQL Editor → tempel
+seluruh isi **`docs/sql/verify_stock_migration.sql`** → Run. Hasilnya satu tabel
+10 baris; semua harus **LULUS** (baris "PERHATIAN" hanya menandai data lama
+yang perlu diselaraskan, bukan error). Di aplikasi, panel Live Stok juga
+menampilkan tulisan "✓ Mesin laporan SQL aktif" bila migrasi terpasang, atau
+"⚠ … mode kompatibilitas" bila belum.
+
 Supabase Dashboard → **SQL Editor** → jalankan **kedua** file berikut:
 
 1. `supabase/migrations/20261125000001_stock_consistency.sql`
