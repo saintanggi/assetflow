@@ -250,7 +250,7 @@ export function UserManagementPage() {
       <Dialog open={!!resetUser} onOpenChange={(o) => !o && setResetUser(null)}>
         <DialogHeader>
           <DialogTitle>Reset Password — {resetUser?.username}</DialogTitle>
-          <DialogDescription>Masukkan password baru (minimal 6 karakter).</DialogDescription>
+          <DialogDescription>Masukkan password baru (minimal 8 karakter).</DialogDescription>
         </DialogHeader>
         <div className="px-1 py-2">
           <Label>Password Baru</Label>

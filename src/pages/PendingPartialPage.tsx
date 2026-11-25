@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { HTMLAttributes } from "react";
 import { Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -8,8 +8,9 @@ import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { pendingJenisVariant, badgeDarkClass } from "../lib/statusColors";
-import { buildSearchPattern } from "../lib/format";
+import { buildSearchPattern, todayLocalDate } from "../lib/format";
 import { cn } from "../lib/utils";
+import { formatStockMoveResult } from "../features/requests/itemCorrection";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { CardContent } from "../components/ui/card";
@@ -73,6 +74,13 @@ export function PendingPartialPage() {
   const [gantiSearching, setGantiSearching] = useState(false);
   const [gantiItem, setGantiItem] = useState<{ id: string; sku: string; name: string } | null>(null);
   const [gantiSaving, setGantiSaving] = useState(false);
+  const gantiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (gantiTimerRef.current) clearTimeout(gantiTimerRef.current);
+    };
+  }, []);
 
   // Hapus sisa belum terkirim (barang di-cancel kirimnya, khusus super admin).
   const [hapusRow, setHapusRow] = useState<PendingRow | null>(null);
@@ -204,25 +212,53 @@ export function PendingPartialPage() {
   const handleGantiQueryChange = (q: string) => {
     setGantiQuery(q);
     setGantiItem(null);
-    setGantiSearching(true);
+    if (gantiTimerRef.current) {
+      clearTimeout(gantiTimerRef.current);
+      gantiTimerRef.current = null;
+    }
     if (q.trim().length < 2) {
       setGantiResults([]);
       setGantiSearching(false);
       return;
     }
-    setTimeout(() => searchGantiItems(q.trim()), 300);
+    setGantiSearching(true);
+    gantiTimerRef.current = setTimeout(() => void searchGantiItems(q.trim()), 300);
   };
 
   const submitGantiBarang = async () => {
     if (!gantiRow || !gantiItem) return;
     setGantiSaving(true);
     try {
-      const { error } = await supabase
-        .from("request_items")
-        .update({ item_id: gantiItem.id, updated_at: new Date().toISOString() })
-        .eq("id", gantiRow.id);
-      if (error) throw new Error(error.message);
-      toast.success(`"${gantiRow.name}" diganti jadi "${gantiItem.name}".`);
+      // Jika item sudah pernah terkirim sebagian (qty_shipped > 0), wajib lewat
+      // RPC admin_change_request_item agar stok barang lama dikembalikan (IN)
+      // dan stok barang pengganti dipotong (OUT) secara atomik.
+      if (gantiRow.qty_shipped > 0) {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_change_request_item", {
+          p_request_item_id: gantiRow.id,
+          p_new_item_id: gantiItem.id,
+          p_new_status_aset: null,
+          p_reason: "Ganti barang dari halaman Sisa Belum Terkirim",
+        });
+        if (rpcErr) throw new Error(rpcErr.message);
+        toast.success(
+          formatStockMoveResult(
+            rpcRes as { stock_move?: Record<string, unknown> } | null,
+            gantiItem.name
+          )
+        );
+      } else {
+        const { error } = await supabase
+          .from("request_items")
+          .update({ item_id: gantiItem.id, updated_at: new Date().toISOString() })
+          .eq("id", gantiRow.id);
+        if (error) {
+          if (error.code === "23505") {
+            throw new Error("Barang pengganti sudah ada di tiket permintaan yang sama.");
+          }
+          throw new Error(error.message);
+        }
+        toast.success(`"${gantiRow.name}" diganti jadi "${gantiItem.name}".`);
+      }
       setGantiRow(null);
       setGantiQuery("");
       setGantiResults([]);
@@ -366,7 +402,7 @@ export function PendingPartialPage() {
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sheetRows), "SISA_PENDING");
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocalDate();
     XLSX.writeFile(wb, `Sisa_Belum_Terkirim_${today}.xlsx`);
     toast.success("File Excel Sisa Belum Terkirim berhasil diunduh.");
   };

@@ -24,7 +24,7 @@ import {
 
 const schema = z
   .object({
-    password: z.string().min(6, "Password minimal 6 karakter"),
+    password: z.string().min(8, "Password baru minimal 8 karakter"),
     confirm: z.string().min(1, "Konfirmasi password wajib diisi"),
   })
   .refine((d) => d.password === d.confirm, {

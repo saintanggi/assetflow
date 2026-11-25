@@ -13,14 +13,14 @@ export const inventoryItemSchema = z.object({
   unit_id: z.string().uuid("Satuan tidak valid").nullable().optional(),
   barcode: z.string().max(50).nullable().optional(),
   min_stock: z
-    .number({ invalid_type_error: "Stok minimum harus angka" })
+    .number({ error: "Stok minimum harus angka" })
     .nonnegative("Stok minimum tidak boleh negatif")
     .nullable()
     .optional(),
   location_id: z.string().uuid("Lokasi tidak valid").nullable().optional(),
   supplier_id: z.string().uuid("Pemasok tidak valid").nullable().optional(),
   purchase_price: z
-    .number({ invalid_type_error: "Harga beli harus angka" })
+    .number({ error: "Harga beli harus angka" })
     .nonnegative("Harga beli tidak boleh negatif")
     .nullable()
     .optional(),

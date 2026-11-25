@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
-import { todayLocalDate } from "../../lib/format";
-import { buildSearchPattern } from "../../lib/format";
+import { fetchAllPages } from "../../lib/supabasePagination";
+import { findLocationByCondition } from "../../lib/stockLocations";
+import { buildSearchPattern, formatQty, todayLocalDate } from "../../lib/format";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -109,8 +110,14 @@ export function TransactionForm({
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ItemRow[]>([newRow()]);
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
+  const [sourceBalances, setSourceBalances] = useState<Map<string, number>>(new Map());
+  const [loadingBalances, setLoadingBalances] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Kunci idempotensi dipertahankan selama form belum berhasil di-posting
+  // agar retry saat timeout tidak pernah menggandakan transaksi stok.
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+  const uploadedPhotoRef = useRef<{ file: File; url: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,14 +181,46 @@ export function TransactionForm({
   const lokasiByJenis = useMemo(() => {
     const map: Record<string, LocationOption | undefined> = {};
     for (const key of Object.keys(JENIS_SUFFIX) as (keyof typeof JENIS_SUFFIX)[]) {
-      map[key] = locationOptions.find(
-        (l) => l.code.toUpperCase() === `STOK-${JENIS_SUFFIX[key]}`
-      );
+      map[key] =
+        findLocationByCondition(locationOptions, key, { preferMain: true }) ?? undefined;
     }
     return map;
   }, [locationOptions]);
   const effectiveDestId = isMasuk ? lokasiByJenis[jenisStok]?.value ?? "" : destId;
   const effectiveSourceId = isKeluar ? lokasiByJenis[jenisStok]?.value ?? "" : sourceId;
+
+  // Muat saldo stok langsung (Live Stock Indicator) untuk lokasi asal saat
+  // transaksi Barang Keluar atau Transfer agar operator langsung melihat stok tersedia.
+  useEffect(() => {
+    if (!needSource || !effectiveSourceId) {
+      setSourceBalances(new Map());
+      return;
+    }
+    let cancelled = false;
+    setLoadingBalances(true);
+    (async () => {
+      try {
+        const list = await fetchAllPages<{ item_id: string; qty: number | string }>((from, to) =>
+          supabase
+            .from("inventory_balances")
+            .select("item_id, qty")
+            .eq("location_id", effectiveSourceId)
+            .range(from, to)
+        );
+        if (cancelled) return;
+        const map = new Map<string, number>();
+        for (const b of list) map.set(b.item_id, Number(b.qty));
+        setSourceBalances(map);
+      } catch {
+        if (!cancelled) setSourceBalances(new Map());
+      } finally {
+        if (!cancelled) setLoadingBalances(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needSource, effectiveSourceId]);
 
   useEffect(() => {
     const timers = searchTimers.current;
@@ -252,6 +291,8 @@ export function TransactionForm({
     setPhotoFile(null);
     setPhotoPreview(null);
     if (photoInputRef.current) photoInputRef.current.value = "";
+    uploadedPhotoRef.current = null;
+    idempotencyKeyRef.current = crypto.randomUUID();
     setRows([newRow()]);
   };
 
@@ -312,11 +353,31 @@ export function TransactionForm({
       if (!Number.isFinite(Number(r.qty)) || Number(r.qty) <= 0)
         return `Qty untuk "${r.item.name}" harus lebih dari 0.`;
     }
+    // Cek duplikat barang sebelum upload foto supaya tidak menyisakan file yatim.
+    const seenIds = new Set<string>();
+    for (const r of rows) {
+      if (!r.item) continue;
+      if (seenIds.has(r.item.id)) {
+        return `Barang "${r.item.name}" duplikat di daftar — gabungkan jumlahnya ke satu baris.`;
+      }
+      seenIds.add(r.item.id);
+    }
     if (isKeluar) {
       if (!jenisStok) return "Pilih jenis stok (Baru / Retur / Unready).";
       if (!effectiveSourceId) return "Lokasi asal untuk jenis stok ini tidak ditemukan.";
     } else if (needSource && !sourceId) {
       return "Lokasi asal wajib dipilih.";
+    }
+    // Cek stok cukup SEBELUM upload foto surat jalan supaya tidak menyisakan file yatim.
+    if (needSource && effectiveSourceId && !loadingBalances) {
+      for (const r of rows) {
+        if (!r.item) continue;
+        const avail = sourceBalances.get(r.item.id) ?? 0;
+        const want = Number(r.qty);
+        if (want > avail) {
+          return `Stok "${r.item.name}" tidak mencukupi (tersedia ${formatQty(avail)}, diminta ${formatQty(want)}).`;
+        }
+      }
     }
     if (isMasuk) {
       if (!jenisStok) return "Pilih jenis stok (Baru / Retur / Unready).";
@@ -347,36 +408,40 @@ export function TransactionForm({
     setSubmitting(true);
     try {
       // Foto surat jalan diupload DULU (wajib untuk Masuk/Keluar); kalau
-      // upload gagal, transaksi tidak jadi diposting. Path memakai kunci
-      // idempotensi supaya satu percobaan = satu file (file yatim kalau
-      // RPC gagal tidak masalah — tidak tercatat di transaksi mana pun).
-      const idempotencyKey = crypto.randomUUID();
+      // upload gagal, transaksi tidak jadi diposting. Kunci idempotensi
+      // disimpan di ref agar retry (timeout / jaringan putus) tidak menggandakan stok.
+      const idempotencyKey = idempotencyKeyRef.current;
       let photoUrl: string | null = null;
       if (usesJenisStok && photoFile) {
-        if (photoFile.size > 5 * 1024 * 1024) throw new Error("Ukuran foto maksimal 5MB.");
-        setPhotoUploading(true);
-        try {
-          // Ekstensi dari tipe MIME (gambar hasil paste dari clipboard sering
-          // bernama generik "image.png" — nama file tidak bisa diandalkan).
-          const extByMime: Record<string, string> = {
-            "image/jpeg": "jpg",
-            "image/png": "png",
-            "image/webp": "webp",
-            "image/gif": "gif",
-          };
-          const ext =
-            extByMime[photoFile.type] ??
-            photoFile.name.split(".").pop()?.toLowerCase() ??
-            "jpg";
-          const path = `${idempotencyKey}.${ext}`;
-          const { error: upErr } = await supabase.storage
-            .from("surat-jalan")
-            .upload(path, photoFile, { contentType: photoFile.type });
-          if (upErr) throw new Error(`Gagal upload foto surat jalan: ${upErr.message}`);
-          const { data } = supabase.storage.from("surat-jalan").getPublicUrl(path);
-          photoUrl = data.publicUrl;
-        } finally {
-          setPhotoUploading(false);
+        if (uploadedPhotoRef.current?.file === photoFile) {
+          photoUrl = uploadedPhotoRef.current.url;
+        } else {
+          if (photoFile.size > 5 * 1024 * 1024) throw new Error("Ukuran foto maksimal 5MB.");
+          setPhotoUploading(true);
+          try {
+            // Ekstensi dari tipe MIME (gambar hasil paste dari clipboard sering
+            // bernama generik "image.png" — nama file tidak bisa diandalkan).
+            const extByMime: Record<string, string> = {
+              "image/jpeg": "jpg",
+              "image/png": "png",
+              "image/webp": "webp",
+              "image/gif": "gif",
+            };
+            const ext =
+              extByMime[photoFile.type] ??
+              photoFile.name.split(".").pop()?.toLowerCase() ??
+              "jpg";
+            const path = `${idempotencyKey}.${ext}`;
+            const { error: upErr } = await supabase.storage
+              .from("surat-jalan")
+              .upload(path, photoFile, { contentType: photoFile.type, upsert: true });
+            if (upErr) throw new Error(`Gagal upload foto surat jalan: ${upErr.message}`);
+            const { data } = supabase.storage.from("surat-jalan").getPublicUrl(path);
+            photoUrl = data.publicUrl;
+            uploadedPhotoRef.current = { file: photoFile, url: photoUrl };
+          } finally {
+            setPhotoUploading(false);
+          }
         }
       }
       const items: TransactionItemInput[] = rows
@@ -410,6 +475,8 @@ export function TransactionForm({
       const docNumber = String(data ?? "");
       toast.success(`Transaksi ${docNumber} berhasil diposting`);
       resetForm();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal memposting transaksi.");
     } finally {
       setSubmitting(false);
     }
@@ -572,7 +639,14 @@ export function TransactionForm({
           </Button>
         </div>
 
-        {rows.map((row, idx) => (
+        {rows.map((row, idx) => {
+          const liveAvail =
+            needSource && effectiveSourceId && row.item
+              ? (sourceBalances.get(row.item.id) ?? 0)
+              : null;
+          const reqQty = Number(row.qty);
+          const isShort = liveAvail !== null && Number.isFinite(reqQty) && reqQty > liveAvail;
+          return (
           <div
             key={row.key}
             className="grid gap-2 rounded-lg border border-white/15 bg-white/5 p-3 sm:grid-cols-[1fr_140px_44px]"
@@ -586,6 +660,19 @@ export function TransactionForm({
                 onFocus={() => row.results.length > 0 && updateRow(row.key, { open: true })}
                 className={DARK_INPUT}
               />
+              {liveAvail !== null && (
+                <p
+                  className={`mt-1 text-xs font-medium ${
+                    isShort ? "text-brand-200" : "text-ok-200"
+                  }`}
+                >
+                  {loadingBalances
+                    ? "Memeriksa stok…"
+                    : isShort
+                      ? `Stok kurang! Tersedia di lokasi asal: ${formatQty(liveAvail)}`
+                      : `Stok tersedia di lokasi asal: ${formatQty(liveAvail)}`}
+                </p>
+              )}
               {row.open && (
                 <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-white/15 bg-ink-800/95 text-white shadow-lg backdrop-blur-xl">
                   {row.searching ? (
@@ -599,14 +686,21 @@ export function TransactionForm({
                       <button
                         key={r.id}
                         type="button"
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-white/10"
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-white/10"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           pickItem(row.key, r);
                         }}
                       >
-                        <span className="font-medium">{r.sku}</span>
-                        <span className="text-ink-300"> — {r.name}</span>
+                        <span>
+                          <span className="font-medium">{r.sku}</span>
+                          <span className="text-ink-300"> — {r.name}</span>
+                        </span>
+                        {needSource && effectiveSourceId && (
+                          <span className="tnum ml-2 text-xs text-ink-300">
+                            Stok: {formatQty(sourceBalances.get(r.id) ?? 0)}
+                          </span>
+                        )}
                       </button>
                     ))
                   )}
@@ -635,7 +729,8 @@ export function TransactionForm({
               <Trash2 className="h-4 w-4 text-brand-200" />
             </Button>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="space-y-1.5">

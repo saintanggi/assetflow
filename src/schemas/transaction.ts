@@ -3,7 +3,7 @@ import { z } from "zod";
 export const transactionLineSchema = z.object({
   item_id: z.string().uuid("Barang tidak valid"),
   qty: z
-    .number({ invalid_type_error: "Qty harus angka" })
+    .number({ error: "Qty harus angka" })
     .positive("Qty harus lebih dari 0"),
   unit_price: z.number().nonnegative().nullable().optional(),
   notes: z.string().max(255).nullable().optional(),
@@ -25,7 +25,7 @@ export const stockCountLineSchema = z.object({
   item_id: z.string().uuid(),
   system_qty: z.number(),
   counted_qty: z
-    .number({ invalid_type_error: "Qty hasil hitung harus angka" })
+    .number({ error: "Qty hasil hitung harus angka" })
     .nonnegative("Qty tidak boleh negatif"),
 });
 

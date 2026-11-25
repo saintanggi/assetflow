@@ -13,7 +13,7 @@ export const assetSchema = z.object({
   serial_number: z.string().max(100).nullable().optional(),
   purchase_date: z.string().nullable().optional(),
   purchase_price: z
-    .number({ invalid_type_error: "Harga harus angka" })
+    .number({ error: "Harga harus angka" })
     .nonnegative("Harga tidak boleh negatif")
     .nullable()
     .optional(),

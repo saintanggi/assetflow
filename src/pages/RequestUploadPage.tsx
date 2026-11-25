@@ -620,10 +620,16 @@ export function RequestUploadPage() {
       toast.warning(`${skipped.length} baris sudah ada di sistem — akan dilewati.`);
   };
 
+  const MAX_EXCEL_BYTES = 15 * 1024 * 1024; // 15 MB batas aman mencegah browser crash/DoS
+
   const handleFile = async (f: File) => {
     setPreview(null);
     setResult(null);
     setFailList([]);
+    if (f.size > MAX_EXCEL_BYTES) {
+      toast.error("Ukuran file terlalu besar (maksimal 15 MB). Pecah file menjadi beberapa bagian.");
+      return;
+    }
     setFileName(f.name);
     try {
       const buf = await f.arrayBuffer();
@@ -1030,9 +1036,24 @@ export function RequestUploadPage() {
           // dihapus — permintaan lama beserta isinya tidak boleh hilang.
           // Baris pending yang sudah dilunasi TIDAK dihapus: barangnya memang
           // sudah dikirim (transaksi OUT-nya sudah tercatat).
-          if (!merged && reqId) await supabase.from("requests").delete().eq("id", reqId);
-          if (merged && insertedItemIds.length > 0)
-            await supabase.from("request_items").delete().in("id", insertedItemIds);
+          let rollbackNote = "";
+          if (!merged && reqId) {
+            const { error: rbErr } = await supabase.from("requests").delete().eq("id", reqId);
+            if (rbErr) {
+              rollbackNote =
+                " (Peringatan: draft tiket belum otomatis terhapus karena hak akses — mohon cek/hapus manual oleh Super Admin.)";
+            }
+          }
+          if (merged && insertedItemIds.length > 0) {
+            const { error: rbErr } = await supabase
+              .from("request_items")
+              .delete()
+              .in("id", insertedItemIds);
+            if (rbErr) {
+              rollbackNote =
+                " (Peringatan: sebagian baris draft belum otomatis terhapus — mohon cek tiket ini oleh Super Admin.)";
+            }
+          }
           const rawMsg = e instanceof Error ? e.message : "gagal";
           const fulfilledNote =
             groupFulfilledQty > 0
@@ -1040,7 +1061,7 @@ export function RequestUploadPage() {
               : "";
           failures.push({
             ticket: ticket ?? `baris grup ${n}`,
-            detail: formatShipError(rawMsg, itemNameById) + fulfilledNote,
+            detail: formatShipError(rawMsg, itemNameById) + fulfilledNote + rollbackNote,
           });
         }
       }

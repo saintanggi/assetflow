@@ -10,10 +10,31 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
+const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "*";
+
 const cors = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+async function writeAudit(
+  actorId: string | null,
+  action: string,
+  entityId: string,
+  payload: Record<string, unknown>,
+) {
+  try {
+    await admin.from("audit_logs").insert({
+      actor_id: actorId,
+      action,
+      entity_type: "user_accounts",
+      entity_id: entityId,
+      new_data: payload,
+    });
+  } catch {
+    // Jangan gagalkan operasi utama bila pencatatan audit sekunder bermasalah.
+  }
+}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -51,8 +72,8 @@ Deno.serve(async (req) => {
 
       if (!/^[a-z0-9_.-]{3,30}$/.test(username))
         return json({ error: "Username 3-30 karakter: huruf kecil, angka, _ . -" }, 400);
-      if (password.length < 6)
-        return json({ error: "Password minimal 6 karakter" }, 400);
+      if (password.length < 8)
+        return json({ error: "Password baru minimal 8 karakter" }, 400);
       if (!["admin_ho", "admin_gudang", "helper"].includes(role))
         return json({ error: "Role tidak valid" }, 400);
       if (!display_name)
@@ -97,12 +118,23 @@ Deno.serve(async (req) => {
         .select("id")
         .eq("name", role)
         .maybeSingle();
-      await admin.from("profiles").upsert({
+      const { error: pErr } = await admin.from("profiles").upsert({
         id: created.user.id,
         email,
         full_name: display_name,
         role_id: roleRow?.id ?? null,
         is_active: true,
+      });
+      if (pErr) {
+        await admin.from("user_accounts").delete().eq("auth_user_id", created.user.id);
+        await admin.auth.admin.deleteUser(created.user.id);
+        return json({ error: `Gagal sinkron profil: ${pErr.message}` }, 500);
+      }
+
+      await writeAudit(callerUser?.id ?? null, "USER_CREATE", created.user.id, {
+        username,
+        role,
+        display_name,
       });
 
       return json({ ok: true, username });
@@ -112,18 +144,29 @@ Deno.serve(async (req) => {
     if (action === "reset-password") {
       const username = String(body.username ?? "").toLowerCase().trim();
       const password = String(body.password ?? "");
-      if (password.length < 6)
-        return json({ error: "Password minimal 6 karakter" }, 400);
+      if (password.length < 8)
+        return json({ error: "Password baru minimal 8 karakter" }, 400);
 
       const { data: acc } = await admin
         .from("user_accounts")
-        .select("auth_user_id")
+        .select("auth_user_id, role")
         .eq("username", username)
         .maybeSingle();
       if (!acc?.auth_user_id) return json({ error: "Akun tidak ditemukan" }, 404);
+      if (acc.role === "super_admin") {
+        return json({ error: "Password Super Admin tidak boleh direset lewat endpoint ini" }, 403);
+      }
+      if (callerUser?.id && acc.auth_user_id === callerUser.id) {
+        return json({ error: "Gunakan menu Pengaturan untuk mengubah password Anda sendiri" }, 400);
+      }
 
       const { error } = await admin.auth.admin.updateUserById(acc.auth_user_id, { password });
       if (error) return json({ error: error.message }, 500);
+
+      await writeAudit(callerUser?.id ?? null, "USER_RESET_PASSWORD", acc.auth_user_id, {
+        username,
+        role: acc.role,
+      });
       return json({ ok: true });
     }
 
@@ -134,17 +177,35 @@ Deno.serve(async (req) => {
 
       const { data: acc } = await admin
         .from("user_accounts")
-        .select("auth_user_id")
+        .select("auth_user_id, role")
         .eq("username", username)
         .maybeSingle();
       if (!acc?.auth_user_id) return json({ error: "Akun tidak ditemukan" }, 404);
+      if (acc.role === "super_admin") {
+        return json({ error: "Akun Super Admin tidak boleh dinonaktifkan lewat endpoint ini" }, 403);
+      }
+      if (callerUser?.id && acc.auth_user_id === callerUser.id) {
+        return json({ error: "Tidak boleh menonaktifkan akun Anda sendiri" }, 400);
+      }
 
-      await admin.from("user_accounts").update({ is_active }).eq("username", username);
+      const { error: uErr } = await admin
+        .from("user_accounts")
+        .update({ is_active })
+        .eq("username", username);
+      if (uErr) return json({ error: `Gagal update akun: ${uErr.message}` }, 500);
       await admin.from("profiles").update({ is_active }).eq("id", acc.auth_user_id);
       // Ban/unban auth user juga.
-      await admin.auth.admin.updateUserById(acc.auth_user_id, {
+      const { error: bErr } = await admin.auth.admin.updateUserById(acc.auth_user_id, {
         ban_duration: is_active ? "none" : "876000h",
       });
+      if (bErr) return json({ error: `Gagal update status auth: ${bErr.message}` }, 500);
+
+      await writeAudit(
+        callerUser?.id ?? null,
+        is_active ? "USER_ACTIVATE" : "USER_DEACTIVATE",
+        acc.auth_user_id,
+        { username, role: acc.role, is_active },
+      );
       return json({ ok: true });
     }
 

@@ -157,31 +157,60 @@ export function PurchaseOrderFormPage() {
     }
     setSaving(true);
     try {
-      const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-      const { data: po, error: poErr } = await supabase
-        .from("purchase_orders")
-        .insert({
-          po_number: poNumber,
-          supplier_id: supplierId,
-          status,
-          order_date: orderDate,
-          expected_date: expectedDate || null,
-          total_amount: total,
-          notes: notes.trim() || null,
-        })
-        .select("id")
-        .single();
-      if (poErr || !po) throw new Error(poErr?.message ?? "Gagal membuat PO");
+      const itemsPayload = valid.map((l) => ({
+        item_id: l.item!.id,
+        qty_ordered: Number(l.qty),
+        unit_price: Number(l.price) || 0,
+      }));
 
-      const { error: itemsErr } = await supabase.from("purchase_order_items").insert(
-        valid.map((l) => ({
-          po_id: po.id,
-          item_id: l.item!.id,
-          qty_ordered: Number(l.qty),
-          unit_price: Number(l.price) || 0,
-        }))
-      );
-      if (itemsErr) throw new Error(itemsErr.message);
+      // Gunakan RPC atomik create_purchase_order (nomor urut server-side via next_doc_number).
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("create_purchase_order", {
+        p_supplier_id: supplierId,
+        p_status: status,
+        p_order_date: orderDate,
+        p_expected_date: expectedDate || null,
+        p_notes: notes.trim() || null,
+        p_items: itemsPayload,
+      });
+
+      let poNumber: string;
+      if (!rpcErr && rpcRes) {
+        const resObj = rpcRes as { id?: string; po_number?: string };
+        poNumber = resObj.po_number ?? "PO";
+      } else {
+        const isMissingRpc =
+          rpcErr?.code === "42883" ||
+          rpcErr?.code === "PGRST202" ||
+          /Could not find the function/i.test(rpcErr?.message ?? "");
+        if (!isMissingRpc) throw new Error(rpcErr?.message ?? "Gagal membuat PO");
+
+        // Fallback sementara sebelum migrasi SQL dijalankan.
+        poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+        const { data: po, error: poErr } = await supabase
+          .from("purchase_orders")
+          .insert({
+            po_number: poNumber,
+            supplier_id: supplierId,
+            status,
+            order_date: orderDate,
+            expected_date: expectedDate || null,
+            total_amount: total,
+            notes: notes.trim() || null,
+          })
+          .select("id")
+          .single();
+        if (poErr || !po) throw new Error(poErr?.message ?? "Gagal membuat PO");
+
+        const { error: itemsErr } = await supabase.from("purchase_order_items").insert(
+          itemsPayload.map((it) => ({
+            po_id: po.id,
+            item_id: it.item_id,
+            qty_ordered: it.qty_ordered,
+            unit_price: it.unit_price,
+          }))
+        );
+        if (itemsErr) throw new Error(itemsErr.message);
+      }
 
       toast.success(`PO ${poNumber} berhasil dibuat${status === "ordered" ? " & dipesan" : " (draft)"}`);
       navigate("/pembelian");

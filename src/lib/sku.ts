@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchAllPages } from "./supabasePagination";
 
 /**
  * SKU otomatis gaya company besar — skema keluarga XXX-NNN.
@@ -116,10 +117,11 @@ export async function generateSku(client: SupabaseClient, name: string): Promise
  */
 export async function generateSkus(client: SupabaseClient, names: string[]): Promise<string[]> {
   const families = names.map(familyCodeForName);
-  const { data, error } = await client.from("inventory_items").select("sku").limit(5000);
-  if (error) throw new Error(error.message);
+  const rows = await fetchAllPages<{ sku: string }>((from, to) =>
+    client.from("inventory_items").select("sku").range(from, to)
+  );
   const max: Record<string, number> = {};
-  for (const row of (data ?? []) as { sku: string }[]) {
+  for (const row of rows) {
     const m = SKU_RE.exec(row.sku);
     if (m) max[m[1]] = Math.max(max[m[1]] ?? 0, parseInt(m[2], 10));
   }

@@ -406,9 +406,9 @@ function GlobalSearch() {
         if (hasPermission("assets.view")) {
           navigate(`/aset?q=${encodeURIComponent(term)}`);
         } else if (hasPermission("inventory.view")) {
-          navigate("/persediaan");
+          navigate(`/persediaan?q=${encodeURIComponent(term)}`);
         } else {
-          navigate("/permintaan");
+          navigate(`/permintaan?q=${encodeURIComponent(term)}`);
         }
       }}
     >
@@ -560,6 +560,7 @@ export function AppLayout(): ReactNode {
   const navigate = useNavigate();
   const [soundOn, setSoundOn] = useState(isNavSoundEnabled());
   const firstRoute = useRef(true);
+  const lastQueueFetchRef = useRef<number>(0);
 
   // Buka kunci audio saat interaksi pertama (browser memblokir audio sebelumnya).
   useEffect(() => {
@@ -600,8 +601,35 @@ export function AppLayout(): ReactNode {
 
   useEffect(() => {
     if (!user || !hasPermission("requests.view")) return;
+    // Throttle refresh antar perpindahan rute (minimal 30 detik) supaya tidak
+    // membanjiri database saat user berpindah menu dengan cepat.
+    const now = Date.now();
+    if (now - lastQueueFetchRef.current < 30_000) return;
+    lastQueueFetchRef.current = now;
+
     let cancelled = false;
     (async () => {
+      // Gunakan 1 RPC server-side get_nav_queue_counts() (bebas batas 1.000 baris
+      // & lowStock konsisten hanya menghitung lokasi *-BARU seperti Peringatan Stok).
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("get_nav_queue_counts");
+      if (cancelled) return;
+      if (!rpcErr && rpcData) {
+        const c = rpcData as {
+          diajukan?: number;
+          aktif?: number;
+          sisa?: number;
+          low_stock?: number;
+        };
+        setQueueCounts({
+          diajukan: Number(c.diajukan ?? 0),
+          aktif: Number(c.aktif ?? 0),
+          sisa: Number(c.sisa ?? 0),
+          lowStock: Number(c.low_stock ?? 0),
+        });
+        return;
+      }
+
+      // Fallback sementara sebelum migrasi SQL dijalankan.
       const [diajukanRes, aktifRes, sisaRes, itemsRes, balancesRes] = await Promise.all([
         supabase
           .from("requests")
@@ -616,12 +644,19 @@ export function AppLayout(): ReactNode {
           .select("id", { count: "exact", head: true })
           .in("item_status", ["pending_sebagian", "menunggu_stok"]),
         supabase.from("inventory_items").select("id, min_stock").eq("is_active", true),
-        supabase.from("inventory_balances").select("item_id, qty"),
+        supabase.from("inventory_balances").select("item_id, qty, locations(code)"),
       ]);
       if (cancelled) return;
-      // Hitung SKU di bawah stok minimum (sama seperti Dashboard).
       const stockByItem = new Map<string, number>();
-      for (const b of (balancesRes.data ?? []) as { item_id: string; qty: number | string }[]) {
+      for (const b of (balancesRes.data ?? []) as {
+        item_id: string;
+        qty: number | string;
+        locations: { code: string } | { code: string }[] | null;
+      }[]) {
+        const locCode = Array.isArray(b.locations)
+          ? b.locations[0]?.code ?? ""
+          : b.locations?.code ?? "";
+        if (!locCode.toUpperCase().endsWith("-BARU")) continue;
         stockByItem.set(b.item_id, (stockByItem.get(b.item_id) ?? 0) + Number(b.qty));
       }
       let lowStock = 0;
@@ -847,13 +882,15 @@ export function AppLayout(): ReactNode {
                     <p className="truncate text-sm font-medium text-white">{displayName}</p>
                     <p className="truncate text-xs text-ink-300">{user?.email}</p>
                   </div>
-                  <Link
-                    to="/pengaturan"
-                    onClick={() => setAccountOpen(false)}
-                    className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-200 transition-colors hover:bg-white/10"
-                  >
-                    <Settings className="h-4 w-4 text-ink-300" /> Pengaturan
-                  </Link>
+                  {hasPermission("settings.manage") && (
+                    <Link
+                      to="/pengaturan"
+                      onClick={() => setAccountOpen(false)}
+                      className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-200 transition-colors hover:bg-white/10"
+                    >
+                      <Settings className="h-4 w-4 text-ink-300" /> Pengaturan
+                    </Link>
+                  )}
                   <button
                     type="button"
                     onClick={async () => {

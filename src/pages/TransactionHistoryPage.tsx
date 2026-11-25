@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { cn } from "../lib/utils";
 import { badgeDarkClass } from "../lib/statusColors";
 import { formatDate, formatDateTime, formatQty } from "../lib/format";
@@ -121,54 +122,59 @@ export function TransactionHistoryPage() {
 
   const loadLineItems = async () => {
     setLineLoading(true);
-    const { data, error } = await supabase
-      .from("inventory_transaction_items")
-      .select(
-        "id, qty, resi, gerai, status_aset, notes, created_at, " +
-          "inventory_transactions!inner(doc_number, transaction_date, type, status), " +
-          "inventory_items!inner(sku, name)"
-      )
-      .order("created_at", { ascending: false })
-      .limit(5000);
-    setLineLoading(false);
-    if (error) {
-      toast.error(`Gagal memuat rincian barang: ${error.message}`);
-      return;
+    try {
+      const raw = await fetchAllPages<{
+        id: string;
+        qty: number | string;
+        resi: string | null;
+        gerai: string | null;
+        status_aset: string | null;
+        notes: string | null;
+        created_at: string;
+        inventory_transactions: LineRow["tx"] | LineRow["tx"][];
+        inventory_items: LineRow["item"] | LineRow["item"][];
+      }>(
+        (from, to) =>
+          supabase
+            .from("inventory_transaction_items")
+            .select(
+              "id, qty, resi, gerai, status_aset, notes, created_at, " +
+                "inventory_transactions!inner(doc_number, transaction_date, type, status), " +
+                "inventory_items!inner(sku, name)"
+            )
+            .order("created_at", { ascending: false })
+            .range(from, to),
+        { maxRows: 5000 }
+      );
+      const rows = raw.map((r) => {
+        const tx = Array.isArray(r.inventory_transactions)
+          ? (r.inventory_transactions[0] ?? null)
+          : r.inventory_transactions;
+        const item = Array.isArray(r.inventory_items)
+          ? (r.inventory_items[0] ?? null)
+          : r.inventory_items;
+        return {
+          id: r.id,
+          qty: r.qty,
+          resi: r.resi,
+          gerai: r.gerai,
+          status_aset: r.status_aset,
+          notes: r.notes,
+          created_at: r.created_at,
+          tx,
+          item,
+          itemName: `${item?.name ?? ""} ${item?.sku ?? ""}`.trim(),
+          docNumber: tx?.doc_number ?? "",
+          typeLabel: tx ? TRANSACTION_TYPE_LABELS[tx.type] : "",
+        };
+      });
+      setLineRows(rows);
+      setLineLoaded(true);
+    } catch (e) {
+      toast.error(`Gagal memuat rincian barang: ${e instanceof Error ? e.message : "unknown"}`);
+    } finally {
+      setLineLoading(false);
     }
-    const rows = ((data ?? []) as unknown as {
-      id: string;
-      qty: number | string;
-      resi: string | null;
-      gerai: string | null;
-      status_aset: string | null;
-      notes: string | null;
-      created_at: string;
-      inventory_transactions: LineRow["tx"] | LineRow["tx"][];
-      inventory_items: LineRow["item"] | LineRow["item"][];
-    }[]).map((r) => {
-      const tx = Array.isArray(r.inventory_transactions)
-        ? (r.inventory_transactions[0] ?? null)
-        : r.inventory_transactions;
-      const item = Array.isArray(r.inventory_items)
-        ? (r.inventory_items[0] ?? null)
-        : r.inventory_items;
-      return {
-        id: r.id,
-        qty: r.qty,
-        resi: r.resi,
-        gerai: r.gerai,
-        status_aset: r.status_aset,
-        notes: r.notes,
-        created_at: r.created_at,
-        tx,
-        item,
-        itemName: `${item?.name ?? ""} ${item?.sku ?? ""}`.trim(),
-        docNumber: tx?.doc_number ?? "",
-        typeLabel: tx ? TRANSACTION_TYPE_LABELS[tx.type] : "",
-      };
-    });
-    setLineRows(rows);
-    setLineLoaded(true);
   };
 
   const switchView = (v: "dokumen" | "baris") => {
@@ -179,17 +185,25 @@ export function TransactionHistoryPage() {
   // Nama barang per dokumen (untuk kolom Barang + pencarian di tampilan Per Dokumen).
   const [itemNamesMap, setItemNamesMap] = useState<Record<string, string>>({});
   const loadItemNames = async () => {
-    const { data, error } = await supabase
-      .from("inventory_transaction_items")
-      .select("transaction_id, inventory_items!inner(sku, name)")
-      .order("created_at", { ascending: false })
-      .limit(5000);
-    if (error) return;
-    const grouped: Record<string, string[]> = {};
-    for (const r of (data ?? []) as unknown as {
+    let raw: {
       transaction_id: string;
       inventory_items: { sku: string; name: string } | { sku: string; name: string }[];
-    }[]) {
+    }[];
+    try {
+      raw = await fetchAllPages(
+        (from, to) =>
+          supabase
+            .from("inventory_transaction_items")
+            .select("transaction_id, inventory_items!inner(sku, name)")
+            .order("created_at", { ascending: false })
+            .range(from, to),
+        { maxRows: 5000 }
+      );
+    } catch {
+      return;
+    }
+    const grouped: Record<string, string[]> = {};
+    for (const r of raw) {
       const it = Array.isArray(r.inventory_items)
         ? r.inventory_items[0]
         : r.inventory_items;

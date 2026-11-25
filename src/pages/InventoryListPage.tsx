@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -449,10 +449,15 @@ export function InventoryListPage() {
     [isSuperAdmin]
   );
 
+  const [searchParams] = useSearchParams();
   const [onlyNoPhoto, setOnlyNoPhoto] = useState(false);
-  // Pencarian terkontrol (dipegang halaman) agar hasil scan barcode bisa
-  // langsung mengisi kolom pencarian DataTable.
-  const [search, setSearch] = useState("");
+  // Pencarian terkontrol (dipegang halaman) agar hasil scan barcode maupun
+  // GlobalSearch (?q=...) bisa langsung mengisi kolom pencarian DataTable.
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q !== null) setSearch(q);
+  }, [searchParams]);
   const [scanOpen, setScanOpen] = useState(false);
 
   const filteredItems = useMemo(

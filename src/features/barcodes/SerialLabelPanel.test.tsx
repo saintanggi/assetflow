@@ -34,10 +34,9 @@ beforeEach(() => {
     const data = table === "inventory_items" ? { id: "item-a", sku: "MON", name: "Monitor" }
       : table === "qr_label_batches" ? [{ id: "batch-a", title: "Monitor", quantity: 2, item_id: "item-a", asset_id: null, created_at: "2026-10-19T00:00:00Z", created_by: "user-b" }] : [];
     const result = { data, error: null };
-    const chain: Record<string, unknown> = {};
+    const chain = Promise.resolve(result) as Promise<typeof result> & Record<string, unknown>;
     for (const key of ["select", "eq", "order", "range", "limit", "or"]) chain[key] = () => chain;
     chain.maybeSingle = () => Promise.resolve(result);
-    chain.then = (resolve: (r: unknown) => unknown) => Promise.resolve(result).then(resolve);
     return chain;
   });
 });

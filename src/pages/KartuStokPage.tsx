@@ -3,6 +3,8 @@ import type { HTMLAttributes } from "react";
 import { Plus, Trash2, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { findLocationByCondition } from "../lib/stockLocations";
+import { useAuth } from "../context/AuthContext";
 import { buildSearchPattern, todayLocalDate } from "../lib/format";
 import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
@@ -95,6 +97,7 @@ const DARK_OUTLINE_BTN =
   "border-white/20 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white";
 
 export function KartuStokPage() {
+  const { hasPermission } = useAuth();
   const [date, setDate] = useState(todayLocal);
   const [ticket, setTicket] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
@@ -104,6 +107,8 @@ export function KartuStokPage() {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Batch idempotency key: retry setelah gagal parsial tetap idempoten per grup.
+  const batchKeyRef = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
     let cancelled = false;
@@ -207,17 +212,10 @@ export function KartuStokPage() {
     setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : prev));
   };
 
-  /** Lokasi untuk baris: ASSET BARU -> *-BARU, UNREADY -> *-UNREADY, selain itu -> *-RETUR. */
-  const locationFor = (statusAset: ExcelStatusAset): LocationRow | null => {
-    if (locations.length === 0) return null;
-    const upper = statusAset.toUpperCase();
-    const suffix = upper.includes("UNREADY")
-      ? "-UNREADY"
-      : upper.includes("RETUR")
-        ? "-RETUR"
-        : "-BARU";
-    return locations.find((l) => l.code.toUpperCase().endsWith(suffix)) ?? locations[0];
-  };
+  /** Lokasi untuk baris: ASSET BARU -> *-BARU, UNREADY -> *-UNREADY, selain itu -> *-RETUR.
+   *  Sengaja TANPA fallback ke locations[0] agar stok tidak pernah salah masuk ke gudang/kondisi lain. */
+  const locationFor = (statusAset: ExcelStatusAset): LocationRow | null =>
+    findLocationByCondition(locations, statusAset);
 
   const validate = (): string | null => {
     if (!date) return "Tanggal wajib diisi.";
@@ -233,6 +231,12 @@ export function KartuStokPage() {
         return `Baris "${r.item!.name}": isi Qty IN atau Qty OUT.`;
       if (hasIn && hasOut)
         return `Baris "${r.item!.name}": isi salah satu saja, IN atau OUT.`;
+      if (hasOut && !hasPermission("inventory.issue")) {
+        return "Anda tidak memiliki izin Barang Keluar (inventory.issue) untuk mencatat Qty OUT.";
+      }
+      if (!locationFor(r.statusAset)) {
+        return `Lokasi untuk status "${r.statusAset}" tidak ditemukan di gudang ini.`;
+      }
     }
     return null;
   };
@@ -304,11 +308,17 @@ export function KartuStokPage() {
       }
 
       const docs: string[] = [];
-      for (const g of groups.values()) {
-        const doc = await postGroup(g.type, g.locId, g.items, crypto.randomUUID());
+      for (const [groupKey, g] of groups.entries()) {
+        const doc = await postGroup(
+          g.type,
+          g.locId,
+          g.items,
+          `${batchKeyRef.current}:${groupKey}`
+        );
         docs.push(doc);
       }
       toast.success(`Kartu stok tersimpan: ${docs.join(", ")}`);
+      batchKeyRef.current = crypto.randomUUID();
       setTicket("");
       setNotes("");
       setRows([newRow()]);

@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { HTMLAttributes } from "react";
 import { useParams } from "react-router-dom";
-import { PackageCheck, Trash2 } from "lucide-react";
+import { PackageCheck, ScanLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { findLocationByCondition } from "../lib/stockLocations";
 import { badgeDarkClass, poStatusVariant } from "../lib/statusColors";
 import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
+import { BarcodeScanner } from "../components/BarcodeScanner";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -39,6 +42,7 @@ interface PoItem {
   id: string;
   item_id: string;
   sku: string;
+  barcode: string | null;
   name: string;
   qty_ordered: number;
   qty_received: number;
@@ -66,6 +70,13 @@ export function PurchaseOrderDetailPage() {
   const [receiveQty, setReceiveQty] = useState<Record<string, string>>({});
   const [receiving, setReceiving] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanInput, setScanInput] = useState("");
+  const [lastScannedId, setLastScannedId] = useState<string | null>(null);
+  // Idempotency key dipertahankan lintas retry jika koneksi timeout,
+  // di-reset baru setelah penerimaan sukses atau input berubah.
+  const receiveKeyRef = useRef<string>(crypto.randomUUID());
 
   const load = async () => {
     if (!id) return;
@@ -75,7 +86,7 @@ export function PurchaseOrderDetailPage() {
         supabase
           .from("purchase_orders")
           .select(
-            "id, po_number, status, order_date, expected_date, total_amount, notes, suppliers(name), purchase_order_items(id, item_id, qty_ordered, qty_received, unit_price, inventory_items(sku, name))"
+            "id, po_number, status, order_date, expected_date, total_amount, notes, suppliers(name), purchase_order_items(id, item_id, qty_ordered, qty_received, unit_price, inventory_items(sku, name, barcode))"
           )
           .eq("id", id)
           .single(),
@@ -98,7 +109,10 @@ export function PurchaseOrderDetailPage() {
           qty_ordered: number | string;
           qty_received: number | string;
           unit_price: number | string;
-          inventory_items: { sku: string; name: string } | { sku: string; name: string }[] | null;
+          inventory_items:
+            | { sku: string; name: string; barcode: string | null }
+            | { sku: string; name: string; barcode: string | null }[]
+            | null;
         }[];
       };
       const sup = Array.isArray(raw.suppliers) ? raw.suppliers[0] : raw.suppliers;
@@ -108,6 +122,7 @@ export function PurchaseOrderDetailPage() {
           id: pi.id,
           item_id: pi.item_id,
           sku: it?.sku ?? "—",
+          barcode: it?.barcode ?? null,
           name: it?.name ?? "—",
           qty_ordered: Number(pi.qty_ordered),
           qty_received: Number(pi.qty_received),
@@ -125,11 +140,9 @@ export function PurchaseOrderDetailPage() {
         notes: raw.notes,
         items,
       });
-      setLocations((locRes.data ?? []) as { id: string; code: string; name: string }[]);
-      // Default lokasi: STOK-BARU kalau ada.
-      const baru = ((locRes.data ?? []) as { id: string; code: string }[]).find(
-        (l) => l.code === "STOK-BARU"
-      );
+      const locs = (locRes.data ?? []) as { id: string; code: string; name: string }[];
+      setLocations(locs);
+      const baru = findLocationByCondition(locs, "ASSET BARU", { preferMain: true });
       if (baru) setLocationId(baru.id);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memuat PO");
@@ -145,6 +158,37 @@ export function PurchaseOrderDetailPage() {
 
   const canReceive = po && (po.status === "ordered" || po.status === "received_partial");
   const remaining = (item: PoItem) => item.qty_ordered - item.qty_received;
+
+  /** Tambah +1 qty terima dari scan barcode/SKU (handheld scanner atau kamera). */
+  const handleBarcodeScan = (rawCode: string) => {
+    if (!po) return;
+    const code = rawCode.trim().toUpperCase();
+    if (!code) return;
+    const match = po.items.find(
+      (it) =>
+        it.sku.trim().toUpperCase() === code ||
+        (it.barcode ?? "").trim().toUpperCase() === code
+    );
+    if (!match) {
+      toast.error(`Kode "${rawCode.trim()}" tidak ada di daftar item PO ini.`);
+      return;
+    }
+    const maxRem = remaining(match);
+    if (maxRem <= 0) {
+      toast.warning(`"${match.name}" sudah diterima penuh.`);
+      return;
+    }
+    const cur = Number(receiveQty[match.id] ?? 0);
+    if (cur >= maxRem) {
+      toast.warning(`"${match.name}" sudah mencapai batas sisa (${fmt(maxRem)}).`);
+      return;
+    }
+    const next = Math.min(maxRem, cur + 1);
+    receiveKeyRef.current = crypto.randomUUID();
+    setReceiveQty((p) => ({ ...p, [match.id]: String(next) }));
+    setLastScannedId(match.id);
+    toast.success(`+1 ${match.name} (${fmt(next)} / ${fmt(maxRem)})`);
+  };
 
   const doReceive = async () => {
     if (!po || !locationId) {
@@ -172,9 +216,27 @@ export function PurchaseOrderDetailPage() {
         p_po_id: po.id,
         p_items: payload,
         p_location_id: locationId,
+        p_idempotency_key: receiveKeyRef.current,
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        // Fallback kompatibilitas jika DB belum di-upgrade ke signature 5-argumen.
+        if (error.code === "PGRST202" || /Could not find the function/i.test(error.message)) {
+          const fallback = await supabase.rpc("receive_purchase_order", {
+            p_po_id: po.id,
+            p_items: payload,
+            p_location_id: locationId,
+          });
+          if (fallback.error) throw new Error(fallback.error.message);
+          toast.success(`Barang diterima — dokumen ${fallback.data}`);
+          receiveKeyRef.current = crypto.randomUUID();
+          setReceiveQty({});
+          await load();
+          return;
+        }
+        throw new Error(error.message);
+      }
       toast.success(`Barang diterima — dokumen ${data}`);
+      receiveKeyRef.current = crypto.randomUUID();
       setReceiveQty({});
       await load();
     } catch (e) {
@@ -215,7 +277,7 @@ export function PurchaseOrderDetailPage() {
               </Button>
             )}
             {(po.status === "draft" || po.status === "ordered") && (
-              <Button variant="outline" className={DARK_OUTLINE_BTN} disabled={busy} onClick={() => setStatus("cancelled")}>
+              <Button variant="outline" className={DARK_OUTLINE_BTN} disabled={busy} onClick={() => setConfirmCancel(true)}>
                 <Trash2 className="mr-1 h-4 w-4" /> Batalkan
               </Button>
             )}
@@ -242,8 +304,34 @@ export function PurchaseOrderDetailPage() {
       )}
 
       <GlassCard>
-        <CardHeader>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-white">Item PO</CardTitle>
+          {canReceive && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                className="w-56 border-white/15 bg-white/10 text-white placeholder:text-ink-300"
+                placeholder="Scan / ketik SKU atau barcode…"
+                value={scanInput}
+                onChange={(e) => setScanInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleBarcodeScan(scanInput);
+                    setScanInput("");
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={DARK_OUTLINE_BTN}
+                onClick={() => setScanOpen(true)}
+              >
+                <ScanLine className="mr-1.5 h-4 w-4" /> Pindai (+1)
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -260,7 +348,13 @@ export function PurchaseOrderDetailPage() {
               </thead>
               <tbody>
                 {po.items.map((it) => (
-                  <tr key={it.id} className="border-b border-white/10 text-ink-100 transition-colors last:border-0 hover:bg-white/5">
+                  <tr
+                    key={it.id}
+                    className={cn(
+                      "border-b border-white/10 text-ink-100 transition-colors last:border-0 hover:bg-white/5",
+                      lastScannedId === it.id && "bg-ok-500/15"
+                    )}
+                  >
                     <td className="py-2 pr-2">
                       <div className="font-medium">{it.name}</div>
                       <div className="font-mono text-xs text-ink-300">{it.sku}</div>
@@ -275,12 +369,15 @@ export function PurchaseOrderDetailPage() {
                           type="number"
                           min="0"
                           max={remaining(it)}
-                          step="1"
+                          step="any"
                           className="ml-auto w-24 border-white/15 bg-white/10 text-right text-white placeholder:text-ink-300"
                           placeholder="0"
                           value={receiveQty[it.id] ?? ""}
                           disabled={remaining(it) <= 0}
-                          onChange={(e) => setReceiveQty((p) => ({ ...p, [it.id]: e.target.value }))}
+                          onChange={(e) => {
+                            receiveKeyRef.current = crypto.randomUUID();
+                            setReceiveQty((p) => ({ ...p, [it.id]: e.target.value }));
+                          }}
                         />
                       </td>
                     )}
@@ -316,6 +413,29 @@ export function PurchaseOrderDetailPage() {
           )}
         </CardContent>
       </GlassCard>
+
+      <ConfirmDialog
+        open={confirmCancel}
+        onOpenChange={setConfirmCancel}
+        title={`Batalkan PO ${po.po_number}?`}
+        description="PO yang dibatalkan tidak bisa lagi digunakan untuk menerima barang. Tindakan ini tidak mengubah stok yang sudah ada."
+        confirmLabel="Ya, Batalkan PO"
+        destructive
+        loading={busy}
+        onConfirm={async () => {
+          await setStatus("cancelled");
+          setConfirmCancel(false);
+        }}
+      />
+
+      <BarcodeScanner
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        onScan={(code) => {
+          handleBarcodeScan(code);
+          setScanOpen(false);
+        }}
+      />
     </div>
   );
 }

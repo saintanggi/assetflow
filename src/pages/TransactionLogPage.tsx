@@ -5,6 +5,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Download } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { cn } from "../lib/utils";
 import { badgeDarkClass } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
@@ -129,19 +130,7 @@ export function TransactionLogPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("inventory_ledger")
-        .select(
-          "id, item_id, qty_change, qty_after, created_at, transaction_id, " +
-            "inventory_transactions!inner(doc_number, transaction_date, type, reference, notes, created_by, surat_jalan_url), " +
-            "inventory_items!inner(sku, name), " +
-            "locations!inner(code, name, warehouses(name))"
-        )
-        .order("created_at", { ascending: false })
-        .limit(5000);
-      if (error) throw new Error(error.message);
-
-      const raw = (data ?? []) as unknown as {
+      const raw = await fetchAllPages<{
         id: string;
         item_id: string;
         qty_change: number | string;
@@ -151,7 +140,20 @@ export function TransactionLogPage() {
         inventory_transactions: { doc_number: string; transaction_date: string; type: string; reference: string | null; notes: string | null; created_by: string | null; surat_jalan_url: string | null } | { doc_number: string; transaction_date: string; type: string; reference: string | null; notes: string | null; created_by: string | null; surat_jalan_url: string | null }[];
         inventory_items: { sku: string; name: string } | { sku: string; name: string }[];
         locations: { code: string; name: string; warehouses: { name: string }[] | null } | { code: string; name: string; warehouses: { name: string }[] | null }[];
-      }[];
+      }>(
+        (from, to) =>
+          supabase
+            .from("inventory_ledger")
+            .select(
+              "id, item_id, qty_change, qty_after, created_at, transaction_id, " +
+                "inventory_transactions!inner(doc_number, transaction_date, type, reference, notes, created_by, surat_jalan_url), " +
+                "inventory_items!inner(sku, name), " +
+                "locations!inner(code, name, warehouses(name))"
+            )
+            .order("created_at", { ascending: false })
+            .range(from, to),
+        { maxRows: 5000 }
+      );
       const txIds = [...new Set(raw.map((r) => r.transaction_id))];
       const reqNums = [...new Set(
         raw.map((r) => {

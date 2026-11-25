@@ -12,6 +12,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTable } from "../components/DataTable";
 import { exportToCsv } from "../lib/csv";
+import { todayLocalDate } from "../lib/format";
 
 const fmt = (n: number) => n.toLocaleString("id-ID", { maximumFractionDigits: 3 });
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
@@ -109,6 +110,41 @@ export function DeadStockPage() {
     (async () => {
       setLoading(true);
       try {
+        // Prioritaskan RPC server-side get_dead_stock (bebas batas 1000 baris PostgREST,
+        // memakai transaction_date & khusus transaksi keluar `out`).
+        const { data: rpcData, error: rpcErr } = await supabase.rpc("get_dead_stock", {
+          p_days: threshold,
+        });
+        if (cancelled) return;
+        if (!rpcErr && Array.isArray(rpcData)) {
+          const mapped: DeadRow[] = (
+            rpcData as {
+              item_id: string;
+              sku: string;
+              name: string;
+              brand: string | null;
+              total_stock: number | string;
+              purchase_price: number | string;
+              stock_value: number | string;
+              last_out_date: string | null;
+              days_idle: number | null;
+            }[]
+          ).map((r) => ({
+            id: r.item_id,
+            sku: r.sku,
+            name: r.name,
+            brand: r.brand,
+            totalStock: Number(r.total_stock ?? 0),
+            purchasePrice: Number(r.purchase_price ?? 0),
+            value: Number(r.stock_value ?? 0),
+            lastOut: r.last_out_date,
+            daysIdle: r.days_idle !== null && r.days_idle !== undefined ? Number(r.days_idle) : null,
+          }));
+          setRows(mapped);
+          return;
+        }
+
+        // Fallback sementara jika migrasi SQL get_dead_stock belum dijalankan.
         const [itemsRes, balancesRes, ledgerRes] = await Promise.all([
           supabase
             .from("inventory_items")
@@ -191,7 +227,7 @@ export function DeadStockPage() {
       return;
     }
     exportToCsv(
-      `dead-stock-${new Date().toISOString().slice(0, 10)}.csv`,
+      `dead-stock-${todayLocalDate()}.csv`,
       rows.map((r) => ({
         SKU: r.sku,
         "NAMA BARANG": r.name,

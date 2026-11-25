@@ -16,12 +16,14 @@ function setAuth(overrides: Partial<ReturnType<typeof useAuth>> = {}) {
     profile: null,
     permissions: [],
     loading: false,
+    mfaRequired: false,
     isSuperAdmin: false,
     isStaff: false,
     hasPermission: () => false,
     signIn: vi.fn(),
     signOut: vi.fn(),
     refreshProfile: vi.fn(),
+    refreshMfaState: vi.fn(async () => false),
     ...overrides,
   });
 }

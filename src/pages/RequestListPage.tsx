@@ -16,6 +16,7 @@ import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { DataTable } from "../components/DataTable";
 import { requestStatusVariant, badgeDarkClass } from "../lib/statusColors";
+import { todayLocalDate } from "../lib/format";
 import { cn } from "../lib/utils";
 import {
   Dialog,
@@ -70,6 +71,11 @@ export function RequestListPage() {
       : "semua";
   })();
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [reqSearch, setReqSearch] = useState(() => searchParams.get("q") ?? "");
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q !== null) setReqSearch(q);
+  }, [searchParams]);
 
   // Filter tanggal & pencarian database (tiket, gerai, resi, barcode, SN).
   const [dateFrom, setDateFrom] = useState("");
@@ -269,7 +275,7 @@ export function RequestListPage() {
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sheetRows), "REKAP_PENGIRIMAN");
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocalDate();
       XLSX.writeFile(wb, `Rekap_Pengiriman_${today}.xlsx`);
       toast.success(`Rekap Excel berhasil diunduh (${sheetRows.length - 1} baris barang).`);
     } catch (e) {
@@ -531,6 +537,8 @@ export function RequestListPage() {
         data={filtered}
         loading={loading}
         searchPlaceholder="Cari no. permintaan / tiket / gerai…"
+        searchValue={reqSearch}
+        onSearchChange={setReqSearch}
         pageSize={15}
         emptyTitle="Belum ada permintaan"
         emptyDescription="Permintaan yang dibuat akan muncul di sini."

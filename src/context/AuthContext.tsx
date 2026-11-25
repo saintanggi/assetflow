@@ -16,12 +16,15 @@ interface AuthContextValue {
   profile: Profile | null;
   permissions: string[];
   loading: boolean;
+  /** True jika user sudah login password (AAL1) tapi MFA wajib (AAL2) belum diverifikasi. */
+  mfaRequired: boolean;
   isSuperAdmin: boolean;
   isStaff: boolean;
   hasPermission: (code: string) => boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshMfaState: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,22 +58,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const checkMfaPending = useCallback(async (u: User | null): Promise<boolean> => {
+    if (!u) {
+      setMfaRequired(false);
+      return false;
+    }
+    try {
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      const pending = Boolean(aal && aal.nextLevel === "aal2" && aal.currentLevel === "aal1");
+      setMfaRequired(pending);
+      return pending;
+    } catch {
+      setMfaRequired(false);
+      return false;
+    }
+  }, []);
 
   const loadProfile = useCallback(async (u: User | null) => {
     if (!u) {
       setProfile(null);
       setPermissions([]);
+      setMfaRequired(false);
       return;
     }
+    await checkMfaPending(u);
+
     // Cek akun operasional (username) dulu.
     const { data: acc } = await supabase
       .from("user_accounts")
       .select("username, role, display_name, is_active")
       .eq("auth_user_id", u.id)
       .maybeSingle();
-    if (acc && (acc as { is_active: boolean }).is_active) {
-      const a = acc as { username: string; role: string; display_name: string };
+    if (acc) {
+      const a = acc as { username: string; role: string; display_name: string; is_active: boolean };
+      if (!a.is_active) {
+        // Akun operasional sudah dinonaktifkan — jangan fallback ke tabel profiles.
+        await supabase.auth.signOut();
+        setUser(null);
+        setProfile(null);
+        setPermissions([]);
+        setMfaRequired(false);
+        return;
+      }
       // Bangun profile sintetis dari user_accounts.
       const roleName = a.role;
       setProfile({
@@ -130,11 +162,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setProfile(null);
       setPermissions([]);
+      setMfaRequired(false);
       return;
     }
     setProfile(p);
     setPermissions(await loadPermissions(u.id, p.role_id));
-  }, []);
+  }, [checkMfaPending]);
 
   const refreshProfile = useCallback(async () => {
     const {
@@ -142,6 +175,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } = await supabase.auth.getSession();
     await loadProfile(session?.user ?? null);
   }, [loadProfile]);
+
+  const refreshMfaState = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return checkMfaPending(session?.user ?? null);
+  }, [checkMfaPending]);
 
   useEffect(() => {
     let mounted = true;
@@ -177,6 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setPermissions([]);
+    setMfaRequired(false);
   }, []);
 
   const value = useMemo<AuthContextValue>(() => {
@@ -194,6 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       permissions,
       loading,
+      mfaRequired,
       isSuperAdmin,
       isStaff,
       // Super Admin selalu lolos semua permission (cerminan has_permission() di DB).
@@ -203,8 +245,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signOut,
       refreshProfile,
+      refreshMfaState,
     };
-  }, [user, profile, permissions, loading, signIn, signOut, refreshProfile]);
+  }, [user, profile, permissions, loading, mfaRequired, signIn, signOut, refreshProfile, refreshMfaState]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -40,8 +40,10 @@ import {
   type StoredItemRow,
 } from "./shippingUpload.ts";
 
+const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "*";
+
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
@@ -79,47 +81,84 @@ function pesanError(e: unknown): string {
     .slice(0, 500);
 }
 
-/** Kumpulkan sidik jari baris yang sudah pernah diimpor (untuk idempotensi). */
+/** Kumpulkan sidik jari baris yang sudah pernah diimpor (untuk idempotensi).
+ *  Di-chunk supaya tidak terpotong batas 1.000 baris PostgREST maupun batas 200 tiket,
+ *  dan ikut memuat baris tanpa nomor tiket (ticket_no IS NULL). */
 async function loadStoredFingerprints(
   db: SupabaseClient,
   rows: ParsedShippingRow[],
 ): Promise<DupIndex> {
   const tickets = [...new Set(rows.map((r) => r.ticket).filter(Boolean))];
-  const dates = [...new Set(rows.map((r) => r.date))];
-  if (tickets.length === 0 || dates.length === 0) return buildDupIndex([]);
-  const stored: StoredItemRow[] = [];
-  const { data: reqs, error } = await db
-    .from("requests")
-    .select("id, ticket_no, request_date")
-    .in("ticket_no", tickets.slice(0, 200))
-    .in("request_date", dates.slice(0, 60))
-    .limit(5000);
-  if (error) throw new Error(`Gagal membaca permintaan lama: ${error.message}`);
-  const reqById = new Map(
-    ((reqs ?? []) as { id: string; ticket_no: string; request_date: string }[]).map((r) => [r.id, r]),
-  );
+  const hasBlankTicket = rows.some((r) => !r.ticket);
+  const dates = [...new Set(rows.map((r) => r.date).filter(Boolean))];
+  if ((tickets.length === 0 && !hasBlankTicket) || dates.length === 0) return buildDupIndex([]);
+
+  const reqById = new Map<string, { id: string; ticket_no: string | null; request_date: string }>();
+
+  // 1) Permintaan bertiket (chunk tiket 150 & tanggal 50, paginasi 1000).
+  for (let d = 0; d < dates.length; d += 50) {
+    const dateChunk = dates.slice(d, d + 50);
+    for (let t = 0; t < tickets.length; t += 150) {
+      const ticketChunk = tickets.slice(t, t + 150);
+      for (let from = 0; ; from += 1000) {
+        const { data: reqs, error } = await db
+          .from("requests")
+          .select("id, ticket_no, request_date")
+          .in("ticket_no", ticketChunk)
+          .in("request_date", dateChunk)
+          .range(from, from + 999);
+        if (error) throw new Error(`Gagal membaca permintaan lama: ${error.message}`);
+        const list = (reqs ?? []) as { id: string; ticket_no: string | null; request_date: string }[];
+        for (const r of list) reqById.set(r.id, r);
+        if (list.length < 1000) break;
+      }
+    }
+    // 2) Permintaan tanpa tiket (ticket_no IS NULL) pada tanggal yang sama.
+    if (hasBlankTicket) {
+      for (let from = 0; ; from += 1000) {
+        const { data: reqs, error } = await db
+          .from("requests")
+          .select("id, ticket_no, request_date")
+          .is("ticket_no", null)
+          .in("request_date", dateChunk)
+          .range(from, from + 999);
+        if (error) throw new Error(`Gagal membaca permintaan tanpa tiket: ${error.message}`);
+        const list = (reqs ?? []) as { id: string; ticket_no: string | null; request_date: string }[];
+        for (const r of list) reqById.set(r.id, r);
+        if (list.length < 1000) break;
+      }
+    }
+  }
+
   if (reqById.size === 0) return buildDupIndex([]);
-  for (let i = 0; i < reqById.size; i += 100) {
-    const ids = [...reqById.keys()].slice(i, i + 100);
-    const { data: items, error: itErr } = await db
-      .from("request_items")
-      .select("request_id, item_id, barcode, resi, qty_requested")
-      .in("request_id", ids)
-      .limit(5000);
-    if (itErr) throw new Error(`Gagal membaca item lama: ${itErr.message}`);
-    for (const it of (items ?? []) as {
-      request_id: string; item_id: string; barcode: string | null; resi: string | null; qty_requested: number | string;
-    }[]) {
-      const req = reqById.get(it.request_id);
-      if (!req) continue;
-      stored.push({
-        ticket_no: req.ticket_no,
-        request_date: req.request_date,
-        item_id: it.item_id,
-        barcode: it.barcode,
-        resi: it.resi,
-        qty_requested: it.qty_requested,
-      });
+
+  const stored: StoredItemRow[] = [];
+  const allIds = [...reqById.keys()];
+  for (let i = 0; i < allIds.length; i += 100) {
+    const ids = allIds.slice(i, i + 100);
+    for (let from = 0; ; from += 1000) {
+      const { data: items, error: itErr } = await db
+        .from("request_items")
+        .select("request_id, item_id, barcode, resi, qty_requested")
+        .in("request_id", ids)
+        .range(from, from + 999);
+      if (itErr) throw new Error(`Gagal membaca item lama: ${itErr.message}`);
+      const list = (items ?? []) as {
+        request_id: string; item_id: string; barcode: string | null; resi: string | null; qty_requested: number | string;
+      }[];
+      for (const it of list) {
+        const req = reqById.get(it.request_id);
+        if (!req) continue;
+        stored.push({
+          ticket_no: req.ticket_no,
+          request_date: req.request_date,
+          item_id: it.item_id,
+          barcode: it.barcode,
+          resi: it.resi,
+          qty_requested: it.qty_requested,
+        });
+      }
+      if (list.length < 1000) break;
     }
   }
   return buildDupIndex(stored);
@@ -150,6 +189,23 @@ async function syncSource(
   cfg: SourceConfig,
   opts: { dryRun: boolean; actorId: string | null; triggeredBy: "cron" | "manual" },
 ): Promise<ImportResult> {
+  // Kunci sinkronisasi berbasis PostgreSQL advisory lock agar klik ganda /
+  // overlap cron + manual tidak pernah memproses spreadsheet yang sama bersamaan.
+  const lockKey = `sheet-sync:${cfg.id ?? cfg.spreadsheet_id}`;
+  let lockAcquired = false;
+  if (!opts.dryRun) {
+    const { data: locked, error: lockErr } = await db.rpc("try_lock_sheet_sync", {
+      p_lock_key: lockKey,
+    });
+    if (!lockErr) {
+      if (locked === false) {
+        throw new Error("Sinkronisasi untuk sumber ini sedang berjalan. Tunggu beberapa detik lalu coba lagi.");
+      }
+      lockAcquired = locked === true;
+    }
+  }
+
+  try {
   const wb = await downloadWorkbook(cfg.spreadsheet_id);
   const parsed = parseWorkbook(wb);
   if (parsed.sheets.length === 0) {
@@ -171,16 +227,18 @@ async function syncSource(
   // berulang di hari berbeda tidak menganggapnya data baru (stok terpotong dua kali).
   const semuaBaris = applySheetDate(dipakai.rows, dipakai.name);
 
-  // Cocokkan nama barang dengan master.
-  const { data: items, error: itemsErr } = await db
-    .from("inventory_items")
-    .select("id, name")
-    .eq("is_active", true)
-    .limit(5000);
-  if (itemsErr) throw new Error(`Gagal membaca master barang: ${itemsErr.message}`);
+  // Cocokkan nama barang dengan master (paginasi agar aman di atas 1.000 SKU).
   const byName = new Map<string, string>();
-  for (const it of (items ?? []) as { id: string; name: string }[]) {
-    byName.set(it.name.trim().toUpperCase(), it.id);
+  for (let from = 0; ; from += 1000) {
+    const { data: items, error: itemsErr } = await db
+      .from("inventory_items")
+      .select("id, name")
+      .eq("is_active", true)
+      .range(from, from + 999);
+    if (itemsErr) throw new Error(`Gagal membaca master barang: ${itemsErr.message}`);
+    const list = (items ?? []) as { id: string; name: string }[];
+    for (const it of list) byName.set(it.name.trim().toUpperCase(), it.id);
+    if (list.length < 1000) break;
   }
 
   const unmatched = [
@@ -393,6 +451,11 @@ async function syncSource(
       .eq("id", cfg.id);
   }
   return result;
+  } finally {
+    if (lockAcquired) {
+      await db.rpc("unlock_sheet_sync", { p_lock_key: lockKey });
+    }
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -484,6 +547,16 @@ Deno.serve(async (req: Request) => {
         });
         const { data: userData } = await userClient.auth.getUser();
         if (!userData?.user?.id) return json({ error: "Harus login dulu." }, 401);
+        // Jika pengguna memasukkan spreadsheet_id sembarang (bukan dari konfigurasi
+        // tersimpan), wajib punya permission settings.manage agar tidak disalahgunakan.
+        if (!cfg.id) {
+          const { data: canManage } = await userClient.rpc("has_permission", {
+            p_code: "settings.manage",
+          });
+          if (!canManage) {
+            return json({ error: "Hanya admin pengaturan yang boleh membaca spreadsheet kustom." }, 403);
+          }
+        }
       }
       const dates = Array.isArray(body.dates)
         ? (body.dates as unknown[]).filter((d): d is string => typeof d === "string")

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { HTMLAttributes } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Printer, Plus, X, Search } from "lucide-react";
+import { Printer, Plus, QrCode, Search, X } from "lucide-react";
 import { supabase, publicAssetUrl } from "../lib/supabase";
 import { cn } from "../lib/utils";
 import { buildSearchPattern } from "../lib/format";
@@ -12,6 +12,7 @@ import { Label } from "../components/ui/label";
 import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { QrLabel } from "../features/barcodes/QrLabel";
 import { BarcodeLabel } from "../features/barcodes/BarcodeLabel";
+import { SerialLabelPanel } from "../features/barcodes/SerialLabelPanel";
 import { toast } from "sonner";
 
 /** Permukaan kaca gelap — sama seperti dashboard & Stok Kondisi. */
@@ -58,6 +59,9 @@ interface ItemSearchRow {
 
 export function LabelPrintPage() {
   const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<"standard" | "serial">(() =>
+    searchParams.get("tab") === "serial" ? "serial" : "standard"
+  );
   const [labels, setLabels] = useState<LabelItem[]>([]);
 
   const [assetQuery, setAssetQuery] = useState("");
@@ -162,17 +166,48 @@ export function LabelPrintPage() {
       <div className="no-print">
         <PageHeader
           title="Cetak Label"
-          description="Cari aset atau barang, tambahkan ke daftar, lalu cetak labelnya."
+          description="Cari aset atau barang untuk cetak barcode SKU, atau cetak Label QR Serial unik per unit."
           actions={
-            labels.length > 0 ? (
+            activeTab === "standard" && labels.length > 0 ? (
               <Button onClick={() => window.print()}>
                 <Printer className="mr-2 h-4 w-4" /> Cetak ({labels.length})
               </Button>
             ) : undefined
           }
         />
+        <div className="mt-4 inline-flex rounded-xl border border-white/15 bg-white/[0.06] p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("standard")}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition",
+              activeTab === "standard"
+                ? "bg-white text-ink-900 shadow-sm"
+                : "text-ink-200 hover:text-white"
+            )}
+          >
+            <Printer className="h-4 w-4" /> Label Aset &amp; Barcode SKU
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("serial")}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition",
+              activeTab === "serial"
+                ? "bg-white text-ink-900 shadow-sm"
+                : "text-ink-200 hover:text-white"
+            )}
+          >
+            <QrCode className="h-4 w-4" /> Label QR Serial Unik
+          </button>
+        </div>
       </div>
 
+      {activeTab === "serial" ? (
+        <div className="rounded-2xl bg-white p-5 text-ink-900 shadow-[0_8px_32px_rgba(2,6,23,0.35)]">
+          <SerialLabelPanel />
+        </div>
+      ) : (
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Panel kiri — disembunyikan saat print */}
         <div className="no-print space-y-6">
@@ -365,6 +400,7 @@ export function LabelPrintPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -25,7 +25,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
-  const { user, loading: authLoading, signIn } = useAuth();
+  const { user, loading: authLoading, mfaRequired, signIn, signOut, refreshMfaState } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [formError, setFormError] = useState<string | null>(null);
@@ -45,7 +45,32 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
 
-  if (!authLoading && user) {
+  const startMfaChallenge = useCallback(async () => {
+    const { data: factors } = await supabase.auth.mfa.listFactors();
+    const verified = factors?.totp?.find((f) => f.status === "verified");
+    if (verified) {
+      const ch = await supabase.auth.mfa.challenge({ factorId: verified.id });
+      if (!ch.error && ch.data) {
+        setMfaFactorId(verified.id);
+        setMfaChallengeId(ch.data.id);
+        setMfaNeeded(true);
+        return true;
+      }
+    }
+    setFormError("Akun ini memakai MFA, tapi verifikasi tidak bisa dimulai. Coba lagi.");
+    return false;
+  }, []);
+
+  // Jika user sudah punya sesi AAL1 (mis. reload saat MFA atau diarahkan oleh guard),
+  // otomatis mulai challenge MFA agar tidak ter-redirect ke dashboard sebelum AAL2.
+  useEffect(() => {
+    if (!authLoading && user && mfaRequired && !mfaNeeded) {
+      void startMfaChallenge();
+    }
+  }, [authLoading, user, mfaRequired, mfaNeeded, startMfaChallenge]);
+
+  // Hanya redirect otomatis bila sesi sudah penuh (bukan AAL1 menunggu MFA).
+  if (!authLoading && user && !mfaNeeded && !mfaRequired) {
     return <Navigate to={from} replace />;
   }
 
@@ -73,20 +98,9 @@ export function LoginPage() {
       return;
     }
     // Cek apakah akun ini wajib MFA (aal1 → aal2).
-    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aal && aal.nextLevel === "aal2" && aal.currentLevel === "aal1") {
-      const { data: factors } = await supabase.auth.mfa.listFactors();
-      const verified = factors?.totp?.find((f) => f.status === "verified");
-      if (verified) {
-        const ch = await supabase.auth.mfa.challenge({ factorId: verified.id });
-        if (!ch.error && ch.data) {
-          setMfaFactorId(verified.id);
-          setMfaChallengeId(ch.data.id);
-          setMfaNeeded(true);
-          return;
-        }
-      }
-      setFormError("Akun ini memakai MFA, tapi verifikasi tidak bisa dimulai. Coba lagi.");
+    const pendingMfa = await refreshMfaState();
+    if (pendingMfa) {
+      await startMfaChallenge();
       return;
     }
     navigate(from, { replace: true });
@@ -109,6 +123,8 @@ export function LoginPage() {
       setFormError("Kode MFA salah atau kedaluwarsa. Coba lagi.");
       return;
     }
+    await refreshMfaState();
+    setMfaNeeded(false);
     navigate(from, { replace: true });
   }
 
@@ -296,12 +312,16 @@ export function LoginPage() {
                     type="button"
                     variant="ghost"
                     className="w-full"
-                    onClick={() => {
+                    onClick={async () => {
+                      await signOut();
                       setMfaNeeded(false);
+                      setMfaFactorId(null);
+                      setMfaChallengeId(null);
                       setMfaCode("");
+                      setFormError(null);
                     }}
                   >
-                    Kembali
+                    Batalkan & Keluar
                   </Button>
                 </div>
               ) : (

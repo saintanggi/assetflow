@@ -2,7 +2,7 @@ import { badgeDarkClass, requestItemStatusVariant, requestStatusVariant } from "
 import { useEffect, useMemo, useState } from "react";
 import type { HTMLAttributes } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, ScanLine, Scissors, Send, XCircle } from "lucide-react";
+import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, ScanLine, Scissors, Send, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
@@ -10,7 +10,20 @@ import { buildSearchPattern } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { BarcodeScanner } from "../components/BarcodeScanner";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
+import {
+  formatStockMoveResult,
+  needsStockMove,
+  type StockMoveResult,
+} from "../features/requests/itemCorrection";
+import {
+  describeItemDelete,
+  formatDeleteItemResult,
+} from "../features/requests/deleteItem";
+import { RequestPrintSheet } from "../features/requests/RequestPrintSheet";
+import { RequestAddItemDialog } from "../features/requests/RequestAddItemDialog";
+import { RequestItemEditDialog } from "../features/requests/RequestItemEditDialog";
 import { Skeleton } from "../components/ui/skeleton";
 import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -18,21 +31,10 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
-import { Select } from "../components/ui/select";
 import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
-import {
-  EXCEL_STATUS_ASET_LABELS,
   EXCEL_STATUS_ASET_LOKASI,
   REQUEST_STATUS_LABELS,
   REQUEST_ITEM_STATUS_LABELS,
-  STATUS_REQUEST_LABELS,
-  STATUS_REQUEST_OPTIONS,
   type ExcelStatusAset,
   type Request,
   type RequestItem,
@@ -130,7 +132,10 @@ export function RequestDetailPage() {
   const [eDurasiPinjam, setEDurasiPinjam] = useState("");
   const [eStatusAset, setEStatusAset] = useState<ExcelStatusAset>("ASSET BARU");
   const [eKet, setEKet] = useState("");
+  const [eReason, setEReason] = useState("");
   const [eSaving, setESaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<RequestItem | null>(null);
+  const [deletingRow, setDeletingRow] = useState(false);
 
   // Review state (admin gudang)
   const [approved, setApproved] = useState<Record<string, string>>({});
@@ -788,12 +793,50 @@ export function RequestDetailPage() {
     setEDurasiPinjam(parsedReq.durasi);
     setEStatusAset(parseStatusAset(x.status_aset));
     setEKet(ketList.join("\n"));
+    setEReason("");
   };
+
+  const editNeedsStockMove = editItem
+    ? needsStockMove({
+        oldItemId: editItem.item_id,
+        newItemId: eItemId || editItem.item_id,
+        oldStatus: parseStatusAset(editItem.status_aset),
+        newStatus: eStatusAset,
+        qtyShipped: Number(editItem.qty_shipped ?? 0),
+      })
+    : false;
 
   const saveItemEdit = async () => {
     if (!editItem) return;
     setESaving(true);
     try {
+      const nextItemId = eItemId || editItem.item_id;
+      const mustMoveStock = needsStockMove({
+        oldItemId: editItem.item_id,
+        newItemId: nextItemId,
+        oldStatus: parseStatusAset(editItem.status_aset),
+        newStatus: eStatusAset,
+        qtyShipped: Number(editItem.qty_shipped ?? 0),
+      });
+
+      // Jika barang sudah pernah terkirim dan nama barang / status asset berubah,
+      // jalankan RPC atomik admin_change_request_item agar stok lama dikembalikan (IN)
+      // dan stok baru dipotong (OUT) secara aman.
+      let stockMoveToast: string | null = null;
+      if (mustMoveStock) {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_change_request_item", {
+          p_request_item_id: editItem.id,
+          p_new_item_id: nextItemId,
+          p_new_status_aset: eStatusAset,
+          p_reason: eReason.trim() || "Koreksi barang / status asset oleh Super Admin",
+        });
+        if (rpcErr) throw new Error(rpcErr.message);
+        stockMoveToast = formatStockMoveResult(
+          rpcRes as { stock_move?: StockMoveResult | null } | null,
+          editItem.inventory_items?.name ?? "barang"
+        );
+      }
+
       // Rekonstruksi notes: "Ket: <SN>" per baris + "Status request: <SR>".
       const notesLines: string[] = [];
       const snValues = eSn.split("\n").map((v) => v.trim()).filter(Boolean);
@@ -806,26 +849,52 @@ export function RequestDetailPage() {
       for (const k of eKet.split("\n").map((v) => v.trim()).filter(Boolean)) {
         notesLines.push(k);
       }
+
+      const metaPatch: Record<string, unknown> = {
+        barcode: eBarcode.trim() || null,
+        serial_number: snValues.join("\n") || null,
+        resi: eResi.trim() || null,
+        notes: notesLines.join("\n") || null,
+        updated_at: new Date().toISOString(),
+      };
+      if (!mustMoveStock) {
+        metaPatch.item_id = nextItemId;
+        metaPatch.status_aset = eStatusAset;
+      }
+
       const { error } = await supabase
         .from("request_items")
-        .update({
-          item_id: eItemId || editItem.item_id,
-          barcode: eBarcode.trim() || null,
-          serial_number: snValues.join("\n") || null,
-          resi: eResi.trim() || null,
-          status_aset: eStatusAset,
-          notes: notesLines.join("\n") || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(metaPatch)
         .eq("id", editItem.id);
       if (error) throw new Error(error.message);
-      toast.success("Data item diperbarui.");
+      toast.success(stockMoveToast ?? "Data item diperbarui.");
       setEditItem(null);
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
     } finally {
       setESaving(false);
+    }
+  };
+
+  const confirmDeleteItemRow = async () => {
+    if (!deleteTarget) return;
+    setDeletingRow(true);
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_delete_request_item", {
+        p_request_item_id: deleteTarget.id,
+        p_reason: "Hapus baris permintaan oleh Super Admin",
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      toast.success(
+        formatDeleteItemResult(rpcRes, deleteTarget.inventory_items?.name ?? "Item")
+      );
+      setDeleteTarget(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menghapus baris item.");
+    } finally {
+      setDeletingRow(false);
     }
   };
 
@@ -843,6 +912,22 @@ export function RequestDetailPage() {
     if (!window.confirm(`Split "${itemName}" menjadi ${n} baris (1 per satuan)?`)) return;
     setSplitting(true);
     try {
+      // Gunakan RPC atomik server-side jika sudah tersedia di DB.
+      const { error: rpcErr } = await supabase.rpc("split_request_item", {
+        p_request_item_id: x.id,
+      });
+      if (!rpcErr) {
+        toast.success(`"${itemName}" di-split menjadi ${n} baris.`);
+        await load();
+        return;
+      }
+      // Fallback hanya bila fungsi belum dimigrasi (kode Postgres 42883 / PGRST202).
+      const isMissingRpc =
+        rpcErr.code === "42883" ||
+        rpcErr.code === "PGRST202" ||
+        /Could not find the function/i.test(rpcErr.message);
+      if (!isMissingRpc) throw new Error(rpcErr.message);
+
       // Pecah nilai yang sudah terisi (satu per baris) ke tiap satuan.
       const barcodeLines = (x.barcode ?? "").split("\n").map((s) => s.trim());
       const resiLines = (x.resi ?? "").split("\n").map((s) => s.trim());
@@ -1587,6 +1672,17 @@ export function RequestDetailPage() {
                           <Button variant="outline" className={DARK_OUTLINE_BTN} size="sm" onClick={() => openItemEdit(x)}>
                             <Pencil className="mr-1 h-3 w-3" /> Edit
                           </Button>
+                          {items.length > 1 && (
+                            <Button
+                              variant="outline"
+                              className="border-brand-500/40 bg-brand-500/10 text-brand-200 hover:border-brand-400/60 hover:bg-brand-500/20 hover:text-white"
+                              size="sm"
+                              onClick={() => setDeleteTarget(x)}
+                              title="Hapus baris item (stok terkirim otomatis dikembalikan)"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     )}
@@ -1634,207 +1730,76 @@ export function RequestDetailPage() {
       />
 
       {/* Dialog tambah barang ke tiket yang masih diajukan */}
-      <Dialog open={showAddItem} onOpenChange={setShowAddItem}>
-        <DialogHeader>
-          <DialogTitle>Tambah Barang ke Tiket</DialogTitle>
-          <DialogDescription>
-            Cari barang, isi qty, lalu simpan. Barang langsung masuk daftar permintaan tiket ini.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Cari Barang</Label>
-            <Input
-              value={addQuery}
-              onChange={(e) => handleAddQueryChange(e.target.value)}
-              placeholder="Ketik nama atau SKU barang…"
-            />
-            {addSearching && <p className="text-xs text-ink-500">Mencari…</p>}
-            {addResults.length > 0 && !addItem && (
-              <div className="max-h-48 overflow-y-auto rounded-lg border border-ink-200 bg-white">
-                {addResults.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-50"
-                    onClick={() => {
-                      setAddItem(r);
-                      setAddQuery(r.name);
-                      setAddResults([]);
-                    }}
-                  >
-                    <span className="font-medium">{r.name}</span>
-                    <span className="ml-2 font-mono text-xs text-ink-500">{r.sku}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {addItem && (
-              <p className="text-xs text-ink-500">
-                Terpilih: <b className="text-ink-800">{addItem.name}</b>{" "}
-                <span className="font-mono">({addItem.sku})</span>
-              </p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Qty</Label>
-              <Input
-                type="number"
-                min="1"
-                value={addQty}
-                onChange={(e) => setAddQty(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Status Asset</Label>
-              <Select
-                value={addStatusAset}
-                onValueChange={(v) => setAddStatusAset(v as ExcelStatusAset)}
-                options={(Object.keys(EXCEL_STATUS_ASET_LABELS) as ExcelStatusAset[]).map((o) => ({
-                  value: o,
-                  label: EXCEL_STATUS_ASET_LABELS[o],
-                }))}
-              />
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setShowAddItem(false)} disabled={addSaving}>
-            Batal
-          </Button>
-          <Button onClick={submitAddItem} disabled={addSaving || !addItem}>
-            {addSaving ? "Menyimpan…" : "Tambah ke Tiket"}
-          </Button>
-        </DialogFooter>
-      </Dialog>
+      <RequestAddItemDialog
+        open={showAddItem}
+        onOpenChange={setShowAddItem}
+        addQuery={addQuery}
+        onAddQueryChange={handleAddQueryChange}
+        addSearching={addSearching}
+        addResults={addResults}
+        addItem={addItem}
+        onPickItem={(r) => {
+          setAddItem(r);
+          setAddQuery(r.name);
+          setAddResults([]);
+        }}
+        addQty={addQty}
+        onAddQtyChange={setAddQty}
+        addStatusAset={addStatusAset}
+        onAddStatusAsetChange={setAddStatusAset}
+        addSaving={addSaving}
+        onSubmit={submitAddItem}
+      />
 
       {/* Dialog edit item (superadmin) */}
-      <Dialog open={!!editItem} onOpenChange={(o) => !o && setEditItem(null)}>
-        <DialogHeader>
-          <DialogTitle>Edit — {editItem?.inventory_items?.name}</DialogTitle>
-          <DialogDescription>
-            Revisi data item. Satu nilai per baris untuk Barcode, SN, Resi, Keterangan.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 px-1 py-2 sm:grid-cols-2">
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label>Nama Barang</Label>
-            <select
-              value={eItemId}
-              onChange={(e) => setEItemId(e.target.value)}
-              className="w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800"
-            >
-              {masterItems.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Barcode (satu per baris)</Label>
-            <Textarea rows={4} value={eBarcode} onChange={(e) => setEBarcode(e.target.value)} className="font-mono text-xs" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>SN (satu per baris)</Label>
-            <Textarea rows={4} value={eSn} onChange={(e) => setESn(e.target.value)} className="font-mono text-xs" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Resi (satu per baris)</Label>
-            <Textarea rows={3} value={eResi} onChange={(e) => setEResi(e.target.value)} className="font-mono text-xs" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Keterangan (satu per baris)</Label>
-            <Textarea rows={3} value={eKet} onChange={(e) => setEKet(e.target.value)} className="font-mono text-xs" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-status-request">Status Request</Label>
-            <Select
-              id="edit-status-request"
-              value={eStatusReq}
-              onValueChange={(v) => setEStatusReq(v as StatusRequest)}
-              options={STATUS_REQUEST_OPTIONS.map((o) => ({
-                value: o,
-                label: STATUS_REQUEST_LABELS[o],
-              }))}
-            />
-          </div>
-          {eStatusReq === "PINJAM" && (
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-durasi-pinjam">Durasi Pinjam</Label>
-              <Input
-                id="edit-durasi-pinjam"
-                value={eDurasiPinjam}
-                onChange={(e) => setEDurasiPinjam(e.target.value)}
-                placeholder="cth: 1 MINGGU"
-              />
-            </div>
-          )}
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-status-asset">Status Asset</Label>
-            <Select
-              id="edit-status-asset"
-              value={eStatusAset}
-              onValueChange={(v) => setEStatusAset(v as ExcelStatusAset)}
-              options={(Object.keys(EXCEL_STATUS_ASET_LABELS) as ExcelStatusAset[]).map((o) => ({
-                value: o,
-                label: EXCEL_STATUS_ASET_LABELS[o],
-              }))}
-            />
-            <p className="mt-1 text-xs text-ink-500">
-              Stok dipotong dari <b>{EXCEL_STATUS_ASET_LOKASI[eStatusAset]}</b> saat barang terkirim.
-            </p>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setEditItem(null)} disabled={eSaving}>
-            Batal
-          </Button>
-          <Button onClick={saveItemEdit} disabled={eSaving}>
-            {eSaving ? "Menyimpan…" : "Simpan"}
-          </Button>
-        </DialogFooter>
-      </Dialog>
+      <RequestItemEditDialog
+        editItem={editItem}
+        onClose={() => setEditItem(null)}
+        masterItems={masterItems}
+        eItemId={eItemId}
+        onItemIdChange={setEItemId}
+        eBarcode={eBarcode}
+        onBarcodeChange={setEBarcode}
+        eSn={eSn}
+        onSnChange={setESn}
+        eResi={eResi}
+        onResiChange={setEResi}
+        eKet={eKet}
+        onKetChange={setEKet}
+        eStatusReq={eStatusReq}
+        onStatusReqChange={setEStatusReq}
+        eDurasiPinjam={eDurasiPinjam}
+        onDurasiPinjamChange={setEDurasiPinjam}
+        eStatusAset={eStatusAset}
+        onStatusAsetChange={setEStatusAset}
+        editNeedsStockMove={editNeedsStockMove}
+        eReason={eReason}
+        onReasonChange={setEReason}
+        eSaving={eSaving}
+        onSave={saveItemEdit}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="Hapus baris item dari permintaan?"
+        description={
+          deleteTarget
+            ? describeItemDelete({
+                name: deleteTarget.inventory_items?.name ?? "Item",
+                qtyShipped: Number(deleteTarget.qty_shipped ?? 0),
+                locationCode: EXCEL_STATUS_ASET_LOKASI[parseStatusAset(deleteTarget.status_aset)],
+              })
+            : ""
+        }
+        confirmLabel="Ya, Hapus Baris"
+        destructive
+        loading={deletingRow}
+        onConfirm={() => void confirmDeleteItemRow()}
+      />
 
       {/* ===== CETAK SURAT JALAN / PICK LIST (Hanya muncul saat Print) ===== */}
-      <div className="mt-8 hidden border-t border-ink-200 pt-6 text-xs text-ink-700 print:block">
-        <div className="mb-4 flex items-start justify-between">
-          <div>
-            <h2 className="text-base font-bold uppercase tracking-wide">
-              {printMode === "surat_jalan" ? "SURAT JALAN PENGIRIMAN BARANG" : "PICK LIST GUDANG"}
-            </h2>
-            <p className="mt-1">
-              No. Permintaan: <b>{req.request_number}</b> • No. Tiket: <b>{req.ticket_no || "—"}</b>
-            </p>
-            <p>
-              Tujuan Cabang/Gerai: <b>{req.branch_name}</b>
-              {req.branch_code ? ` (${req.branch_code})` : ""}
-            </p>
-          </div>
-          <div className="text-right">
-            <p>Tanggal Permintaan: {req.request_date}</p>
-            <p>Tanggal Cetak: {new Date().toISOString().slice(0, 10)}</p>
-          </div>
-        </div>
-        <div className="mt-10 grid grid-cols-3 gap-6 text-center">
-          <div className="rounded border border-ink-200 p-3">
-            <p className="font-semibold">Disiapkan Oleh (Helper Gudang)</p>
-            <div className="h-16" />
-            <p className="border-t border-ink-200 pt-1">( ........................................ )</p>
-          </div>
-          <div className="rounded border border-ink-200 p-3">
-            <p className="font-semibold">Disetujui Oleh (Admin Gudang)</p>
-            <div className="h-16" />
-            <p className="border-t border-ink-200 pt-1">( ........................................ )</p>
-          </div>
-          <div className="rounded border border-ink-200 p-3">
-            <p className="font-semibold">
-              {printMode === "surat_jalan" ? "Diterima Oleh (Ekspedisi / Gerai)" : "Pemeriksa Gudang"}
-            </p>
-            <div className="h-16" />
-            <p className="border-t border-ink-200 pt-1">( ........................................ )</p>
-          </div>
-        </div>
-      </div>
+      <RequestPrintSheet req={req} printMode={printMode} />
     </div>
   );
 }

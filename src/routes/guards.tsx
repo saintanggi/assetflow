@@ -18,16 +18,18 @@ function LoadingScreen() {
   );
 }
 
-/** Wajib login. */
+/** Wajib login (dan MFA terverifikasi jika akun mengaktifkan MFA). */
 export function RequireAuth({ children }: { children: ReactElement }) {
-  const { user, loading } = useAuth();
+  const { user, loading, mfaRequired } = useAuth();
   const location = useLocation();
   if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user || mfaRequired) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
   return children;
 }
 
-/** Wajib login + punya permission (super_admin selalu lolos). */
+/** Wajib login + MFA terverifikasi + punya permission (super_admin selalu lolos). */
 export function RequirePermission({
   code,
   children,
@@ -35,20 +37,24 @@ export function RequirePermission({
   code: string;
   children: ReactElement;
 }) {
-  const { user, loading, hasPermission } = useAuth();
+  const { user, loading, mfaRequired, hasPermission } = useAuth();
   const location = useLocation();
   if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user || mfaRequired) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
   if (!hasPermission(code)) return <Navigate to="/403" replace />;
   return children;
 }
 
-/** Khusus Super Admin. */
+/** Khusus Super Admin (wajib MFA terverifikasi jika aktif). */
 export function RequireSuperAdmin({ children }: { children: ReactElement }) {
-  const { user, loading, isSuperAdmin } = useAuth();
+  const { user, loading, mfaRequired, isSuperAdmin } = useAuth();
   const location = useLocation();
   if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user || mfaRequired) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
   if (!isSuperAdmin) return <Navigate to="/403" replace />;
   return children;
 }

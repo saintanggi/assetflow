@@ -4,6 +4,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { AlertTriangle, Siren } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
+import { isReadyConditionLocation } from "../lib/stockLocations";
 import { alertLevelVariant, badgeDarkClass } from "../lib/statusColors";
 import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
@@ -104,34 +106,29 @@ export function StockAlertsPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [itemsRes, balRes, locRes] = await Promise.all([
-          supabase
-            .from("inventory_items")
-            .select("id, sku, name, brand, min_stock")
-            .eq("is_active", true)
-            .gt("min_stock", 0)
-            .order("name")
-            .limit(2000),
-          supabase.from("inventory_balances").select("item_id, location_id, qty"),
+        const [items, balances, locRes] = await Promise.all([
+          fetchAllPages<{
+            id: string;
+            sku: string;
+            name: string;
+            brand: string | null;
+            min_stock: number;
+          }>((from, to) =>
+            supabase
+              .from("inventory_items")
+              .select("id, sku, name, brand, min_stock")
+              .eq("is_active", true)
+              .gt("min_stock", 0)
+              .order("name")
+              .range(from, to)
+          ),
+          fetchAllPages<{ item_id: string; location_id: string; qty: number | string }>((from, to) =>
+            supabase.from("inventory_balances").select("item_id, location_id, qty").range(from, to)
+          ),
           supabase.from("locations").select("id, code, name, warehouses(name)"),
         ]);
         if (cancelled) return;
-        if (itemsRes.error) throw new Error(itemsRes.error.message);
-        if (balRes.error) throw new Error(balRes.error.message);
         if (locRes.error) throw new Error(locRes.error.message);
-
-        const items = (itemsRes.data ?? []) as {
-          id: string;
-          sku: string;
-          name: string;
-          brand: string | null;
-          min_stock: number;
-        }[];
-        const balances = (balRes.data ?? []) as {
-          item_id: string;
-          location_id: string;
-          qty: number | string;
-        }[];
         const locName = new Map<string, string>();
         const locCode = new Map<string, string>();
         for (const l of (locRes.data ?? []) as {
@@ -147,9 +144,9 @@ export function StockAlertsPage() {
         // bukan total semua kondisi: stok Retur/Unready ada di gudang tetapi
         // tidak bisa dipakai untuk permintaan ASSET BARU sehingga pengiriman
         // tetap gagal walau total terlihat aman.
-        const hasBaruLocation = [...locCode.values()].some((c) => c.endsWith("-BARU"));
+        const hasBaruLocation = [...locCode.values()].some((c) => isReadyConditionLocation(c));
         const isReadyLoc = (id: string) =>
-          hasBaruLocation ? (locCode.get(id) ?? "").endsWith("-BARU") : true;
+          hasBaruLocation ? isReadyConditionLocation(locCode.get(id)) : true;
 
         const byItem = new Map<string, { qty: number; ready: number; locs: Set<string> }>();
         for (const b of balances) {

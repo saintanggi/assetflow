@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { HTMLAttributes } from "react";
+import { ScanLine, Search } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { badgeDarkClass } from "../lib/statusColors";
 import { cn } from "../lib/utils";
 import { formatDate, formatQty } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
+import { BarcodeScanner } from "../components/BarcodeScanner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -36,6 +38,7 @@ interface LocationOption {
 interface OpnameLine {
   itemId: string;
   sku: string;
+  barcode: string | null;
   name: string;
   systemQty: number;
   countedQty: string;
@@ -62,10 +65,16 @@ function generateOpnameDocNumber(): string {
   )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
+const OPNAME_DRAFT_STORAGE_PREFIX = "assetflow:opname-draft:";
+
 export function StockOpnamePage() {
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
   const [locationId, setLocationId] = useState("");
   const [lines, setLines] = useState<OpnameLine[]>([]);
+  const [lineFilter, setLineFilter] = useState("");
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanInput, setScanInput] = useState("");
+  const [lastScannedId, setLastScannedId] = useState<string | null>(null);
   const [loadingLines, setLoadingLines] = useState(false);
   const [saving, setSaving] = useState(false);
   const [counts, setCounts] = useState<StockCount[]>([]);
@@ -133,35 +142,64 @@ export function StockOpnamePage() {
     }
     setLoadingLines(true);
     try {
-      const { data: itemsData, error: itemsError } = await supabase
-        .from("inventory_items")
-        .select("id, sku, name")
-        .eq("is_active", true)
-        .order("name");
-      if (itemsError) {
-        toast.error(`Gagal memuat barang: ${itemsError.message}`);
-        return;
+      // Ambil semua barang aktif secara bertahap (aman di atas batas 1.000 baris PostgREST).
+      const allItems: { id: string; sku: string; barcode: string | null; name: string }[] = [];
+      const pageSize = 1000;
+      for (let from = 0; ; from += pageSize) {
+        const { data: chunk, error: itemsError } = await supabase
+          .from("inventory_items")
+          .select("id, sku, barcode, name")
+          .eq("is_active", true)
+          .order("name")
+          .range(from, from + pageSize - 1);
+        if (itemsError) {
+          toast.error(`Gagal memuat barang: ${itemsError.message}`);
+          return;
+        }
+        const rows = (chunk ?? []) as { id: string; sku: string; barcode: string | null; name: string }[];
+        allItems.push(...rows);
+        if (rows.length < pageSize) break;
       }
-      const { data: balancesData, error: balancesError } = await supabase
-        .from("inventory_balances")
-        .select("item_id, qty")
-        .eq("location_id", locationId);
-      if (balancesError) {
-        toast.error(`Gagal memuat saldo: ${balancesError.message}`);
-        return;
-      }
-      // Hasil query dinamis (client Supabase tanpa tipe generated).
+
       const balances = new Map<string, number>();
-      for (const b of (balancesData ?? []) as { item_id: string; qty: number }[]) {
-        balances.set(b.item_id, Number(b.qty));
+      for (let from = 0; ; from += pageSize) {
+        const { data: bChunk, error: balancesError } = await supabase
+          .from("inventory_balances")
+          .select("item_id, qty")
+          .eq("location_id", locationId)
+          .range(from, from + pageSize - 1);
+        if (balancesError) {
+          toast.error(`Gagal memuat saldo: ${balancesError.message}`);
+          return;
+        }
+        const bRows = (bChunk ?? []) as { item_id: string; qty: number }[];
+        for (const b of bRows) balances.set(b.item_id, Number(b.qty));
+        if (bRows.length < pageSize) break;
       }
+
+      // Pulihkan draft hitungan lokal bila user sempat refresh browser.
+      let savedDraft: Record<string, string> = {};
+      try {
+        const raw = localStorage.getItem(`${OPNAME_DRAFT_STORAGE_PREFIX}${locationId}`);
+        if (raw) savedDraft = JSON.parse(raw) as Record<string, string>;
+      } catch {
+        savedDraft = {};
+      }
+      const restoredCount = Object.values(savedDraft).filter((v) => v.trim() !== "").length;
+      if (restoredCount > 0) {
+        toast.info(`Draft lokal dipulihkan (${restoredCount} barang terisi).`);
+      }
+
+      setLineFilter("");
+      setLastScannedId(null);
       setLines(
-        ((itemsData ?? []) as { id: string; sku: string; name: string }[]).map((it) => ({
+        allItems.map((it) => ({
           itemId: it.id,
           sku: it.sku,
+          barcode: it.barcode,
           name: it.name,
           systemQty: balances.get(it.id) ?? 0,
-          countedQty: "",
+          countedQty: savedDraft[it.id] ?? "",
         }))
       );
     } finally {
@@ -170,10 +208,54 @@ export function StockOpnamePage() {
   };
 
   const setCountedQty = (itemId: string, value: string) => {
-    setLines((prev) =>
-      prev.map((l) => (l.itemId === itemId ? { ...l, countedQty: value } : l))
-    );
+    setLines((prev) => {
+      const next = prev.map((l) => (l.itemId === itemId ? { ...l, countedQty: value } : l));
+      if (locationId) {
+        try {
+          const map: Record<string, string> = {};
+          for (const l of next) {
+            if (l.countedQty.trim() !== "") map[l.itemId] = l.countedQty;
+          }
+          localStorage.setItem(`${OPNAME_DRAFT_STORAGE_PREFIX}${locationId}`, JSON.stringify(map));
+        } catch {
+          // Abaikan bila quota localStorage penuh.
+        }
+      }
+      return next;
+    });
   };
+
+  const handleOpnameScan = (rawCode: string) => {
+    const code = rawCode.trim().toUpperCase();
+    if (!code) return;
+    const match = lines.find(
+      (l) =>
+        l.sku.trim().toUpperCase() === code ||
+        (l.barcode ?? "").trim().toUpperCase() === code
+    );
+    if (!match) {
+      toast.error(`Barcode/SKU "${rawCode.trim()}" tidak ditemukan di daftar opname.`);
+      return;
+    }
+    const cur = match.countedQty.trim() === "" ? 0 : Number(match.countedQty);
+    const next = (Number.isFinite(cur) ? cur : 0) + 1;
+    setCountedQty(match.itemId, String(next));
+    setLastScannedId(match.itemId);
+    toast.success(`+1 ${match.name} → Hitung: ${formatQty(next)}`);
+  };
+
+  const filteredLines = useMemo(() => {
+    const q = lineFilter.trim().toLowerCase();
+    if (!q) return lines;
+    return lines.filter(
+      (l) => l.name.toLowerCase().includes(q) || l.sku.toLowerCase().includes(q)
+    );
+  }, [lines, lineFilter]);
+
+  const filledCount = useMemo(
+    () => lines.filter((l) => l.countedQty.trim() !== "").length,
+    [lines]
+  );
 
   const saveDraft = async () => {
     if (!locationId) {
@@ -225,7 +307,13 @@ export function StockOpnamePage() {
         return;
       }
       toast.success(`Draft opname ${docNumber} tersimpan`);
+      try {
+        localStorage.removeItem(`${OPNAME_DRAFT_STORAGE_PREFIX}${locationId}`);
+      } catch {
+        // ignore
+      }
       setLines([]);
+      setLineFilter("");
       setLocationId("");
       await loadCounts();
     } finally {
@@ -257,11 +345,21 @@ export function StockOpnamePage() {
   const locationLabel = (id: string) =>
     locationOptions.find((o) => o.value === id)?.label ?? "—";
 
-  const diffOf = (c: StockCount) =>
-    (c.stock_count_items ?? []).reduce(
-      (sum, it) => sum + (it.counted_qty - it.system_qty),
-      0
-    );
+  const varianceStats = (c: StockCount) => {
+    const items = c.stock_count_items ?? [];
+    let net = 0;
+    let absTotal = 0;
+    let changedItems = 0;
+    for (const it of items) {
+      const d = Number(it.counted_qty) - Number(it.system_qty);
+      net += d;
+      if (d !== 0) {
+        absTotal += Math.abs(d);
+        changedItems += 1;
+      }
+    }
+    return { net, absTotal, changedItems };
+  };
 
   return (
     <div className="space-y-6">
@@ -297,6 +395,65 @@ export function StockOpnamePage() {
 
           {lines.length > 0 && (
             <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative w-full sm:w-56">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-300" />
+                    <Input
+                      className="border-white/15 bg-white/10 pl-9 text-white placeholder:text-ink-300"
+                      placeholder="Filter SKU / nama barang…"
+                      value={lineFilter}
+                      onChange={(e) => setLineFilter(e.target.value)}
+                    />
+                  </div>
+                  <Input
+                    className="w-52 border-white/15 bg-white/10 text-white placeholder:text-ink-300"
+                    placeholder="Scan barcode / SKU (+1)…"
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleOpnameScan(scanInput);
+                        setScanInput("");
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white"
+                    onClick={() => setScanOpen(true)}
+                  >
+                    <ScanLine className="mr-1.5 h-4 w-4" /> Pindai (+1)
+                  </Button>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-ink-200">
+                  <span>
+                    Terisi:{" "}
+                    <b className="text-white">
+                      {filledCount} / {lines.length}
+                    </b>{" "}
+                    barang
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white"
+                    onClick={() => {
+                      setLines((prev) =>
+                        prev.map((l) =>
+                          l.countedQty.trim() === "" ? { ...l, countedQty: String(l.systemQty) } : l
+                        )
+                      );
+                    }}
+                  >
+                    Isi Kosong = Sistem
+                  </Button>
+                </div>
+              </div>
               <Table dark>
                 <TableHeader dark>
                   <TableRow dark>
@@ -307,8 +464,12 @@ export function StockOpnamePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lines.map((l) => (
-                    <TableRow dark key={l.itemId}>
+                  {filteredLines.map((l) => (
+                    <TableRow
+                      dark
+                      key={l.itemId}
+                      className={lastScannedId === l.itemId ? "bg-ok-500/15" : undefined}
+                    >
                       <TableCell className="font-medium">{l.sku}</TableCell>
                       <TableCell>{l.name}</TableCell>
                       <TableCell className="text-right">{formatQty(l.systemQty)}</TableCell>
@@ -364,7 +525,7 @@ export function StockOpnamePage() {
               </TableHeader>
               <TableBody>
                 {counts.map((c) => {
-                  const diff = diffOf(c);
+                  const v = varianceStats(c);
                   return (
                     <TableRow dark key={c.id}>
                       <TableCell className="font-medium">{c.doc_number}</TableCell>
@@ -372,15 +533,20 @@ export function StockOpnamePage() {
                       <TableCell>{locationLabel(c.location_id)}</TableCell>
                       <TableCell
                         className={`text-right font-medium ${
-                          diff > 0
-                            ? "text-brand-200"
-                            : diff < 0
-                              ? "text-brand-200"
-                              : "text-ink-300"
+                          v.changedItems > 0 ? "text-warn-200" : "text-ink-300"
                         }`}
                       >
-                        {diff > 0 ? "+" : ""}
-                        {formatQty(diff)}
+                        {v.changedItems === 0 ? (
+                          "0 (Cocok)"
+                        ) : (
+                          <span>
+                            {v.net > 0 ? "+" : ""}
+                            {formatQty(v.net)}{" "}
+                            <span className="text-xs text-ink-300">
+                              ({v.changedItems} item, total ±{formatQty(v.absTotal)})
+                            </span>
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant={c.status === "posted" ? "success" : "warning"} className={badgeDarkClass[c.status === "posted" ? "success" : "warning"]}>
@@ -415,14 +581,27 @@ export function StockOpnamePage() {
         title="Finalisasi Stock Opname"
         description={
           finalizeTarget
-            ? `Finalisasi ${finalizeTarget.doc_number}? Selisih ${
-                diffOf(finalizeTarget) > 0 ? "+" : ""
-              }${formatQty(diffOf(finalizeTarget))} akan diposting sebagai transaksi penyesuaian.`
+            ? (() => {
+                const v = varianceStats(finalizeTarget);
+                if (v.changedItems === 0) {
+                  return `Finalisasi ${finalizeTarget.doc_number}? Semua stok fisik cocok dengan sistem (0 selisih) — tidak ada transaksi penyesuaian yang perlu dibuat.`;
+                }
+                return `Finalisasi ${finalizeTarget.doc_number}? ${v.changedItems} item memiliki selisih (neto ${v.net > 0 ? "+" : ""}${formatQty(v.net)}, total pergeseran ±${formatQty(v.absTotal)}) yang akan diposting sebagai transaksi penyesuaian.`;
+              })()
             : ""
         }
         confirmLabel="Finalisasi"
         loading={finalizing}
         onConfirm={finalize}
+      />
+
+      <BarcodeScanner
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        onScan={(code) => {
+          handleOpnameScan(code);
+          setScanOpen(false);
+        }}
       />
     </div>
   );
