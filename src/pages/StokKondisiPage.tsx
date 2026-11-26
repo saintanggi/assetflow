@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { AlertTriangle, ArrowRightLeft, Download, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { kondisiStatusDarkClass, kondisiStatusVariant } from "../lib/statusColors";
 import { formatQty, todayLocalDate } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
@@ -124,13 +125,21 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
       const locationId = (locData as { id: string } | null)?.id ?? null;
       setLocationId(locationId);
 
-      // Semua item aktif + satuan.
-      const { data: items, error: itemErr } = await supabase
-        .from("inventory_items")
-        .select("id, name, min_stock, units(code)")
-        .eq("is_active", true)
-        .order("name");
-      if (itemErr) throw new Error(itemErr.message);
+      // Semua item aktif + satuan (paginasi aman >1.000 SKU).
+      const items = await fetchAllPages<{
+        id: string;
+        name: string;
+        min_stock: number | null;
+        units: { code: string } | { code: string }[] | null;
+      }>((from, to) =>
+        supabase
+          .from("inventory_items")
+          .select("id, name, min_stock, units(code)")
+          .eq("is_active", true)
+          .order("name")
+          .order("id")
+          .range(from, to)
+      );
 
       // Stok Awal / IN / OUT / Stok Akhir dihitung dengan SATU rumus yang
       // sama seperti Live Stok: saldo live + ledger menurut TANGGAL TRANSAKSI.
@@ -141,14 +150,18 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
 
       const openingMap = new Map<string, number>();
       if (locationId) {
-        const { data: bals } = await supabase
-          .from("inventory_balances")
-          .select("item_id, opening_qty")
-          .eq("location_id", locationId);
-        for (const b of (bals ?? []) as {
+        const bals = await fetchAllPages<{
           item_id: string;
           opening_qty: number | string | null;
-        }[]) {
+        }>((from, to) =>
+          supabase
+            .from("inventory_balances")
+            .select("item_id, opening_qty")
+            .eq("location_id", locationId)
+            .order("item_id")
+            .range(from, to)
+        );
+        for (const b of bals) {
           openingMap.set(b.item_id, Number(b.opening_qty ?? 0));
         }
       }
@@ -158,12 +171,7 @@ export function StokKondisiPage({ kondisi }: { kondisi: KondisiStok }) {
         : { rows: [], integrity: [] };
       const repByItem = new Map(report.rows.map((r) => [r.item_id, r]));
 
-      const mapped: StokRow[] = ((items ?? []) as {
-        id: string;
-        name: string;
-        min_stock: number | null;
-        units: { code: string } | { code: string }[] | null;
-      }[]).map((it, idx) => {
+      const mapped: StokRow[] = items.map((it, idx) => {
         const rep = repByItem.get(it.id);
         const stokAkhir = rep?.closing ?? 0;
         const stokAwal = rep?.opening ?? 0;

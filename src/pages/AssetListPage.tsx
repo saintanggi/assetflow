@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, Pencil, Eye } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { assetConditionVariant, assetStatusVariant, badgeDarkClass } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { DataTable } from "../components/DataTable";
@@ -29,19 +30,27 @@ export function AssetListPage() {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("assets")
-        .select(ASSET_SELECT)
-        .eq("archived", false)
-        .order("created_at", { ascending: false });
-      if (cancelled) return;
-      if (error) {
-        toast.error("Gagal memuat daftar aset", { description: error.message });
-        setAssets([]);
-      } else {
-        setAssets((data ?? []) as Asset[]);
+      try {
+        const data = await fetchAllPages<Asset>((from, to) =>
+          supabase
+            .from("assets")
+            .select(ASSET_SELECT)
+            .eq("archived", false)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to)
+        );
+        if (!cancelled) setAssets(data);
+      } catch (err) {
+        if (!cancelled) {
+          toast.error("Gagal memuat daftar aset", {
+            description: err instanceof Error ? err.message : "unknown",
+          });
+          setAssets([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     }
     void load();
     return () => {

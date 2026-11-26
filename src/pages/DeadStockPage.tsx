@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Clock, PackageX } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { badgeDarkClass } from "../lib/statusColors";
 import { cn } from "../lib/utils";
 import { PageHeader } from "../components/PageHeader";
@@ -145,33 +146,41 @@ export function DeadStockPage() {
         }
 
         // Fallback sementara jika migrasi SQL get_dead_stock belum dijalankan.
-        const [itemsRes, balancesRes, ledgerRes] = await Promise.all([
-          supabase
-            .from("inventory_items")
-            .select("id, sku, name, brand, purchase_price")
-            .eq("is_active", true),
-          supabase.from("inventory_balances").select("item_id, qty"),
+        const [items, balances, ledger] = await Promise.all([
+          fetchAllPages<{
+            id: string;
+            sku: string;
+            name: string;
+            brand: string | null;
+            purchase_price: number | null;
+          }>((from, to) =>
+            supabase
+              .from("inventory_items")
+              .select("id, sku, name, brand, purchase_price")
+              .eq("is_active", true)
+              .order("id")
+              .range(from, to)
+          ),
+          fetchAllPages<{ item_id: string; qty: number | string }>((from, to) =>
+            supabase
+              .from("inventory_balances")
+              .select("item_id, qty")
+              .order("item_id")
+              .order("location_id")
+              .range(from, to)
+          ),
           // Pergerakan keluar (qty_change < 0) — cari tanggal terakhir per item.
-          supabase
-            .from("inventory_ledger")
-            .select("item_id, created_at")
-            .lt("qty_change", 0)
-            .order("created_at", { ascending: false })
-            .limit(10000),
+          fetchAllPages<{ item_id: string; created_at: string }>((from, to) =>
+            supabase
+              .from("inventory_ledger")
+              .select("item_id, created_at")
+              .lt("qty_change", 0)
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to)
+          ),
         ]);
         if (cancelled) return;
-        const failures = [itemsRes, balancesRes, ledgerRes].filter((r) => r.error);
-        if (failures.length > 0) throw new Error("Gagal memuat data dead stock");
-
-        const items = (itemsRes.data ?? []) as {
-          id: string;
-          sku: string;
-          name: string;
-          brand: string | null;
-          purchase_price: number | null;
-        }[];
-        const balances = (balancesRes.data ?? []) as { item_id: string; qty: number | string }[];
-        const ledger = (ledgerRes.data ?? []) as { item_id: string; created_at: string }[];
 
         const stockByItem = new Map<string, number>();
         for (const b of balances) {

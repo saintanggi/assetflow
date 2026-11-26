@@ -10,7 +10,7 @@ export async function fetchAllPages<T>(
   options?: { pageSize?: number; maxRows?: number }
 ): Promise<T[]> {
   const pageSize = options?.pageSize ?? 1000;
-  const maxRows = options?.maxRows ?? 25_000;
+  const maxRows = options?.maxRows ?? 500_000;
   const result: T[] = [];
 
   for (let from = 0; from < maxRows; from += pageSize) {
@@ -23,4 +23,16 @@ export async function fetchAllPages<T>(
   }
 
   return result;
+}
+
+/**
+ * Pecah array ID menjadi potongan kecil agar query `.in(...)` tidak melebihi
+ * batas panjang URL ataupun batas 1.000 baris PostgREST.
+ */
+export function chunkArray<T>(items: readonly T[], size = 100): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
 }

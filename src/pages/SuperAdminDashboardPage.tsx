@@ -14,6 +14,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { badgeDarkClass } from "../lib/statusColors";
 import { cn } from "../lib/utils";
 import { formatDateTime, formatQty, formatRupiah, timeAgo } from "../lib/format";
@@ -98,16 +99,23 @@ export function SuperAdminDashboardPage() {
         const [
           usersRes,
           assetsCountRes,
-          assetsValueRes,
+          assetValues,
           txRes,
           auditRes,
-          itemsRes,
-          balancesRes,
+          items,
+          balances,
         ] = await Promise.all([
           supabase.from("profiles").select("id", { count: "exact", head: true }),
           supabase.from("assets").select("id", { count: "exact", head: true }).eq("archived", false),
           // Nilai aset hanya boleh dilihat super admin — halaman ini sudah di-guard RequireSuperAdmin.
-          supabase.from("assets").select("purchase_price").eq("archived", false),
+          fetchAllPages<{ purchase_price: number | null }>((from, to) =>
+            supabase
+              .from("assets")
+              .select("purchase_price")
+              .eq("archived", false)
+              .order("id")
+              .range(from, to)
+          ),
           supabase
             .from("inventory_transactions")
             .select("id", { count: "exact", head: true })
@@ -117,14 +125,30 @@ export function SuperAdminDashboardPage() {
             .select("id, action, entity_type, entity_id, created_at, profiles(email, full_name)")
             .order("created_at", { ascending: false })
             .limit(5),
-          supabase
-            .from("inventory_items")
-            .select("id, sku, name, min_stock")
-            .eq("is_active", true)
-            .not("min_stock", "is", null),
-          supabase.from("inventory_balances").select("item_id, qty"),
+          fetchAllPages<{
+            id: string;
+            sku: string;
+            name: string;
+            min_stock: number | null;
+          }>((from, to) =>
+            supabase
+              .from("inventory_items")
+              .select("id, sku, name, min_stock")
+              .eq("is_active", true)
+              .not("min_stock", "is", null)
+              .order("id")
+              .range(from, to)
+          ),
+          fetchAllPages<{ item_id: string; qty: number }>((from, to) =>
+            supabase
+              .from("inventory_balances")
+              .select("item_id, qty")
+              .order("item_id")
+              .order("location_id")
+              .range(from, to)
+          ),
         ]);
-        const failures = [usersRes, assetsCountRes, assetsValueRes, txRes, auditRes, itemsRes, balancesRes].filter(
+        const failures = [usersRes, assetsCountRes, txRes, auditRes].filter(
           (r) => r.error
         );
         if (failures.length > 0) throw new Error("Gagal memuat data admin");
@@ -133,19 +157,11 @@ export function SuperAdminDashboardPage() {
 
         setTotalUsers(usersRes.count ?? 0);
         setTotalAssets(assetsCountRes.count ?? 0);
-        const values = (assetsValueRes.data ?? []) as { purchase_price: number | null }[];
-        setTotalValue(values.reduce((sum, a) => sum + (Number(a.purchase_price) || 0), 0));
+        setTotalValue(assetValues.reduce((sum, a) => sum + (Number(a.purchase_price) || 0), 0));
         setTxThisMonth(txRes.count ?? 0);
         setAudit((auditRes.data ?? []) as AuditRow[]);
 
         // 5 SKU dengan selisih stok vs minimum terendah.
-        const items = (itemsRes.data ?? []) as {
-          id: string;
-          sku: string;
-          name: string;
-          min_stock: number | null;
-        }[];
-        const balances = (balancesRes.data ?? []) as { item_id: string; qty: number }[];
         const balanceByItem = new Map<string, number>();
         for (const b of balances) {
           balanceByItem.set(b.item_id, (balanceByItem.get(b.item_id) ?? 0) + Number(b.qty));

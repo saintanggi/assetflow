@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { Download, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { chunkArray, fetchAllPages } from "../lib/supabasePagination";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
@@ -104,58 +105,69 @@ export function RequestListPage() {
         const clean = q.replace(/[%_,]/g, "");
         const pat = `%${clean}%`;
         const [reqMatch, itemMatch] = await Promise.all([
-          supabase
-            .from("requests")
-            .select("id")
-            .or(
-              `ticket_no.ilike.${pat},request_number.ilike.${pat},branch_name.ilike.${pat},branch_code.ilike.${pat}`
-            )
-            .limit(300),
-          supabase
-            .from("request_items")
-            .select("request_id")
-            .or(
-              `barcode.ilike.${pat},serial_number.ilike.${pat},resi.ilike.${pat},notes.ilike.${pat}`
-            )
-            .limit(300),
+          fetchAllPages<{ id: string }>((start, end) =>
+            supabase
+              .from("requests")
+              .select("id")
+              .or(
+                `ticket_no.ilike.${pat},request_number.ilike.${pat},branch_name.ilike.${pat},branch_code.ilike.${pat}`
+              )
+              .order("id", { ascending: true })
+              .range(start, end)
+          ),
+          fetchAllPages<{ request_id: string }>((start, end) =>
+            supabase
+              .from("request_items")
+              .select("request_id")
+              .or(
+                `barcode.ilike.${pat},serial_number.ilike.${pat},resi.ilike.${pat},notes.ilike.${pat}`
+              )
+              .order("id", { ascending: true })
+              .range(start, end)
+          ),
         ]);
         const idSet = new Set<string>();
-        for (const r of (reqMatch.data ?? []) as { id: string }[]) idSet.add(r.id);
-        for (const i of (itemMatch.data ?? []) as { request_id: string }[]) idSet.add(i.request_id);
+        for (const r of reqMatch) idSet.add(r.id);
+        for (const i of itemMatch) idSet.add(i.request_id);
         if (idSet.size === 0) {
           setRows([]);
-          setLoading(false);
           return;
         }
-        let qBuilder = supabase
-          .from("requests")
-          .select("*")
-          .in("id", [...idSet].slice(0, 300))
-          // Urutan tampilan: tanggal terlama -> terbaru, agar daftar mudah
-          // ditelusur berdasarkan tanggal.
-          .order("request_date", { ascending: true })
-          .order("created_at", { ascending: true });
-        if (from) qBuilder = qBuilder.gte("request_date", from);
-        if (to) qBuilder = qBuilder.lte("request_date", to);
-        const { data, error } = await qBuilder;
-        if (error) toast.error(error.message);
-        else setRows((data ?? []) as Request[]);
+        const matched: Request[] = [];
+        for (const batch of chunkArray([...idSet], 100)) {
+          let qBuilder = supabase.from("requests").select("*").in("id", batch);
+          if (from) qBuilder = qBuilder.gte("request_date", from);
+          if (to) qBuilder = qBuilder.lte("request_date", to);
+          const { data, error } = await qBuilder;
+          if (error) throw new Error(error.message);
+          matched.push(...((data ?? []) as Request[]));
+        }
+        matched.sort((a, b) => {
+          if (a.request_date !== b.request_date) {
+            return a.request_date < b.request_date ? -1 : 1;
+          }
+          return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+        });
+        setRows(matched);
       } else {
-        // Ambil 500 permintaan bertanggal paling baru dari server (DESC + limit),
-        // lalu balik urutannya di klien agar tampilan terlama -> terbaru tanpa
-        // membuat permintaan terbaru hilang dari daftar saat total data > 500.
-        let qBuilder = supabase
-          .from("requests")
-          .select("*")
-          .order("request_date", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(500);
-        if (from) qBuilder = qBuilder.gte("request_date", from);
-        if (to) qBuilder = qBuilder.lte("request_date", to);
-        const { data, error } = await qBuilder;
-        if (error) toast.error(error.message);
-        else setRows([...(data ?? [])].reverse() as Request[]);
+        // Muat seluruh permintaan bertahap (tanpa limit 500/1.000 PostgREST) agar
+        // data lama maupun terbaru selalu tampil sinkron bertahun-tahun.
+        const all = await fetchAllPages<Request>((start, end) => {
+          let qBuilder = supabase
+            .from("requests")
+            .select("*")
+            .order("request_date", { ascending: true })
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(start, end);
+          if (from) qBuilder = qBuilder.gte("request_date", from);
+          if (to) qBuilder = qBuilder.lte("request_date", to);
+          return qBuilder;
+        });
+        setRows(all);
       }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal memuat daftar permintaan.");
     } finally {
       setLoading(false);
     }
@@ -197,16 +209,19 @@ export function RequestListPage() {
         inventory_items: { sku: string; name: string } | { sku: string; name: string }[] | null;
       }[] = [];
 
-      for (let i = 0; i < reqIds.length; i += 100) {
-        const { data, error } = await supabase
-          .from("request_items")
-          .select(
-            "request_id, qty_requested, qty_approved, qty_shipped, barcode, serial_number, item_type, status_aset, resi, item_status, notes, inventory_items(sku, name)"
-          )
-          .in("request_id", reqIds.slice(i, i + 100))
-          .order("created_at", { ascending: true });
-        if (error) throw new Error(error.message);
-        allItems.push(...((data ?? []) as unknown as typeof allItems));
+      for (const batch of chunkArray(reqIds, 100)) {
+        const chunkItems = await fetchAllPages<typeof allItems[number]>((start, end) =>
+          supabase
+            .from("request_items")
+            .select(
+              "request_id, qty_requested, qty_approved, qty_shipped, barcode, serial_number, item_type, status_aset, resi, item_status, notes, inventory_items(sku, name)"
+            )
+            .in("request_id", batch)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(start, end)
+        );
+        allItems.push(...chunkItems);
       }
 
       const headers = [

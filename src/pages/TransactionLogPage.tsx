@@ -5,12 +5,13 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Download } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { fetchAllPages } from "../lib/supabasePagination";
+import { chunkArray, fetchAllPages } from "../lib/supabasePagination";
 import { cn } from "../lib/utils";
 import { badgeDarkClass } from "../lib/statusColors";
 import { useAuth } from "../context/AuthContext";
 import { formatDate, formatQty } from "../lib/format";
 import { exportToCsv } from "../lib/csv";
+import { parseProofUrls } from "../lib/proofUrls";
 import { PageHeader } from "../components/PageHeader";
 import { ProofImage } from "../components/ProofImage";
 import { DataTable } from "../components/DataTable";
@@ -151,8 +152,8 @@ export function TransactionLogPage() {
                 "locations!inner(code, name, warehouses(name))"
             )
             .order("created_at", { ascending: false })
-            .range(from, to),
-        { maxRows: 5000 }
+            .order("id", { ascending: false })
+            .range(from, to)
       );
       const txIds = [...new Set(raw.map((r) => r.transaction_id))];
       const reqNums = [...new Set(
@@ -174,18 +175,22 @@ export function TransactionLogPage() {
         string,
         { resi: string; gerai: string; statusAset: string }
       >();
-      for (let i = 0; i < txIds.length; i += 100) {
-        const { data: tis } = await supabase
-          .from("inventory_transaction_items")
-          .select("transaction_id, item_id, resi, gerai, status_aset")
-          .in("transaction_id", txIds.slice(i, i + 100));
-        for (const t of (tis ?? []) as {
+      for (const batch of chunkArray(txIds, 100)) {
+        const tis = await fetchAllPages<{
           transaction_id: string;
           item_id: string;
           resi: string | null;
           gerai: string | null;
           status_aset: string | null;
-        }[]) {
+        }>((from, to) =>
+          supabase
+            .from("inventory_transaction_items")
+            .select("transaction_id, item_id, resi, gerai, status_aset")
+            .in("transaction_id", batch)
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+        for (const t of tis) {
           const k = `${t.transaction_id}|${t.item_id}`;
           itemDetail.set(k, {
             resi: t.resi ?? "",
@@ -198,16 +203,20 @@ export function TransactionLogPage() {
       // Tiket + status asset permintaan (fallback bila transaksi tidak punya).
       const ticketMap = new Map<string, string>();
       const requestItemStatus = new Map<string, string>();
-      for (let i = 0; i < reqNums.length; i += 100) {
-        const { data: reqs } = await supabase
-          .from("requests")
-          .select("request_number, ticket_no, request_items(item_id, status_aset)")
-          .in("request_number", reqNums.slice(i, i + 100));
-        for (const q of (reqs ?? []) as {
+      for (const batch of chunkArray(reqNums, 100)) {
+        const reqs = await fetchAllPages<{
           request_number: string;
           ticket_no: string;
           request_items: { item_id: string; status_aset: string | null }[] | null;
-        }[]) {
+        }>((from, to) =>
+          supabase
+            .from("requests")
+            .select("request_number, ticket_no, request_items(item_id, status_aset)")
+            .in("request_number", batch)
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+        for (const q of reqs) {
           ticketMap.set(q.request_number, q.ticket_no);
           for (const ri of q.request_items ?? []) {
             if (ri.status_aset)
@@ -218,14 +227,17 @@ export function TransactionLogPage() {
 
       // Nama user (profiles + fallback user_accounts).
       const userMap = new Map<string, string>();
-      if (userIds.length > 0) {
-        const { data: profs } = await supabase.from("profiles").select("id, full_name").in("id", userIds);
+      for (const batch of chunkArray(userIds, 100)) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", batch);
         for (const p of (profs ?? []) as { id: string; full_name: string | null }[])
           if (p.full_name) userMap.set(p.id, p.full_name);
         const { data: uas } = await supabase
           .from("user_accounts")
           .select("auth_user_id, display_name")
-          .in("auth_user_id", userIds);
+          .in("auth_user_id", batch);
         for (const ua of (uas ?? []) as { auth_user_id: string | null; display_name: string }[])
           if (ua.auth_user_id && ua.display_name) userMap.set(ua.auth_user_id, ua.display_name);
       }
@@ -477,7 +489,7 @@ export function TransactionLogPage() {
         OUT: r.qtyChange < 0 ? Math.abs(r.qtyChange) : "",
         "Jenis Stok": r.jenisStokLabel,
         Gerai: r.gerai,
-        "Foto Surat Jalan": r.suratJalanUrl,
+        "Foto Surat Jalan": parseProofUrls(r.suratJalanUrl).join(" | "),
         Lokasi: r.location,
         Keterangan: r.notes,
         User: r.userName,

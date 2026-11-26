@@ -143,8 +143,8 @@ export function TransactionHistoryPage() {
                 "inventory_items!inner(sku, name)"
             )
             .order("created_at", { ascending: false })
-            .range(from, to),
-        { maxRows: 5000 }
+            .order("id", { ascending: false })
+            .range(from, to)
       );
       const rows = raw.map((r) => {
         const tx = Array.isArray(r.inventory_transactions)
@@ -196,8 +196,8 @@ export function TransactionHistoryPage() {
             .from("inventory_transaction_items")
             .select("transaction_id, inventory_items!inner(sku, name)")
             .order("created_at", { ascending: false })
-            .range(from, to),
-        { maxRows: 5000 }
+            .order("id", { ascending: false })
+            .range(from, to)
       );
     } catch {
       return;
@@ -305,16 +305,23 @@ export function TransactionHistoryPage() {
 
   const loadTransactions = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("inventory_transactions")
-      .select("*")
-      .order("created_at", { ascending: false });
-    setLoading(false);
-    if (error) {
-      toast.error(`Gagal memuat riwayat transaksi: ${error.message}`);
-      return;
+    try {
+      const data = await fetchAllPages<InventoryTransaction>((from, to) =>
+        supabase
+          .from("inventory_transactions")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      );
+      setTransactions(data);
+    } catch (e) {
+      toast.error(
+        `Gagal memuat riwayat transaksi: ${e instanceof Error ? e.message : "unknown"}`
+      );
+    } finally {
+      setLoading(false);
     }
-    setTransactions((data ?? []) as InventoryTransaction[]);
   };
 
   useEffect(() => {

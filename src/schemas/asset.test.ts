@@ -53,9 +53,29 @@ describe("inventoryItemSchema", () => {
     expect(inventoryItemSchema.safeParse({ name: "x", is_active: true }).success).toBe(true);
     expect(inventoryItemSchema.safeParse({ sku: "SPASI TIDAK BOLEH", name: "x", is_active: true }).success).toBe(false);
     expect(inventoryItemSchema.safeParse({ sku: "A", name: "", is_active: true }).success).toBe(false);
+    expect(inventoryItemSchema.safeParse({ sku: "A", name: "   ", is_active: true }).success).toBe(false);
     expect(
       inventoryItemSchema.safeParse({ sku: "A", name: "x", min_stock: -1, is_active: true }).success
     ).toBe(false);
+  });
+
+  it("menormalkan min_stock null atau undefined menjadi 0", () => {
+    const omitted = inventoryItemSchema.parse({ name: "Kipas Angin", is_active: true });
+    expect(omitted.min_stock).toBe(0);
+
+    const nulled = inventoryItemSchema.parse({
+      name: "Kipas Angin",
+      min_stock: null,
+      is_active: true,
+    });
+    expect(nulled.min_stock).toBe(0);
+
+    const filled = inventoryItemSchema.parse({
+      name: "Kipas Angin",
+      min_stock: 5,
+      is_active: true,
+    });
+    expect(filled.min_stock).toBe(5);
   });
 });
 

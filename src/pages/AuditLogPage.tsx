@@ -3,6 +3,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Eye } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { formatDateTime } from "../lib/format";
 import { badgeDarkClass } from "../lib/statusColors";
 import { DataTable } from "../components/DataTable";
@@ -172,61 +173,100 @@ function recordEntries(data: Record<string, unknown> | null): { key: string; val
     .map(([key, value]) => ({ key, value }));
 }
 
+const AUDIT_PAGE_SIZE = 200;
+
 export function AuditLogPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [aksiFilter, setAksiFilter] = useState("");
   const [entitasFilter, setEntitasFilter] = useState("");
   const [selected, setSelected] = useState<AuditLog | null>(null);
   // Peta id → nama supaya UUID di detail bisa dibaca (satuan, lokasi, barang…).
   const [lookups, setLookups] = useState<Lookups | null>(null);
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
+  const fetchLogs = useCallback(async (offset = 0) => {
+    if (offset === 0) setLoading(true);
+    else setLoadingMore(true);
     const { data, error } = await supabase
       .from("audit_logs")
       .select("*, profiles(email,full_name)")
       .order("created_at", { ascending: false })
-      .limit(200);
+      .order("id", { ascending: false })
+      .range(offset, offset + AUDIT_PAGE_SIZE - 1);
     if (error) {
       toast.error("Gagal memuat audit log.");
     } else {
-      setLogs((data ?? []) as unknown as AuditLog[]);
+      const batch = (data ?? []) as unknown as AuditLog[];
+      setHasMore(batch.length === AUDIT_PAGE_SIZE);
+      setLogs((prev) => (offset === 0 ? batch : [...prev, ...batch]));
     }
-    setLoading(false);
+    if (offset === 0) setLoading(false);
+    else setLoadingMore(false);
   }, []);
 
+  const fetchAllRemainingLogs = async () => {
+    setLoadingMore(true);
+    try {
+      const rest = await fetchAllPages<AuditLog>((from, to) =>
+        supabase
+          .from("audit_logs")
+          .select("*, profiles(email,full_name)")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(logs.length + from, logs.length + to)
+      );
+      setLogs((prev) => [...prev, ...rest]);
+      setHasMore(false);
+    } catch {
+      toast.error("Gagal memuat seluruh audit log.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
-    void fetchLogs();
+    void fetchLogs(0);
   }, [fetchLogs]);
 
   useEffect(() => {
     (async () => {
-      const [units, cats, locs, sups, items, reqs, profs] = await Promise.all([
-        supabase.from("units").select("id, name"),
-        supabase.from("asset_categories").select("id, name"),
-        supabase.from("locations").select("id, name"),
-        supabase.from("suppliers").select("id, name"),
-        supabase.from("inventory_items").select("id, name"),
-        supabase.from("requests").select("id, request_number"),
-        supabase.from("profiles").select("id, email"),
-      ]);
-      const toMap = (rows: unknown, label: string) =>
-        new Map(
-          ((rows ?? []) as { id: string }[]).map((r) => [
-            r.id,
-            (r as Record<string, unknown>)[label] as string,
-          ]),
-        );
-      setLookups({
-        units: toMap(units.data, "name"),
-        categories: toMap(cats.data, "name"),
-        locations: toMap(locs.data, "name"),
-        suppliers: toMap(sups.data, "name"),
-        items: toMap(items.data, "name"),
-        requests: toMap(reqs.data, "request_number"),
-        profiles: toMap(profs.data, "email"),
-      });
+      try {
+        const [units, cats, locs, sups, items, reqs, profs] = await Promise.all([
+          supabase.from("units").select("id, name"),
+          supabase.from("asset_categories").select("id, name"),
+          supabase.from("locations").select("id, name"),
+          supabase.from("suppliers").select("id, name"),
+          fetchAllPages<{ id: string; name: string }>((from, to) =>
+            supabase.from("inventory_items").select("id, name").order("id").range(from, to)
+          ),
+          fetchAllPages<{ id: string; request_number: string }>((from, to) =>
+            supabase.from("requests").select("id, request_number").order("id").range(from, to)
+          ),
+          fetchAllPages<{ id: string; email: string }>((from, to) =>
+            supabase.from("profiles").select("id, email").order("id").range(from, to)
+          ),
+        ]);
+        const toMap = (rows: unknown, label: string) =>
+          new Map(
+            ((rows ?? []) as { id: string }[]).map((r) => [
+              r.id,
+              (r as Record<string, unknown>)[label] as string,
+            ]),
+          );
+        setLookups({
+          units: toMap(units.data, "name"),
+          categories: toMap(cats.data, "name"),
+          locations: toMap(locs.data, "name"),
+          suppliers: toMap(sups.data, "name"),
+          items: toMap(items, "name"),
+          requests: toMap(reqs, "request_number"),
+          profiles: toMap(profs, "email"),
+        });
+      } catch {
+        // Biarkan detail log tetap terbuka memakai UUID bila lookup gagal.
+      }
     })();
   }, []);
 
@@ -304,7 +344,7 @@ export function AuditLogPage() {
     <div>
       <PageHeader
         title="Audit Log"
-        description="200 aktivitas terbaru — siapa melakukan apa, kapan, dan datanya."
+        description={`Menampilkan ${logs.length.toLocaleString("id-ID")} aktivitas${hasMore ? " terbaru (klik muat lagi untuk melihat riwayat lebih lama)" : ""} — siapa melakukan apa, kapan, dan datanya.`}
       />
 
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:max-w-2xl">
@@ -337,6 +377,31 @@ export function AuditLogPage() {
         searchPlaceholder="Cari…"
         pageSize={15}
       />
+
+      {hasMore && !loading && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loadingMore}
+            onClick={() => void fetchLogs(logs.length)}
+            className="border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white"
+          >
+            {loadingMore ? "Memuat…" : `Muat ${AUDIT_PAGE_SIZE} log lebih lama`}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loadingMore}
+            onClick={() => void fetchAllRemainingLogs()}
+            className="border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white"
+          >
+            Muat semua riwayat log
+          </Button>
+        </div>
+      )}
 
       <Dialog open={selected !== null} onOpenChange={(o) => !o && setSelected(null)}>
         <DialogHeader>

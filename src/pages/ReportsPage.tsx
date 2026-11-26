@@ -3,6 +3,7 @@ import type { HTMLAttributes } from "react";
 import { Download, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { useAuth } from "../context/AuthContext";
 import {
   formatDate,
@@ -151,20 +152,31 @@ export function ReportsPage() {
   // Opsi filter (sekali muat)
   useEffect(() => {
     (async () => {
-      const [{ data: cats }, { data: locs }, { data: itms }] = await Promise.all([
-        supabase.from("asset_categories").select("id, code, name").order("name"),
-        supabase.from("locations").select("id, code, name").order("name"),
-        supabase.from("inventory_items").select("id, sku, name").order("sku"),
-      ]);
-      setCategories((cats ?? []) as Opt[]);
-      setLocations((locs ?? []) as Opt[]);
-      setItems(
-        (((itms ?? []) as { id: string; sku: string; name: string }[]).map((i) => ({
-          id: i.id,
-          code: i.sku,
-          name: i.name,
-        })) as Opt[])
-      );
+      try {
+        const [{ data: cats }, { data: locs }, itms] = await Promise.all([
+          supabase.from("asset_categories").select("id, code, name").order("name"),
+          supabase.from("locations").select("id, code, name").order("name"),
+          fetchAllPages<{ id: string; sku: string; name: string }>((from, to) =>
+            supabase
+              .from("inventory_items")
+              .select("id, sku, name")
+              .order("sku")
+              .order("id")
+              .range(from, to)
+          ),
+        ]);
+        setCategories((cats ?? []) as Opt[]);
+        setLocations((locs ?? []) as Opt[]);
+        setItems(
+          itms.map((i) => ({
+            id: i.id,
+            code: i.sku,
+            name: i.name,
+          }))
+        );
+      } catch {
+        toast.error("Gagal memuat opsi filter laporan.");
+      }
     })();
   }, []);
 
@@ -175,34 +187,47 @@ export function ReportsPage() {
       setLoading(true);
       try {
         if (tab === "aset" || tab === "nilai") {
-          let q = supabase
-            .from("assets")
-            .select(
-              "id, asset_code, name, category_id, location_id, condition, status, purchase_price, asset_categories(name), locations(name), departments(name)"
-            )
-            .order("asset_code");
-          if (categoryId) q = q.eq("category_id", categoryId);
-          if (locationId) q = q.eq("location_id", locationId);
-          if (status) q = q.eq("status", status);
-          const { data, error } = await q;
-          if (error) throw error;
-          if (!cancelled) setAssets((data ?? []) as unknown as AssetRow[]);
+          const data = await fetchAllPages<AssetRow>((from, to) => {
+            let q = supabase
+              .from("assets")
+              .select(
+                "id, asset_code, name, category_id, location_id, condition, status, purchase_price, asset_categories(name), locations(name), departments(name)"
+              )
+              .order("asset_code")
+              .order("id")
+              .range(from, to);
+            if (categoryId) q = q.eq("category_id", categoryId);
+            if (locationId) q = q.eq("location_id", locationId);
+            if (status) q = q.eq("status", status);
+            return q;
+          });
+          if (!cancelled) setAssets(data);
         } else if (tab === "stok" || tab === "menipis") {
-          let q = supabase
-            .from("inventory_items")
-            .select("id, sku, name, category_id, min_stock, units(code), asset_categories(name)")
-            .order("sku");
-          if (categoryId) q = q.eq("category_id", categoryId);
-          const { data: itemData, error } = await q;
-          if (error) throw error;
-          const { data: balData } = await supabase
-            .from("inventory_balances")
-            .select("item_id, qty");
+          const [itemData, balData] = await Promise.all([
+            fetchAllPages<StockRow>((from, to) => {
+              let q = supabase
+                .from("inventory_items")
+                .select("id, sku, name, category_id, min_stock, units(code), asset_categories(name)")
+                .order("sku")
+                .order("id")
+                .range(from, to);
+              if (categoryId) q = q.eq("category_id", categoryId);
+              return q;
+            }),
+            fetchAllPages<{ item_id: string; qty: number }>((from, to) =>
+              supabase
+                .from("inventory_balances")
+                .select("item_id, qty")
+                .order("item_id")
+                .order("location_id")
+                .range(from, to)
+            ),
+          ]);
           const totals = new Map<string, number>();
-          for (const b of (balData ?? []) as { item_id: string; qty: number }[]) {
+          for (const b of balData) {
             totals.set(b.item_id, (totals.get(b.item_id) ?? 0) + Number(b.qty));
           }
-          let rows = ((itemData ?? []) as unknown as StockRow[]).map((i) => ({
+          let rows = itemData.map((i) => ({
             ...i,
             total: totals.get(i.id) ?? 0,
           }));
@@ -221,17 +246,21 @@ export function ReportsPage() {
           // Filter memakai TANGGAL TRANSAKSI (tanggal dokumen), bukan waktu
           // input (created_at), supaya pengiriman 10 Nov yang diunggah 11 Nov
           // tetap masuk periode 10 Nov — sama dengan Live Stok & Stok Kondisi.
-          let q = supabase
-            .from("inventory_ledger")
-            .select(
-              "id, created_at, qty_change, qty_after, inventory_transactions!inner(doc_number, type, transaction_date)"
-            )
-            .eq("item_id", kartuItemId);
-          if (dateFrom) q = q.gte("inventory_transactions.transaction_date", dateFrom);
-          if (dateTo) q = q.lte("inventory_transactions.transaction_date", dateTo);
-          const { data, error } = await q;
-          if (error) throw error;
-          const rows = ((data ?? []) as unknown as LedgerRow[]).slice().sort((a, b) => {
+          const rawRows = await fetchAllPages<LedgerRow>((from, to) => {
+            let q = supabase
+              .from("inventory_ledger")
+              .select(
+                "id, created_at, qty_change, qty_after, inventory_transactions!inner(doc_number, type, transaction_date)"
+              )
+              .eq("item_id", kartuItemId)
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to);
+            if (dateFrom) q = q.gte("inventory_transactions.transaction_date", dateFrom);
+            if (dateTo) q = q.lte("inventory_transactions.transaction_date", dateTo);
+            return q;
+          });
+          const rows = rawRows.slice().sort((a, b) => {
             const da = a.inventory_transactions?.transaction_date ?? a.created_at;
             const db = b.inventory_transactions?.transaction_date ?? b.created_at;
             if (da !== db) return da < db ? -1 : 1;
@@ -239,16 +268,19 @@ export function ReportsPage() {
           });
           if (!cancelled) setLedger(rows);
         } else if (tab === "transaksi") {
-          let q = supabase
-            .from("inventory_transactions")
-            .select("id, doc_number, type, status, transaction_date, reference")
-            .order("transaction_date", { ascending: false });
-          if (dateFrom) q = q.gte("transaction_date", dateFrom);
-          if (dateTo) q = q.lte("transaction_date", dateTo);
-          if (txType) q = q.eq("type", txType);
-          const { data, error } = await q;
-          if (error) throw error;
-          if (!cancelled) setTxs((data ?? []) as TxRow[]);
+          const data = await fetchAllPages<TxRow>((from, to) => {
+            let q = supabase
+              .from("inventory_transactions")
+              .select("id, doc_number, type, status, transaction_date, reference")
+              .order("transaction_date", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to);
+            if (dateFrom) q = q.gte("transaction_date", dateFrom);
+            if (dateTo) q = q.lte("transaction_date", dateTo);
+            if (txType) q = q.eq("type", txType);
+            return q;
+          });
+          if (!cancelled) setTxs(data);
         }
       } catch {
         if (!cancelled) toast.error("Gagal memuat laporan.");
