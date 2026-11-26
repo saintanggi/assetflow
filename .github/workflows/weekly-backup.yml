@@ -1,0 +1,227 @@
+name: Weekly Backup
+
+on:
+  # Jalan otomatis setiap minggu: Minggu pukul 02:00 WIB (Sabtu 19:00 UTC)
+  schedule:
+    - cron: "0 19 * * 6"
+  # Bisa dijalankan manual kapan saja lewat tab Actions → Weekly Backup → Run workflow
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assetflow-weekly-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Backup Database & Storage Terenkripsi
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validasi secrets wajib
+        env:
+          HAS_DB_URL: ${{ secrets.SUPABASE_DB_URL != '' }}
+          HAS_SB_URL: ${{ (secrets.SUPABASE_URL != '' || vars.SUPABASE_URL != '') }}
+          HAS_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+          HAS_ENC_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY != '' }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ "$HAS_DB_URL" = "true" ] || missing+=("SUPABASE_DB_URL")
+          [ "$HAS_SB_URL" = "true" ] || missing+=("SUPABASE_URL")
+          [ "$HAS_SERVICE_KEY" = "true" ] || missing+=("SUPABASE_SERVICE_ROLE_KEY")
+          [ "$HAS_ENC_KEY" = "true" ] || missing+=("BACKUP_ENCRYPTION_KEY")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Secrets GitHub berikut belum diisi: ${missing[*]}. Lihat panduan di docs/BACKUP_AND_RESTORE.md."
+            exit 1
+          fi
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Pasang PostgreSQL 17 client (pg_dump / pg_restore)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates lsb-release
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          pg_dump --version
+
+      - name: Siapkan direktori kerja & timestamp
+        id: meta
+        run: |
+          set -euo pipefail
+          ts_utc="$(date -u +%Y-%m-%d_%H%MZ)"
+          ts_wib="$(TZ='Asia/Jakarta' date '+%Y-%m-%d %H:%M WIB')"
+          work_dir="$RUNNER_TEMP/assetflow-work-$ts_utc"
+          out_dir="$RUNNER_TEMP/assetflow-out-$ts_utc"
+          backup_subdir="assetflow-backup-$ts_utc"
+          mkdir -p "$work_dir/$backup_subdir/db" "$work_dir/$backup_subdir/storage" "$out_dir"
+          echo "timestamp=$ts_utc" >> "$GITHUB_OUTPUT"
+          echo "timestamp_wib=$ts_wib" >> "$GITHUB_OUTPUT"
+          echo "work_dir=$work_dir" >> "$GITHUB_OUTPUT"
+          echo "out_dir=$out_dir" >> "$GITHUB_OUTPUT"
+          echo "backup_subdir=$backup_subdir" >> "$GITHUB_OUTPUT"
+          echo "backup_dir=$work_dir/$backup_subdir" >> "$GITHUB_OUTPUT"
+
+      - name: Backup & verifikasi database PostgreSQL
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PGSSLMODE: require
+          BACKUP_DIR: ${{ steps.meta.outputs.backup_dir }}
+        run: |
+          set -euo pipefail
+          DB_DIR="$BACKUP_DIR/db"
+
+          if [[ "$SUPABASE_DB_URL" == *"@db."*".supabase.co"* ]]; then
+            echo "::warning::SUPABASE_DB_URL memakai direct host db.*.supabase.co (IPv6-only). GitHub Actions hanya mendukung IPv4; jika gagal, ganti dengan Session Pooler URL port 5432 dari Supabase → Connect → Session pooler."
+          fi
+
+          # 1. Dump lengkap aplikasi + auth + storage metadata + riwayat migrasi
+          pg_dump "$SUPABASE_DB_URL" \
+            --format=custom \
+            --no-owner \
+            --no-privileges \
+            --schema=public \
+            --schema=auth \
+            --schema=storage \
+            --schema=supabase_migrations \
+            --file="$DB_DIR/db-all-app.dump"
+
+          # 2. Dump khusus schema public (mudah di-restore ke project Supabase baru)
+          pg_dump "$SUPABASE_DB_URL" \
+            --format=custom \
+            --no-owner \
+            --no-privileges \
+            --schema=public \
+            --file="$DB_DIR/db-public.dump"
+
+          # 3. Dump data-only auth & storage metadata (tanpa menimpa DDL bawaan Supabase)
+          pg_dump "$SUPABASE_DB_URL" \
+            --format=custom \
+            --data-only \
+            --no-owner \
+            --no-privileges \
+            --schema=auth \
+            --schema=storage \
+            --file="$DB_DIR/db-auth-storage-data.dump"
+
+          # Verifikasi seluruh arsip dump dapat dibaca pg_restore
+          pg_restore --list "$DB_DIR/db-all-app.dump" > /dev/null
+          pg_restore --list "$DB_DIR/db-public.dump" > "$DB_DIR/db-public.toc.txt"
+          pg_restore --list "$DB_DIR/db-auth-storage-data.dump" > /dev/null
+
+          # Catat jumlah baris tabel utama sebagai ringkasan audit backup
+          psql "$SUPABASE_DB_URL" -Atc "
+            SELECT format('%-32s %s', tabel, jumlah)
+            FROM (
+              SELECT 'requests' AS tabel, COUNT(*)::text AS jumlah FROM public.requests
+              UNION ALL SELECT 'request_items', COUNT(*)::text FROM public.request_items
+              UNION ALL SELECT 'inventory_transactions', COUNT(*)::text FROM public.inventory_transactions
+              UNION ALL SELECT 'inventory_transaction_items', COUNT(*)::text FROM public.inventory_transaction_items
+              UNION ALL SELECT 'inventory_ledger', COUNT(*)::text FROM public.inventory_ledger
+              UNION ALL SELECT 'inventory_balances', COUNT(*)::text FROM public.inventory_balances
+              UNION ALL SELECT 'inventory_items', COUNT(*)::text FROM public.inventory_items
+              UNION ALL SELECT 'assets', COUNT(*)::text FROM public.assets
+              UNION ALL SELECT 'purchase_orders', COUNT(*)::text FROM public.purchase_orders
+              UNION ALL SELECT 'audit_logs', COUNT(*)::text FROM public.audit_logs
+              UNION ALL SELECT 'profiles', COUNT(*)::text FROM public.profiles
+              UNION ALL SELECT 'storage.objects', COUNT(*)::text FROM storage.objects
+            ) t;
+          " > "$DB_DIR/db-counts.txt"
+
+      - name: Backup seluruh file Supabase Storage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_DIR: ${{ steps.meta.outputs.backup_dir }}
+        run: |
+          set -euo pipefail
+          node scripts/backup-storage.mjs --out "$BACKUP_DIR/storage"
+
+      - name: Kompres & enkripsi backup (AES-256)
+        id: pkg
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          WORK_DIR: ${{ steps.meta.outputs.work_dir }}
+          OUT_DIR: ${{ steps.meta.outputs.out_dir }}
+          BACKUP_SUBDIR: ${{ steps.meta.outputs.backup_subdir }}
+          BACKUP_DIR: ${{ steps.meta.outputs.backup_dir }}
+        run: |
+          set -euo pipefail
+          archive_tar="$WORK_DIR/${BACKUP_SUBDIR}.tar.gz"
+          archive_enc="$OUT_DIR/${BACKUP_SUBDIR}.tar.gz.enc"
+
+          tar -C "$WORK_DIR" -czf "$archive_tar" "$BACKUP_SUBDIR"
+
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \
+            -in "$archive_tar" \
+            -out "$archive_enc" \
+            -pass env:BACKUP_ENCRYPTION_KEY
+
+          # Uji cepat bahwa arsip terenkripsi bisa didekripsi & dibaca kembali tanpa error
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -in "$archive_enc" \
+            -pass env:BACKUP_ENCRYPTION_KEY | tar -tzf - > /dev/null
+
+          (cd "$OUT_DIR" && sha256sum "${BACKUP_SUBDIR}.tar.gz.enc" > "${BACKUP_SUBDIR}.tar.gz.enc.sha256")
+
+          enc_size="$(du -h "$archive_enc" | awk '{print $1}')"
+          enc_sha="$(awk '{print $1}' "$OUT_DIR/${BACKUP_SUBDIR}.tar.gz.enc.sha256")"
+          storage_summary="$(node -e '
+            const fs = require("node:fs");
+            const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            console.log(`${m.total_buckets} bucket, ${m.total_files} file, ${(m.total_bytes / 1048576).toFixed(2)} MB`);
+          ' "$BACKUP_DIR/storage/storage-manifest.json")"
+
+          echo "enc_file=${BACKUP_SUBDIR}.tar.gz.enc" >> "$GITHUB_OUTPUT"
+          echo "enc_size=$enc_size" >> "$GITHUB_OUTPUT"
+          echo "enc_sha=$enc_sha" >> "$GITHUB_OUTPUT"
+          echo "storage_summary=$storage_summary" >> "$GITHUB_OUTPUT"
+
+          # Simpan ringkasan tabel ke runner summary sebelum plaintext dibersihkan
+          {
+            echo "## Ringkasan Backup Mingguan AssetFlow"
+            echo ""
+            echo "- **Waktu (WIB):** ${{ steps.meta.outputs.timestamp_wib }}"
+            echo "- **Waktu (UTC):** ${{ steps.meta.outputs.timestamp }}"
+            echo "- **Arsip terenkripsi:** \`${BACKUP_SUBDIR}.tar.gz.enc\` ($enc_size)"
+            echo "- **SHA-256:** \`$enc_sha\`"
+            echo "- **Storage:** $storage_summary"
+            echo ""
+            echo "### Jumlah Baris Database"
+            echo '```text'
+            cat "$BACKUP_DIR/db/db-counts.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          rm -rf "$WORK_DIR"
+
+      - name: Simpan arsip terenkripsi ke GitHub Actions Artifacts (retensi 90 hari)
+        uses: actions/upload-artifact@v4
+        with:
+          name: assetflow-backup-${{ steps.meta.outputs.timestamp }}
+          path: ${{ steps.meta.outputs.out_dir }}
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Bersihkan file sementara di runner
+        if: always() && steps.meta.outputs.work_dir != ''
+        env:
+          WORK_DIR: ${{ steps.meta.outputs.work_dir }}
+          OUT_DIR: ${{ steps.meta.outputs.out_dir }}
+        run: rm -rf "${WORK_DIR:-}" "${OUT_DIR:-}"
