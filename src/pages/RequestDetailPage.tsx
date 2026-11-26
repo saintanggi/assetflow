@@ -5,6 +5,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { CheckCircle2, ClipboardPaste, PackageCheck, Pencil, Printer, ScanLine, Scissors, Send, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { chunkArray, fetchAllPages } from "../lib/supabasePagination";
 import { cn } from "../lib/utils";
 import { buildSearchPattern } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
@@ -325,39 +326,45 @@ export function RequestDetailPage() {
       const its = (it ?? []) as RequestItem[];
       setItems(its);
 
-      // Master barang untuk dropdown ganti item (superadmin).
-      const { data: mi } = await supabase
-        .from("inventory_items")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name");
-      setMasterItems(((mi ?? []) as { id: string; name: string }[]));
+      // Master barang untuk dropdown ganti item (superadmin, paginasi aman >1.000 SKU).
+      const mi = await fetchAllPages<{ id: string; name: string }>((from, to) =>
+        supabase
+          .from("inventory_items")
+          .select("id, name")
+          .eq("is_active", true)
+          .order("name")
+          .order("id")
+          .range(from, to)
+      );
+      setMasterItems(mi);
 
       // Stok tersedia per barang + per jenis lokasi (untuk panel review/kirim).
       const itemIds = [...new Set(its.map((x) => x.item_id))];
       if (itemIds.length > 0) {
-        const { data: bal } = await supabase
-          .from("inventory_balances")
-          .select("item_id, qty, locations(code)")
-          .in("item_id", itemIds);
         const m: StockMap = {};
         const byKind: Record<string, StockByKind> = {};
-        for (const b of (bal ?? []) as {
-          item_id: string;
-          qty: number | string;
-          locations: { code: string } | { code: string }[] | null;
-        }[]) {
-          const qty = Number(b.qty) || 0;
-          m[b.item_id] = (m[b.item_id] ?? 0) + qty;
-          const loc = Array.isArray(b.locations) ? b.locations[0] : b.locations;
-          const kode = loc?.code ?? "";
-          const k = kindKeyFor(kode);
-          // Lokasi non-kondisi (bukan *-BARU/RETUR/UNREADY) tidak dihitung
-          // sebagai stok siap pakai; tetap masuk total semua lokasi.
-          if (!k) continue;
-          const cur = byKind[b.item_id] ?? { baru: 0, retur: 0, unready: 0 };
-          cur[k] += qty;
-          byKind[b.item_id] = cur;
+        for (const batch of chunkArray(itemIds, 100)) {
+          const { data: bal } = await supabase
+            .from("inventory_balances")
+            .select("item_id, qty, locations(code)")
+            .in("item_id", batch);
+          for (const b of (bal ?? []) as {
+            item_id: string;
+            qty: number | string;
+            locations: { code: string } | { code: string }[] | null;
+          }[]) {
+            const qty = Number(b.qty) || 0;
+            m[b.item_id] = (m[b.item_id] ?? 0) + qty;
+            const loc = Array.isArray(b.locations) ? b.locations[0] : b.locations;
+            const kode = loc?.code ?? "";
+            const k = kindKeyFor(kode);
+            // Lokasi non-kondisi (bukan *-BARU/RETUR/UNREADY) tidak dihitung
+            // sebagai stok siap pakai; tetap masuk total semua lokasi.
+            if (!k) continue;
+            const cur = byKind[b.item_id] ?? { baru: 0, retur: 0, unready: 0 };
+            cur[k] += qty;
+            byKind[b.item_id] = cur;
+          }
         }
         setStock(m);
         setStockByKind(byKind);

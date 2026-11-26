@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { Skeleton } from "../components/ui/skeleton";
 import { CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import type { AssetStatus, TransactionType } from "../types/database";
@@ -319,30 +320,62 @@ export function DashboardPage() {
       setLoading(true);
       try {
         const today = todayLocalDate();
+        const start14Date = new Date();
+        start14Date.setDate(start14Date.getDate() - 13);
+        const start14 = todayLocalDate(start14Date);
         const [
-          statusesRes,
-          itemsRes,
-          balancesRes,
-          txTodayRes,
-          txRecentRes,
+          statuses,
+          items,
+          balances,
+          txToday,
+          txRecent,
           recentListRes,
           locRes,
           reviewRes,
           activeRes,
           pendingRes,
         ] = await Promise.all([
-          supabase.from("assets").select("status").eq("archived", false),
-          supabase.from("inventory_items").select("id, min_stock, purchase_price").eq("is_active", true),
-          supabase.from("inventory_balances").select("item_id, qty, location_id"),
-          supabase
-            .from("inventory_transactions")
-            .select("type")
-            .eq("transaction_date", today),
-          supabase
-            .from("inventory_transactions")
-            .select("transaction_date")
-            .order("transaction_date", { ascending: false })
-            .limit(200),
+          fetchAllPages<{ status: AssetStatus }>((from, to) =>
+            supabase
+              .from("assets")
+              .select("status")
+              .eq("archived", false)
+              .order("id")
+              .range(from, to)
+          ),
+          fetchAllPages<{ id: string; min_stock: number | null; purchase_price: number | null }>((from, to) =>
+            supabase
+              .from("inventory_items")
+              .select("id, min_stock, purchase_price")
+              .eq("is_active", true)
+              .order("id")
+              .range(from, to)
+          ),
+          fetchAllPages<{ item_id: string; qty: number; location_id: string }>((from, to) =>
+            supabase
+              .from("inventory_balances")
+              .select("item_id, qty, location_id")
+              .order("item_id")
+              .order("location_id")
+              .range(from, to)
+          ),
+          fetchAllPages<{ type: TransactionType }>((from, to) =>
+            supabase
+              .from("inventory_transactions")
+              .select("type")
+              .eq("transaction_date", today)
+              .order("id")
+              .range(from, to)
+          ),
+          fetchAllPages<{ transaction_date: string }>((from, to) =>
+            supabase
+              .from("inventory_transactions")
+              .select("transaction_date")
+              .gte("transaction_date", start14)
+              .order("transaction_date", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to)
+          ),
           supabase
             .from("inventory_transactions")
             .select("id, doc_number, type, created_at")
@@ -363,29 +396,10 @@ export function DashboardPage() {
             .select("id", { count: "exact", head: true })
             .in("item_status", ["pending_sebagian", "menunggu_stok"]),
         ]);
-        const failures = [
-          statusesRes,
-          itemsRes,
-          balancesRes,
-          txTodayRes,
-          txRecentRes,
-          recentListRes,
-          locRes,
-          reviewRes,
-          activeRes,
-          pendingRes,
-        ].filter((r) => r.error);
+        const failures = [recentListRes, locRes, reviewRes, activeRes, pendingRes].filter(
+          (r) => r.error
+        );
         if (failures.length > 0) throw new Error("Gagal memuat data dashboard");
-
-        const statuses = (statusesRes.data ?? []) as { status: AssetStatus }[];
-        const items = (itemsRes.data ?? []) as { id: string; min_stock: number | null; purchase_price: number | null }[];
-        const balances = (balancesRes.data ?? []) as {
-          item_id: string;
-          qty: number;
-          location_id: string;
-        }[];
-        const txToday = (txTodayRes.data ?? []) as { type: TransactionType }[];
-        const txRecent = (txRecentRes.data ?? []) as { transaction_date: string }[];
 
         const balanceByItem = new Map<string, number>();
         const balanceByLoc = new Map<string, number>();

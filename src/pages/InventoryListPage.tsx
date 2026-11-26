@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ImageOff, Plus, ScanLine, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { generateSku } from "../lib/sku";
 import { badgeDarkClass, stockStatusVariant } from "../lib/statusColors";
 import { cn } from "../lib/utils";
@@ -79,34 +80,41 @@ export function InventoryListPage() {
 
   const loadItems = async () => {
     setLoading(true);
-    const [
-      { data: itemData, error: itemError },
-      { data: balData, error: balError },
-      { data: locData },
-    ] = await Promise.all([
-      supabase.from("inventory_items").select(ITEM_SELECT).order("name"),
-      supabase.from("inventory_balances").select("item_id, location_id, qty, opening_qty"),
-      supabase.from("locations").select("id, code").in("code", ["STOK-BARU", "STOK-RETUR"]),
-    ]);
-    if (itemError || balError) {
-      toast.error("Gagal memuat persediaan", {
-        description: itemError?.message ?? balError?.message,
-      });
-      setItems([]);
-    } else {
-      const baruId = (locData ?? []).find((l: { code: string }) => l.code === "STOK-BARU")?.id;
-      const returId = (locData ?? []).find((l: { code: string }) => l.code === "STOK-RETUR")?.id;
+    try {
+      const [itemData, balData, locRes] = await Promise.all([
+        fetchAllPages<InventoryItem>((from, to) =>
+          supabase
+            .from("inventory_items")
+            .select(ITEM_SELECT)
+            .order("name")
+            .order("id")
+            .range(from, to)
+        ),
+        fetchAllPages<{
+          item_id: string;
+          location_id: string;
+          qty: number | string;
+          opening_qty?: number | string | null;
+        }>((from, to) =>
+          supabase
+            .from("inventory_balances")
+            .select("item_id, location_id, qty, opening_qty")
+            .order("item_id")
+            .order("location_id")
+            .range(from, to)
+        ),
+        supabase.from("locations").select("id, code").in("code", ["STOK-BARU", "STOK-RETUR"]),
+      ]);
+      if (locRes.error) throw new Error(locRes.error.message);
+      const locData = locRes.data ?? [];
+      const baruId = locData.find((l: { code: string }) => l.code === "STOK-BARU")?.id;
+      const returId = locData.find((l: { code: string }) => l.code === "STOK-RETUR")?.id;
       const totals = new Map<string, number>();
       const baruMap = new Map<string, number>();
       const returMap = new Map<string, number>();
       const openBaruMap = new Map<string, number>();
       const openReturMap = new Map<string, number>();
-      for (const b of (balData ?? []) as {
-        item_id: string;
-        location_id: string;
-        qty: number | string;
-        opening_qty?: number | string | null;
-      }[]) {
+      for (const b of balData) {
         const q = Number(b.qty);
         const op = Number(b.opening_qty ?? b.qty);
         totals.set(b.item_id, (totals.get(b.item_id) ?? 0) + q);
@@ -119,7 +127,7 @@ export function InventoryListPage() {
           openReturMap.set(b.item_id, (openReturMap.get(b.item_id) ?? 0) + op);
         }
       }
-      const rows: ItemRow[] = ((itemData ?? []) as InventoryItem[]).map((it) => {
+      const rows: ItemRow[] = itemData.map((it) => {
         const total = totals.get(it.id) ?? 0;
         const min = it.min_stock ?? 0;
         const status: StockStatus =
@@ -135,8 +143,14 @@ export function InventoryListPage() {
         };
       });
       setItems(rows);
+    } catch (err) {
+      toast.error("Gagal memuat persediaan", {
+        description: err instanceof Error ? err.message : "unknown",
+      });
+      setItems([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -192,9 +206,10 @@ export function InventoryListPage() {
   const onAddItem = async (values: InventoryPageFormValues) => {
     setSaving(true);
     try {
+      const cleanName = values.name.trim();
       // SKU otomatis dari nama barang (skema keluarga XXX-NNN) —
       // tidak ditampilkan ke user, dihitung dari nomor terbesar di keluarga itu.
-      const autoSku = await generateSku(supabase, values.name);
+      const autoSku = await generateSku(supabase, cleanName);
       // Satuan default ke PCS bila tidak dipilih.
       let unitId = values.unit_id ?? null;
       if (!unitId) {
@@ -217,13 +232,13 @@ export function InventoryListPage() {
       }
       const { error } = await supabase.from("inventory_items").insert({
         sku: autoSku,
-        name: values.name,
+        name: cleanName,
         category_id: values.category_id ?? null,
-        brand: values.brand || null,
-        model: values.model || null,
+        brand: values.brand?.trim() || null,
+        model: values.model?.trim() || null,
         unit_id: unitId,
-        barcode: values.barcode || null,
-        min_stock: values.min_stock ?? null,
+        barcode: values.barcode?.trim() || null,
+        min_stock: values.min_stock ?? 0,
         location_id: values.location_id ?? null,
         supplier_id: values.supplier_id ?? null,
         purchase_price: values.purchase_price ?? null,
@@ -585,11 +600,14 @@ export function InventoryListPage() {
             Daftarkan barang persediaan baru. Stok awal diisi lewat menu Barang Masuk.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onAddItem)}>
+        <form onSubmit={handleSubmit(onAddItem)} noValidate>
           <div className="grid gap-4 px-1 py-2 sm:grid-cols-2">
             <div>
               <Label htmlFor="inv-barcode">Barcode</Label>
               <Input id="inv-barcode" {...register("barcode")} placeholder="Opsional" />
+              {fieldError("barcode") && (
+                <p className="mt-1 text-xs text-brand-600">{fieldError("barcode")}</p>
+              )}
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="inv-name">Nama Barang *</Label>
@@ -635,10 +653,16 @@ export function InventoryListPage() {
             <div>
               <Label htmlFor="inv-brand">Merek</Label>
               <Input id="inv-brand" {...register("brand")} />
+              {fieldError("brand") && (
+                <p className="mt-1 text-xs text-brand-600">{fieldError("brand")}</p>
+              )}
             </div>
             <div>
               <Label htmlFor="inv-model">Model</Label>
               <Input id="inv-model" {...register("model")} />
+              {fieldError("model") && (
+                <p className="mt-1 text-xs text-brand-600">{fieldError("model")}</p>
+              )}
             </div>
             <div>
               <Label htmlFor="inv-min">Stok Minimum</Label>
@@ -648,7 +672,8 @@ export function InventoryListPage() {
                 min={0}
                 placeholder="0"
                 {...register("min_stock", {
-                  setValueAs: (v: string) => (v === "" ? null : Number(v)),
+                  setValueAs: (v: string) =>
+                    v == null || String(v).trim() === "" ? 0 : Number(v),
                 })}
               />
               {fieldError("min_stock") && (
@@ -663,7 +688,8 @@ export function InventoryListPage() {
                 min={0}
                 placeholder="0"
                 {...register("purchase_price", {
-                  setValueAs: (v: string) => (v === "" ? null : Number(v)),
+                  setValueAs: (v: string) =>
+                    v == null || String(v).trim() === "" ? null : Number(v),
                 })}
               />
               {fieldError("purchase_price") && (

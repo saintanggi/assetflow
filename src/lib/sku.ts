@@ -101,10 +101,16 @@ export function nextNumbers(existingSkus: string[], families: string[]): Record<
 /** SKU untuk satu barang baru (dipakai form Master Barang). */
 export async function generateSku(client: SupabaseClient, name: string): Promise<string> {
   const family = familyCodeForName(name);
-  const { data, error } = await client.from("inventory_items").select("sku").like("sku", `${family}-%`);
-  if (error) throw new Error(error.message);
+  const rows = await fetchAllPages<{ sku: string }>((from, to) =>
+    client
+      .from("inventory_items")
+      .select("sku")
+      .like("sku", `${family}-%`)
+      .order("id")
+      .range(from, to)
+  );
   const next = nextNumbers(
-    ((data ?? []) as { sku: string }[]).map((r) => r.sku),
+    rows.map((r) => r.sku),
     [family],
   )[family];
   return formatSku(family, next);

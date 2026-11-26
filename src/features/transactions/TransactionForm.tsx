@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { fetchAllPages } from "../../lib/supabasePagination";
 import { findLocationByCondition } from "../../lib/stockLocations";
+import { serializeProofUrls } from "../../lib/proofUrls";
 import { buildSearchPattern, formatQty, todayLocalDate } from "../../lib/format";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -44,6 +45,16 @@ interface LocationOption {
   code: string;
   warehouse: string;
 }
+
+interface ProofAttachment {
+  id: string;
+  file: File;
+  preview: string;
+}
+
+const MAX_PROOF_PHOTOS = 10;
+const MAX_PROOF_BYTES = 5 * 1024 * 1024;
+const ALLOWED_PROOF_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 /** Jenis stok Barang Masuk/Keluar → status aset + lokasi Gudang Utama
     (tujuan untuk Masuk, asal untuk Keluar). */
@@ -103,9 +114,10 @@ export function TransactionForm({
   const [jenisStok, setJenisStok] = useState("");
   const [gerai, setGerai] = useState("");
   const [geraiOptions, setGeraiOptions] = useState<string[]>([]);
-  // Foto surat jalan (wajib untuk Barang Masuk & Keluar).
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  // Foto surat jalan (minimal 1, boleh lebih dari 1 untuk Barang Masuk & Keluar).
+  const [photos, setPhotos] = useState<ProofAttachment[]>([]);
+  const photosRef = useRef<ProofAttachment[]>([]);
+  const activePreviewUrlsRef = useRef<Set<string>>(new Set());
   const [photoUploading, setPhotoUploading] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ItemRow[]>([newRow()]);
@@ -117,7 +129,7 @@ export function TransactionForm({
   // Kunci idempotensi dipertahankan selama form belum berhasil di-posting
   // agar retry saat timeout tidak pernah menggandakan transaksi stok.
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
-  const uploadedPhotoRef = useRef<{ file: File; url: string } | null>(null);
+  const uploadedPhotosRef = useRef<Map<File, string>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -157,16 +169,23 @@ export function TransactionForm({
     })();
     // Saran nama gerai dari riwayat permintaan (supaya ejaan konsisten di log).
     (async () => {
-      const { data } = await supabase
-        .from("requests")
-        .select("branch_name")
-        .not("branch_name", "is", null)
-        .neq("branch_name", "")
-        .order("branch_name")
-        .limit(500);
-      if (cancelled) return;
-      const names = [...new Set(((data ?? []) as { branch_name: string }[]).map((r) => r.branch_name))];
-      setGeraiOptions(names);
+      try {
+        const data = await fetchAllPages<{ branch_name: string }>((from, to) =>
+          supabase
+            .from("requests")
+            .select("branch_name")
+            .not("branch_name", "is", null)
+            .neq("branch_name", "")
+            .order("branch_name")
+            .order("id")
+            .range(from, to)
+        );
+        if (cancelled) return;
+        const names = [...new Set(data.map((r) => r.branch_name))];
+        setGeraiOptions(names);
+      } catch {
+        // Biarkan input gerai tetap bisa diketik bebas.
+      }
     })();
     return () => {
       cancelled = true;
@@ -224,8 +243,11 @@ export function TransactionForm({
 
   useEffect(() => {
     const timers = searchTimers.current;
+    const previewUrls = activePreviewUrlsRef.current;
     return () => {
       for (const t of Object.values(timers)) clearTimeout(t);
+      for (const u of previewUrls) URL.revokeObjectURL(u);
+      previewUrls.clear();
     };
   }, []);
 
@@ -287,62 +309,91 @@ export function TransactionForm({
     setNotes("");
     setJenisStok("");
     setGerai("");
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoFile(null);
-    setPhotoPreview(null);
+    for (const p of photosRef.current) {
+      URL.revokeObjectURL(p.preview);
+      activePreviewUrlsRef.current.delete(p.preview);
+    }
+    photosRef.current = [];
+    setPhotos([]);
     if (photoInputRef.current) photoInputRef.current.value = "";
-    uploadedPhotoRef.current = null;
+    uploadedPhotosRef.current.clear();
     idempotencyKeyRef.current = crypto.randomUUID();
     setRows([newRow()]);
   };
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Ukuran foto maksimal 5MB.");
-      e.target.value = "";
-      return;
+  const appendProofFiles = (incoming: File[], fromClipboard = false) => {
+    if (incoming.length === 0) return;
+    const current = photosRef.current;
+    const added: ProofAttachment[] = [];
+    for (const file of incoming) {
+      if (current.length + added.length >= MAX_PROOF_PHOTOS) {
+        toast.error(`Maksimal ${MAX_PROOF_PHOTOS} foto bukti per transaksi.`);
+        break;
+      }
+      if (file.type && !ALLOWED_PROOF_MIMES.has(file.type)) {
+        toast.error(`Format "${file.name}" tidak didukung (gunakan JPG, PNG, atau WEBP).`);
+        continue;
+      }
+      if (file.size > MAX_PROOF_BYTES) {
+        toast.error(`Ukuran foto "${file.name}" maksimal 5MB.`);
+        continue;
+      }
+      const preview = URL.createObjectURL(file);
+      activePreviewUrlsRef.current.add(preview);
+      added.push({ id: crypto.randomUUID(), file, preview });
     }
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    if (added.length > 0) {
+      const next = [...current, ...added];
+      photosRef.current = next;
+      setPhotos(next);
+      if (fromClipboard) {
+        toast.success(
+          added.length > 1
+            ? `${added.length} foto dari clipboard ditambahkan (total ${next.length} foto).`
+            : `Foto dari clipboard ditambahkan (total ${next.length} foto).`
+        );
+      }
+    }
   };
 
-  const removePhoto = () => {
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoFile(null);
-    setPhotoPreview(null);
-    if (photoInputRef.current) photoInputRef.current.value = "";
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    appendProofFiles(files);
+  };
+
+  const removePhoto = (id: string) => {
+    const target = photosRef.current.find((p) => p.id === id);
+    if (target) {
+      URL.revokeObjectURL(target.preview);
+      activePreviewUrlsRef.current.delete(target.preview);
+    }
+    const next = photosRef.current.filter((p) => p.id !== id);
+    photosRef.current = next;
+    setPhotos(next);
   };
 
   // Tempel (paste) gambar dari clipboard — mis. hasil screenshot/snip dari WA
-  // yang sudah di-copy. Hanya bereaksi kalau clipboard berisi GAMBAR; paste
-  // teks (ke kolom Gerai, Catatan, dsb.) tidak diganggu sama sekali.
+  // yang sudah di-copy. Bisa ditempel berkali-kali untuk melampirkan banyak SJ.
+  // Hanya bereaksi kalau clipboard berisi GAMBAR; paste teks tidak diganggu.
   useEffect(() => {
     if (!usesJenisStok) return;
     const onPaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
+      const imageFiles: File[] = [];
       for (const item of items) {
         if (!item.type.startsWith("image/")) continue;
         const file = item.getAsFile();
-        if (!file) return;
-        e.preventDefault();
-        if (file.size > 5 * 1024 * 1024) {
-          toast.error("Ukuran foto maksimal 5MB.");
-          return;
-        }
-        if (photoPreview) URL.revokeObjectURL(photoPreview);
-        setPhotoFile(file);
-        setPhotoPreview(URL.createObjectURL(file));
-        toast.success("Foto dari clipboard ditempel.");
-        return;
+        if (file) imageFiles.push(file);
       }
+      if (imageFiles.length === 0) return;
+      e.preventDefault();
+      appendProofFiles(imageFiles, true);
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [usesJenisStok, photoPreview]);
+  }, [usesJenisStok]);
 
   const validate = (): string | null => {
     if (rows.length === 0 || !rows.some((r) => r.item && Number(r.qty) > 0)) {
@@ -385,12 +436,11 @@ export function TransactionForm({
     } else if (needDest && !destId) {
       return "Lokasi tujuan wajib dipilih.";
     }
-    // Foto surat jalan wajib untuk Barang Masuk & Keluar — tanpa foto,
-    // transaksi tidak bisa diposting (aturan 23 Nov 2026).
-    if (usesJenisStok && !photoFile) {
+    // Minimal 1 foto surat jalan wajib untuk Barang Masuk & Keluar.
+    if (usesJenisStok && photos.length === 0) {
       return isMasuk
-        ? "Foto Surat Jalan atau No PO wajib dilampirkan untuk Barang Masuk."
-        : "Foto Surat Jalan wajib dilampirkan untuk Barang Keluar.";
+        ? "Minimal 1 foto Surat Jalan atau No PO wajib dilampirkan untuk Barang Masuk."
+        : "Minimal 1 foto Surat Jalan wajib dilampirkan untuk Barang Keluar.";
     }
     if (needSource && needDest && sourceId === destId)
       return "Lokasi asal dan tujuan tidak boleh sama.";
@@ -407,43 +457,52 @@ export function TransactionForm({
     }
     setSubmitting(true);
     try {
-      // Foto surat jalan diupload DULU (wajib untuk Masuk/Keluar); kalau
-      // upload gagal, transaksi tidak jadi diposting. Kunci idempotensi
-      // disimpan di ref agar retry (timeout / jaringan putus) tidak menggandakan stok.
+      // Semua foto surat jalan diupload DULU (minimal 1 untuk Masuk/Keluar); kalau
+      // upload gagal, transaksi tidak jadi diposting. Kunci idempotensi & cache
+      // upload disimpan di ref agar retry (timeout / jaringan putus) tidak menggandakan stok.
       const idempotencyKey = idempotencyKeyRef.current;
-      let photoUrl: string | null = null;
-      if (usesJenisStok && photoFile) {
-        if (uploadedPhotoRef.current?.file === photoFile) {
-          photoUrl = uploadedPhotoRef.current.url;
-        } else {
-          if (photoFile.size > 5 * 1024 * 1024) throw new Error("Ukuran foto maksimal 5MB.");
-          setPhotoUploading(true);
-          try {
+      const uploadedUrls: string[] = [];
+      if (usesJenisStok && photos.length > 0) {
+        setPhotoUploading(true);
+        try {
+          const extByMime: Record<string, string> = {
+            "image/jpeg": "jpg",
+            "image/png": "png",
+            "image/webp": "webp",
+          };
+          for (let idx = 0; idx < photos.length; idx++) {
+            const p = photos[idx];
+            const cachedUrl = uploadedPhotosRef.current.get(p.file);
+            if (cachedUrl) {
+              uploadedUrls.push(cachedUrl);
+              continue;
+            }
+            if (p.file.size > MAX_PROOF_BYTES) {
+              throw new Error(`Ukuran foto "${p.file.name}" maksimal 5MB.`);
+            }
             // Ekstensi dari tipe MIME (gambar hasil paste dari clipboard sering
             // bernama generik "image.png" — nama file tidak bisa diandalkan).
-            const extByMime: Record<string, string> = {
-              "image/jpeg": "jpg",
-              "image/png": "png",
-              "image/webp": "webp",
-              "image/gif": "gif",
-            };
             const ext =
-              extByMime[photoFile.type] ??
-              photoFile.name.split(".").pop()?.toLowerCase() ??
+              extByMime[p.file.type] ??
+              p.file.name.split(".").pop()?.toLowerCase() ??
               "jpg";
-            const path = `${idempotencyKey}.${ext}`;
+            const path =
+              photos.length === 1 && idx === 0
+                ? `${idempotencyKey}.${ext}`
+                : `${idempotencyKey}-${p.id}.${ext}`;
             const { error: upErr } = await supabase.storage
               .from("surat-jalan")
-              .upload(path, photoFile, { contentType: photoFile.type, upsert: true });
-            if (upErr) throw new Error(`Gagal upload foto surat jalan: ${upErr.message}`);
+              .upload(path, p.file, { contentType: p.file.type, upsert: true });
+            if (upErr) throw new Error(`Gagal upload foto surat jalan #${idx + 1}: ${upErr.message}`);
             const { data } = supabase.storage.from("surat-jalan").getPublicUrl(path);
-            photoUrl = data.publicUrl;
-            uploadedPhotoRef.current = { file: photoFile, url: photoUrl };
-          } finally {
-            setPhotoUploading(false);
+            uploadedPhotosRef.current.set(p.file, data.publicUrl);
+            uploadedUrls.push(data.publicUrl);
           }
+        } finally {
+          setPhotoUploading(false);
         }
       }
+      const photoUrl = serializeProofUrls(uploadedUrls);
       const items: TransactionItemInput[] = rows
         .filter((r) => r.item && Number(r.qty) > 0)
         .map((r) => ({
@@ -569,56 +628,85 @@ export function TransactionForm({
                 ))}
               </datalist>
             </div>
-            <div className="space-y-1.5 sm:col-span-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="trx-sj-photo" className="text-ink-100">
-                {isMasuk ? "Foto Surat Jalan / No PO (wajib)" : "Foto Surat Jalan (wajib)"}
+                {isMasuk
+                  ? "Foto Surat Jalan / No PO (wajib, minimal 1)"
+                  : "Foto Surat Jalan (wajib, minimal 1)"}
               </Label>
-              {photoPreview ? (
-                <div className="flex items-start gap-3">
-                  <img
-                    src={photoPreview}
-                    alt="Foto surat jalan"
-                    className="h-24 rounded-lg border border-white/15 object-cover"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={removePhoto}
-                    disabled={submitting}
-                    className={DARK_OUTLINE_BTN}
-                  >
-                    Hapus foto
-                  </Button>
+              {photos.length > 0 && (
+                <div className="flex flex-wrap gap-3">
+                  {photos.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      className="relative flex w-28 flex-col overflow-hidden rounded-lg border border-white/15 bg-white/5"
+                    >
+                      <img
+                        src={p.preview}
+                        alt={`Foto surat jalan ${idx + 1}`}
+                        className="h-24 w-full object-cover"
+                      />
+                      <span className="absolute left-1 top-1 rounded bg-ink-900/80 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        #{idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Hapus foto ${idx + 1}`}
+                        onClick={() => removePhoto(p.id)}
+                        disabled={submitting}
+                        className="absolute right-1 top-1 rounded bg-ink-900/80 p-1 text-white transition hover:bg-brand-600 disabled:opacity-50"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                      <span
+                        className="truncate px-1.5 py-1 text-[10px] text-ink-300"
+                        title={p.file.name}
+                      >
+                        {p.file.name}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <>
-                  <label
-                    htmlFor="trx-sj-photo"
-                    className={`${DARK_OUTLINE_BTN} inline-flex cursor-pointer items-center rounded-lg border px-3 py-2 text-sm`}
-                  >
-                    Pilih foto…
-                  </label>
-                  <input
-                    id="trx-sj-photo"
-                    ref={photoInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    className="hidden"
-                    onChange={handlePhotoSelect}
-                  />
-                  <p className="text-xs text-ink-300">
-                    {isMasuk
-                      ? "Wajib: foto surat jalan, atau foto nomor PO. Tanpa foto, transaksi tidak bisa diposting."
-                      : "Wajib: foto surat jalan. Tanpa foto, transaksi tidak bisa diposting."}
-                  </p>
-                  <p className="text-xs text-ink-300">
-                    Atau tempel dari clipboard: salin gambar (dari WA / screenshot), lalu tekan Ctrl+V di halaman ini.
-                  </p>
-                </>
               )}
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  htmlFor="trx-sj-photo"
+                  className={`${DARK_OUTLINE_BTN} inline-flex cursor-pointer items-center rounded-lg border px-3 py-2 text-sm ${
+                    photos.length >= MAX_PROOF_PHOTOS || submitting
+                      ? "pointer-events-none opacity-50"
+                      : ""
+                  }`}
+                >
+                  {photos.length > 0 ? "Tambah foto lagi…" : "Pilih foto…"}
+                </label>
+                {photos.length > 0 && (
+                  <span className="text-xs text-ink-300">
+                    {photos.length}/{MAX_PROOF_PHOTOS} foto terlampir
+                  </span>
+                )}
+              </div>
+              <input
+                id="trx-sj-photo"
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                disabled={photos.length >= MAX_PROOF_PHOTOS || submitting}
+                className="hidden"
+                onChange={handlePhotoSelect}
+              />
+              <p className="text-xs text-ink-300">
+                {isMasuk
+                  ? "Wajib minimal 1 foto surat jalan atau nomor PO. Jika SJ lebih dari 1, pilih beberapa file sekaligus atau tambah satu per satu."
+                  : "Wajib minimal 1 foto surat jalan. Jika SJ lebih dari 1, pilih beberapa file sekaligus atau tambah satu per satu."}
+              </p>
+              <p className="text-xs text-ink-300">
+                Atau tempel dari clipboard: salin gambar (dari WA / screenshot), lalu tekan Ctrl+V di halaman ini (bisa tempel berkali-kali).
+              </p>
               {photoUploading && (
-                <p className="text-xs text-ink-300">Mengupload foto surat jalan…</p>
+                <p className="text-xs text-ink-300">
+                  Mengupload {photos.length} foto surat jalan…
+                </p>
               )}
             </div>
           </>

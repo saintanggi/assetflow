@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { Download, Hourglass, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { useAuth } from "../context/AuthContext";
 import { pendingJenisVariant, badgeDarkClass } from "../lib/statusColors";
 import { buildSearchPattern, todayLocalDate } from "../lib/format";
@@ -274,22 +275,7 @@ export function PendingPartialPage() {
 
   /** Muat ulang daftar sisa pending (dipakai awal, sesudah ganti, sesudah hapus). */
   const loadRows = async (isCancelled?: () => boolean) => {
-    const { data, error } = await supabase
-      .from("request_items")
-      .select(
-        "id, request_id, qty_requested, qty_approved, qty_shipped, resi, item_status, notes, inventory_items(sku, name), requests(request_number, ticket_no, branch_name)"
-      )
-      .in("item_status", ["pending_sebagian", "menunggu_stok"])
-      .order("updated_at", { ascending: false })
-      .limit(500);
-    if (isCancelled?.()) return;
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    const one = <T,>(v: T | T[] | null): T | null =>
-      Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
-    const mapped = ((data ?? []) as unknown as {
+    type RawPendingItem = {
       id: string;
       request_id: string;
       qty_requested: number | string;
@@ -300,7 +286,30 @@ export function PendingPartialPage() {
       notes: string | null;
       inventory_items: { sku: string; name: string } | { sku: string; name: string }[] | null;
       requests: { request_number: string; ticket_no: string; branch_name: string } | { request_number: string; ticket_no: string; branch_name: string }[] | null;
-    }[])
+    };
+    let data: RawPendingItem[];
+    try {
+      data = await fetchAllPages<RawPendingItem>((from, to) =>
+        supabase
+          .from("request_items")
+          .select(
+            "id, request_id, qty_requested, qty_approved, qty_shipped, resi, item_status, notes, inventory_items(sku, name), requests(request_number, ticket_no, branch_name)"
+          )
+          .in("item_status", ["pending_sebagian", "menunggu_stok"])
+          .order("updated_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      );
+    } catch (e) {
+      if (!isCancelled?.()) {
+        toast.error(e instanceof Error ? e.message : "Gagal memuat data pending.");
+      }
+      return;
+    }
+    if (isCancelled?.()) return;
+    const one = <T,>(v: T | T[] | null): T | null =>
+      Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
+    const mapped = data
       .map((x) => {
         const isMenungguStok = x.item_status === "menunggu_stok";
         const approved = Number(x.qty_approved ?? 0);

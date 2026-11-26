@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { fetchAllPages } from "../lib/supabasePagination";
 import { badgeDarkClass, poStatusVariant } from "../lib/statusColors";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
@@ -110,14 +111,7 @@ export function PurchaseOrderListPage() {
     (async () => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
-          .from("purchase_orders")
-          .select("id, po_number, status, order_date, expected_date, total_amount, suppliers(name), purchase_order_items(id)")
-          .order("created_at", { ascending: false })
-          .limit(500);
-        if (error) throw new Error(error.message);
-        if (cancelled) return;
-        const mapped: PoRow[] = ((data ?? []) as unknown as {
+        const data = await fetchAllPages<{
           id: string;
           po_number: string;
           status: PoStatus;
@@ -126,7 +120,16 @@ export function PurchaseOrderListPage() {
           total_amount: number | string;
           suppliers: { name: string } | { name: string }[] | null;
           purchase_order_items: { id: string }[];
-        }[]).map((p) => ({
+        }>((from, to) =>
+          supabase
+            .from("purchase_orders")
+            .select("id, po_number, status, order_date, expected_date, total_amount, suppliers(name), purchase_order_items(id)")
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to)
+        );
+        if (cancelled) return;
+        const mapped: PoRow[] = data.map((p) => ({
           id: p.id,
           po_number: p.po_number,
           supplier: p.suppliers,

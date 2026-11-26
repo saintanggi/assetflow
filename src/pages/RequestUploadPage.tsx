@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { chunkArray, fetchAllPages } from "../lib/supabasePagination";
 import { generateSkus } from "../lib/sku";
 import { cn } from "../lib/utils";
 import { formatDate } from "../lib/format";
@@ -153,30 +154,45 @@ async function loadPendingForTickets(tickets: string[]): Promise<PendingItem[]> 
   if (tickets.length === 0) return [];
   const out: PendingItem[] = [];
   for (const tBatch of batches(tickets, 60)) {
-    const { data: reqs, error } = await supabase
-      .from("requests")
-      .select("id, ticket_no, branch_name, request_date")
-      .in("ticket_no", tBatch)
-      .limit(3000);
-    if (error) throw new Error(error.message);
-    const reqs2 = (reqs ?? []) as { id: string; ticket_no: string; branch_name: string; request_date: string }[];
+    const reqs2 = await fetchAllPages<{
+      id: string;
+      ticket_no: string;
+      branch_name: string;
+      request_date: string;
+    }>((from, to) =>
+      supabase
+        .from("requests")
+        .select("id, ticket_no, branch_name, request_date")
+        .in("ticket_no", tBatch)
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
     if (reqs2.length === 0) continue;
     const reqById = new Map(reqs2.map((r) => [r.id, r]));
     for (const idBatch of batches([...reqById.keys()], 80)) {
-      const { data: items, error: itErr } = await supabase
-        .from("request_items")
-        .select("id, request_id, item_id, status_aset, qty_requested, qty_approved, qty_shipped, item_status, barcode, resi, created_at")
-        .in("request_id", idBatch)
-        .in("item_status", ["pending_sebagian", "menunggu_stok"])
-        .order("created_at", { ascending: true })
-        .limit(5000);
-      if (itErr) throw new Error(itErr.message);
-      for (const it of (items ?? []) as {
-        id: string; request_id: string; item_id: string; status_aset: string | null;
-        qty_requested: number | string; qty_approved: number | string | null;
-        qty_shipped: number | string; item_status: string; barcode: string | null;
-        resi: string | null; created_at: string;
-      }[]) {
+      const items = await fetchAllPages<{
+        id: string;
+        request_id: string;
+        item_id: string;
+        status_aset: string | null;
+        qty_requested: number | string;
+        qty_approved: number | string | null;
+        qty_shipped: number | string;
+        item_status: string;
+        barcode: string | null;
+        resi: string | null;
+        created_at: string;
+      }>((from, to) =>
+        supabase
+          .from("request_items")
+          .select("id, request_id, item_id, status_aset, qty_requested, qty_approved, qty_shipped, item_status, barcode, resi, created_at")
+          .in("request_id", idBatch)
+          .in("item_status", ["pending_sebagian", "menunggu_stok"])
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+      for (const it of items) {
         const req = reqById.get(it.request_id);
         if (!req) continue;
         out.push({
@@ -321,15 +337,25 @@ export function RequestUploadPage() {
           return;
         }
         const itemIds = [...new Set([...out.keys()].map((k) => k.split("|")[0]))];
-        const { data: bals } = await supabase
-          .from("inventory_balances")
-          .select("item_id, location_id, qty")
-          .in("item_id", itemIds)
-          .in("location_id", locIds)
-          .limit(5000);
         const stockMap = new Map<string, number>();
-        for (const b of (bals ?? []) as { item_id: string; location_id: string; qty: number | string }[]) {
-          stockMap.set(`${b.item_id}|${b.location_id}`, Number(b.qty) || 0);
+        for (const idBatch of chunkArray(itemIds, 100)) {
+          const bals = await fetchAllPages<{
+            item_id: string;
+            location_id: string;
+            qty: number | string;
+          }>((from, to) =>
+            supabase
+              .from("inventory_balances")
+              .select("item_id, location_id, qty")
+              .in("item_id", idBatch)
+              .in("location_id", locIds)
+              .order("item_id", { ascending: true })
+              .order("location_id", { ascending: true })
+              .range(from, to)
+          );
+          for (const b of bals) {
+            stockMap.set(`${b.item_id}|${b.location_id}`, Number(b.qty) || 0);
+          }
         }
         const warnings: MinusWarning[] = [];
         for (const [key, v] of out) {
@@ -424,12 +450,15 @@ export function RequestUploadPage() {
 
   const downloadTemplate = async () => {
     try {
-      const { data: items } = await supabase
-        .from("inventory_items")
-        .select("sku, name")
-        .eq("is_active", true)
-        .order("name")
-        .limit(5000);
+      const items = await fetchAllPages<{ sku: string; name: string }>((from, to) =>
+        supabase
+          .from("inventory_items")
+          .select("sku, name")
+          .eq("is_active", true)
+          .order("name")
+          .order("id")
+          .range(from, to)
+      );
       const wb = XLSX.utils.book_new();
       const example = ["2026-10-13","A2610130001","Jakarta Sortation","","KOMPUTER RAKITAN",3,
         "V3165SB380260700885","","A130025539","","","ASSET BARU","TERKIRIM"];
@@ -450,7 +479,7 @@ export function RequestUploadPage() {
       ];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tips), "PETUNJUK");
       const daftar = [["KODE","NAMA BARANG (pakai nama ini di kolom NAMA BARANG)"],
-        ...(((items ?? []) as { sku: string; name: string }[]).map((x) => [x.sku, x.name]))];
+        ...(items.map((x) => [x.sku, x.name]))];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(daftar), "DAFTAR BARANG");
       XLSX.writeFile(wb, "Template_Upload_Pengiriman.xlsx");
     } catch {
@@ -472,32 +501,39 @@ export function RequestUploadPage() {
     const existingTickets = new Set<string>();
     for (const tBatch of batches(tickets, 60)) {
       for (const dBatch of batches(dates, 60)) {
-        const { data: reqs, error } = await supabase
-          .from("requests")
-          .select("id, ticket_no, request_date")
-          .in("ticket_no", tBatch)
-          .in("request_date", dBatch)
-          .limit(3000);
-        if (error) throw new Error(error.message);
-        const reqs2 = (reqs ?? []) as { id: string; ticket_no: string; request_date: string }[];
+        const reqs2 = await fetchAllPages<{
+          id: string;
+          ticket_no: string;
+          request_date: string;
+        }>((from, to) =>
+          supabase
+            .from("requests")
+            .select("id, ticket_no, request_date")
+            .in("ticket_no", tBatch)
+            .in("request_date", dBatch)
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
         if (reqs2.length === 0) continue;
         for (const r of reqs2) existingTickets.add(r.ticket_no);
         const reqById = new Map(reqs2.map((r) => [r.id, r]));
         for (const idBatch of batches([...reqById.keys()], 80)) {
-          const { data: items, error: itErr } = await supabase
-            .from("request_items")
-            .select("request_id, item_id, barcode, resi, qty_requested, item_status")
-            .in("request_id", idBatch)
-            .limit(5000);
-          if (itErr) throw new Error(itErr.message);
-          for (const it of (items ?? []) as {
+          const items = await fetchAllPages<{
             request_id: string;
             item_id: string;
             barcode: string | null;
             resi: string | null;
             qty_requested: number | string;
             item_status: string | null;
-          }[]) {
+          }>((from, to) =>
+            supabase
+              .from("request_items")
+              .select("request_id, item_id, barcode, resi, qty_requested, item_status")
+              .in("request_id", idBatch)
+              .order("id", { ascending: true })
+              .range(from, to)
+          );
+          for (const it of items) {
             const req = reqById.get(it.request_id);
             if (!req) continue;
             stored.push({
@@ -528,15 +564,17 @@ export function RequestUploadPage() {
     // saat file yang sama diproses ulang di hari lain.
     const rows = applySheetDate(rowsIn, sheetName);
     // Cocokkan nama barang dengan master.
-      const { data: items, error: itemsErr } = await supabase
-        .from("inventory_items")
-        .select("id, name")
-        .eq("is_active", true)
-        .limit(5000);
-      if (itemsErr) throw new Error(itemsErr.message);
+      const items = await fetchAllPages<{ id: string; name: string }>((from, to) =>
+        supabase
+          .from("inventory_items")
+          .select("id, name")
+          .eq("is_active", true)
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
       const idByName = new Map<string, string>();
       const nameById = new Map<string, string>();
-      for (const it of (items ?? []) as { id: string; name: string }[]) {
+      for (const it of items) {
         idByName.set(normalizeItemName(it.name), it.id);
         nameById.set(it.id, it.name);
       }
@@ -581,13 +619,19 @@ export function RequestUploadPage() {
       const mergeTickets = [...new Set(kept.map((r) => r.ticket).filter(Boolean))];
       let mergeGroups = 0;
       if (mergeTickets.length > 0) {
-        const { data: mergeReqs } = await supabase
-          .from("requests")
-          .select("id, ticket_no, branch_name, request_date, created_at")
-          .in("ticket_no", mergeTickets)
-          .order("created_at", { ascending: false })
-          .limit(1000);
-        const candidates = (mergeReqs ?? []) as ExistingRequestRef[];
+        const candidates: ExistingRequestRef[] = [];
+        for (const tBatch of batches(mergeTickets, 60)) {
+          const batchReqs = await fetchAllPages<ExistingRequestRef>((from, to) =>
+            supabase
+              .from("requests")
+              .select("id, ticket_no, branch_name, request_date, created_at")
+              .in("ticket_no", tBatch)
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to)
+          );
+          candidates.push(...batchReqs);
+        }
         for (const gk of groups) {
           const parts = gk.split("|");
           if (parts.length !== 3 || parts[2].startsWith("ITEM:")) continue;
@@ -682,14 +726,17 @@ export function RequestUploadPage() {
     try {
       // 1) Match / buat barang.
       setProgress("Mencocokkan barang…");
-      const { data: items } = await supabase
-        .from("inventory_items")
-        .select("id, name")
-        .eq("is_active", true)
-        .limit(5000);
+      const items = await fetchAllPages<{ id: string; name: string }>((from, to) =>
+        supabase
+          .from("inventory_items")
+          .select("id, name")
+          .eq("is_active", true)
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
       const byName = new Map<string, string>();
       const itemNameById = new Map<string, string>();
-      for (const it of (items ?? []) as { id: string; name: string }[]) {
+      for (const it of items) {
         byName.set(normalizeItemName(it.name), it.id);
         itemNameById.set(it.id, it.name);
       }

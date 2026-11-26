@@ -57,7 +57,8 @@ Super Admin sudah ada. Ulangi prosedur yang sama di proyek production.
 ## 4. HTTPS, backup & restore
 
 - **HTTPS**: otomatis aktif di Vercel (sertifikat dikelola Vercel). Jangan serve aplikasi via HTTP polos.
-- **Backup database**: Supabase → Database → Backups (harian otomatis pada paket Pro; paket gratis: lakukan `pg_dump` terjadwal manual/CI).
+- **Auto-backup mingguan (GitHub Actions)**: template workflow tersedia di `docs/weekly-backup.yml` (untuk dipasang di `.github/workflows/weekly-backup.yml`), mencadangkan database PostgreSQL + seluruh bucket Supabase Storage setiap minggu (Minggu 02:00 WIB) dalam arsip terenkripsi AES-256 ke GitHub Actions Artifacts (retensi 90 hari). Lihat panduan lengkap di `docs/BACKUP_AND_RESTORE.md`.
+- **Backup database**: Supabase → Database → Backups (harian otomatis pada paket Pro; atau via `pg_dump` manual/CI):
   ```bash
   pg_dump "postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres" -F c -f assetflow-backup.dump
   ```
